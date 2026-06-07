@@ -1,48 +1,53 @@
 local M = {}
 
-local client   = require("dbelveder.client")
-local config   = require("dbelveder.config")
-local results  = require("dbelveder.ui.results")
-local explorer = require("dbelveder.ui.explorer")
+local client      = require("dbelveder.client")
+local config      = require("dbelveder.config")
+local connections = require("dbelveder.connections")
+local results     = require("dbelveder.ui.results")
+local explorer    = require("dbelveder.ui.explorer")
 
 function M.setup(opts)
   config.setup(opts)
 end
 
--- Connect to a named connection from config, or supply params inline.
--- M.connect("mydb")
--- M.connect({ driver = "sqlite", database = "/path/to/db.sqlite" })
-function M.connect(name_or_params)
-  local opts  = config.options
-  local params
-  if type(name_or_params) == "string" then
-    params = opts.connections[name_or_params]
-    if not params then
-      vim.notify(("dbelveder: unknown connection %q"):format(name_or_params), vim.log.levels.ERROR)
-      return
-    end
-  else
-    params = name_or_params
-  end
+-- ── connection ────────────────────────────────────────────────────────────────
 
-  -- Ensure backend is running
+-- Open the connection picker.  The user selects an existing connection or
+-- creates a new one through the wizard.
+function M.connect()
+  connections.pick(function(name, params)
+    if not name then return end
+    M._do_connect(params)
+  end)
+end
+
+-- Connect directly by name (skips the picker).
+function M.connect_by_name(name)
+  local params = connections.get(name)
+  if not params then
+    vim.notify(("dbelveder: connection %q not found"):format(name), vim.log.levels.ERROR)
+    return
+  end
+  M._do_connect(params)
+end
+
+function M._do_connect(params)
   if not client.is_running() then
-    local ok, err = pcall(client.start, opts.python_cmd)
+    local ok, err = pcall(client.start, config.options.python_cmd)
     if not ok then
       vim.notify("dbelveder: " .. tostring(err), vim.log.levels.ERROR)
       return
     end
-    -- Give the process a moment to start, then connect
-    vim.defer_fn(function() M._do_connect(params) end, 200)
+    vim.defer_fn(function() M._send_connect(params) end, 200)
   else
-    M._do_connect(params)
+    M._send_connect(params)
   end
 end
 
-function M._do_connect(params)
-  client.request("connect", params, function(err, _result)
+function M._send_connect(params)
+  client.request("connect", params, function(err, _)
     if err then
-      vim.notify("dbelveder connect: " .. err, vim.log.levels.ERROR)
+      vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
       return
     end
     explorer.reset()
@@ -61,7 +66,8 @@ function M.disconnect()
   end)
 end
 
--- Execute a SQL string (or the lines from the given range).
+-- ── query ─────────────────────────────────────────────────────────────────────
+
 function M.execute(sql)
   if not sql or sql == "" then
     vim.notify("dbelveder: no SQL to execute", vim.log.levels.WARN)
@@ -79,11 +85,12 @@ function M.execute(sql)
   end)
 end
 
--- Execute the visual selection, or the whole buffer if no range.
 function M.execute_range(line1, line2)
   local lines = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
   M.execute(table.concat(lines, "\n"))
 end
+
+-- ── explorer / lifecycle ──────────────────────────────────────────────────────
 
 function M.open_explorer()
   if not client.is_running() then

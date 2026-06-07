@@ -3,32 +3,67 @@ vim.g.loaded_dbelveder = true
 
 local db = require("dbelveder")
 
--- :DbConnect [name]        — connect to a named connection
--- :DbConnect! driver=... — inline params (future: parsed from args)
+-- :DbConnect          — open the connection picker
+-- :DbConnect <name>   — connect directly by name
 vim.api.nvim_create_user_command("DbConnect", function(opts)
   local arg = vim.trim(opts.args)
   if arg == "" then
-    vim.notify("Usage: :DbConnect <connection_name>", vim.log.levels.WARN)
+    db.connect()
+  else
+    db.connect_by_name(arg)
+  end
+end, {
+  nargs = "?",
+  complete = function()
+    local ok, conns = pcall(require("dbelveder.connections").load)
+    if not ok then return {} end
+    local names = vim.tbl_keys(conns)
+    table.sort(names)
+    return names
+  end,
+})
+
+-- :DbNewConnection    — jump straight to the new-connection wizard
+vim.api.nvim_create_user_command("DbNewConnection", function(_)
+  require("dbelveder.connections").create(function(name, params)
+    if name then db._do_connect(params) end
+  end)
+end, {})
+
+-- :DbDeleteConnection <name>  — remove a saved connection
+vim.api.nvim_create_user_command("DbDeleteConnection", function(opts)
+  local arg = vim.trim(opts.args)
+  if arg == "" then
+    vim.notify("Usage: :DbDeleteConnection <name>", vim.log.levels.WARN)
     return
   end
-  db.connect(arg)
-end, { nargs = "?" })
+  require("dbelveder.connections").delete(arg)
+end, {
+  nargs = 1,
+  complete = function()
+    local ok, conns = pcall(require("dbelveder.connections").load)
+    if not ok then return {} end
+    local names = vim.tbl_keys(conns)
+    table.sort(names)
+    return names
+  end,
+})
 
 vim.api.nvim_create_user_command("DbDisconnect", function(_)
   db.disconnect()
 end, {})
 
--- :[range]DbExecute   — execute range (or current line) as SQL
+-- :[range]DbExecute
 vim.api.nvim_create_user_command("DbExecute", function(opts)
   db.execute_range(opts.line1, opts.line2)
 end, { range = true })
 
--- :DbExplore          — open the tree explorer
+-- :DbExplore
 vim.api.nvim_create_user_command("DbExplore", function(_)
   db.open_explorer()
 end, {})
 
--- :DbStop             — kill the backend process
+-- :DbStop
 vim.api.nvim_create_user_command("DbStop", function(_)
   db.stop()
 end, {})
