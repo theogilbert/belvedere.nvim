@@ -11,13 +11,6 @@ local DRIVER_FIELDS = {
   sqlite = {
     { key = "database", prompt = "Database file path: " },
   },
-  postgres = {
-    { key = "host",     prompt = "Host: ",     default = "localhost" },
-    { key = "port",     prompt = "Port: ",     default = "5432" },
-    { key = "database", prompt = "Database: "                        },
-    { key = "user",     prompt = "User: "                            },
-    { key = "password", prompt = "Password: "                        },
-  },
   sqlserver = {
     { key = "host",     prompt = "Host: ",     default = "localhost" },
     { key = "port",     prompt = "Port: ",     default = "1433"      },
@@ -25,16 +18,9 @@ local DRIVER_FIELDS = {
     { key = "user",     prompt = "User: "                            },
     { key = "password", prompt = "Password: "                        },
   },
-  mongodb = {
-    { key = "host",     prompt = "Host: ",     default = "localhost" },
-    { key = "port",     prompt = "Port: ",     default = "27017"     },
-    { key = "database", prompt = "Database (optional): "             },
-    { key = "user",     prompt = "User (optional): "                 },
-    { key = "password", prompt = "Password (optional): "             },
-  },
 }
 
-local DRIVERS = { "sqlite", "postgres", "sqlserver", "mongodb" }
+local DRIVERS = { "sqlite", "sqlserver" }
 
 -- ── file I/O ──────────────────────────────────────────────────────────────────
 

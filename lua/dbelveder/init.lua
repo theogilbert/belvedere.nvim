@@ -2,12 +2,14 @@ local M = {}
 
 local client      = require("dbelveder.client")
 local config      = require("dbelveder.config")
+local hl          = require("dbelveder.hl")
 local connections = require("dbelveder.connections")
 local results     = require("dbelveder.ui.results")
 local explorer    = require("dbelveder.ui.explorer")
 
 function M.setup(opts)
   config.setup(opts)
+  hl.setup()
 end
 
 -- ── connection ────────────────────────────────────────────────────────────────

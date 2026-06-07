@@ -2,14 +2,11 @@
 -- Navigation: <CR> expands/collapses, <CR> on a leaf describes the item.
 local M = {}
 
+local Buffer = require("dbelveder.buffer")
 local client = require("dbelveder.client")
 
 local BUFNAME = "dbelveder://explorer"
-local NS      = vim.api.nvim_create_namespace("dbelveder_explorer")
 
--- Nerd Font icons for each node type.
--- Groups (columns/indices/constraints folders) use open/closed folder variants.
--- Anything not listed falls back to FIELD_ICON (column/field leaf).
 local TYPE_ICONS = {
   database       = "󰆼 ",
   schema         = "󱁳 ",
@@ -20,8 +17,8 @@ local TYPE_ICONS = {
   index          = "󰒻 ",
   constraint     = "󰌾 ",
 }
-local GROUP_ICON  = { closed = " ", open = " " }
-local FIELD_ICON  = "󰠵 "
+local GROUP_ICON = { closed = " ", open = " " }
+local FIELD_ICON = "󰠵 "
 
 local function node_icon(node)
   if node.type == "group" then
@@ -30,48 +27,32 @@ local function node_icon(node)
   return TYPE_ICONS[node.type] or FIELD_ICON
 end
 
--- Each node: {name, type, path, expandable, expanded, children, indent}
-local tree = {}
+local state = {
+  buffer = nil,
+  tree   = {},
+}
 
-local function get_or_create_buf()
-  local existing = vim.fn.bufnr(BUFNAME)
-  if existing ~= -1 then return existing end
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_name(buf, BUFNAME)
-  vim.bo[buf].buftype   = "nofile"
-  vim.bo[buf].bufhidden = "wipe"
-  vim.bo[buf].swapfile  = false
-  vim.bo[buf].filetype  = "dbelveder_explorer"
-  return buf
-end
-
-local function render(buf)
+local function render()
   local lines = {}
   local function walk(nodes, indent)
     for _, node in ipairs(nodes) do
       local chevron = node.expandable
           and (node.expanded and "▾ " or "▸ ")
           or  "  "
-      local icon = node_icon(node)
-      -- Show the type string as a label only for leaf nodes whose type
-      -- carries useful metadata (SQL/Python data types on columns and fields).
       local label = ""
       if not node.expandable and not TYPE_ICONS[node.type] and node.type ~= "group" then
         label = "  " .. node.type
       end
-      lines[#lines + 1] = string.rep("  ", indent) .. chevron .. icon .. node.name .. label
+      lines[#lines + 1] = string.rep("  ", indent) .. chevron .. node_icon(node) .. node.name .. label
       if node.expanded and node.children then
         walk(node.children, indent + 1)
       end
     end
   end
-  walk(tree, 0)
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].modifiable = false
+  walk(state.tree, 0)
+  state.buffer:set_content(lines)
 end
 
--- Return the node at cursor line (1-based).
 local function node_at_line(line)
   local idx = 0
   local function walk(nodes)
@@ -84,10 +65,10 @@ local function node_at_line(line)
       end
     end
   end
-  return walk(tree)
+  return walk(state.tree)
 end
 
-local function load_children(node, buf)
+local function load_children(node)
   client.request("explore.list", { path = node.path }, function(err, result)
     if err then
       vim.schedule(function()
@@ -108,13 +89,13 @@ local function load_children(node, buf)
       }
     end
     node.expanded = true
-    vim.schedule(function() render(buf) end)
+    vim.schedule(render)
   end)
 end
 
-local function on_enter(buf)
+local function on_enter()
   local line = vim.api.nvim_win_get_cursor(0)[1]
-  local node  = node_at_line(line)
+  local node = node_at_line(line)
   if not node then return end
   if not node.expandable then
     client.request("explore.describe", { path = node.path }, function(err, result)
@@ -132,21 +113,33 @@ local function on_enter(buf)
   end
   if node.expanded then
     node.expanded = false
-    render(buf)
+    render()
   else
-    load_children(node, buf)
+    load_children(node)
   end
 end
 
+local function get_or_create_buffer()
+  if state.buffer and state.buffer:is_valid() then return end
+  state.buffer = Buffer:new(BUFNAME, "dbelveder_explorer", false, "nofile")
+  state.buffer:set_keymap("n", "<CR>", on_enter,
+    { nowait = true, silent = true, desc = "Expand / collapse / describe" })
+  state.buffer:set_keymap("n", "R", function()
+    state.tree = {}
+    M.open()
+  end, { nowait = true, silent = true, desc = "Refresh explorer" })
+
+end
+
 function M.open()
-  local buf = get_or_create_buf()
-  -- Open in a left vertical split if not visible
-  if vim.fn.bufwinid(buf) == -1 then
+  get_or_create_buffer()
+
+  if vim.fn.bufwinid(state.buffer.buf_id) == -1 then
     vim.cmd("topleft 35vsplit")
-    vim.api.nvim_win_set_buf(0, buf)
+    vim.api.nvim_win_set_buf(0, state.buffer.buf_id)
   end
-  -- Load root if tree is empty
-  if #tree == 0 then
+
+  if #state.tree == 0 then
     client.request("explore.list", { path = {} }, function(err, result)
       if err then
         vim.schedule(function()
@@ -154,9 +147,9 @@ function M.open()
         end)
         return
       end
-      tree = {}
+      state.tree = {}
       for _, item in ipairs(result.items or {}) do
-        tree[#tree + 1] = {
+        state.tree[#state.tree + 1] = {
           name       = item.name,
           type       = item.type,
           path       = { item.name },
@@ -165,22 +158,15 @@ function M.open()
           children   = nil,
         }
       end
-      vim.schedule(function() render(buf) end)
+      vim.schedule(render)
     end)
   else
-    render(buf)
+    render()
   end
-
-  vim.keymap.set("n", "<CR>", function() on_enter(buf) end,
-    { buffer = buf, nowait = true, silent = true })
-  vim.keymap.set("n", "R", function()
-    tree = {}
-    M.open()
-  end, { buffer = buf, nowait = true, silent = true, desc = "Refresh explorer" })
 end
 
 function M.reset()
-  tree = {}
+  state.tree = {}
 end
 
 return M
