@@ -1,0 +1,318 @@
+*dbelveder.txt*  Database client for Neovim
+
+Author:   dbelveder contributors
+License:  MIT
+
+================================================================================
+CONTENTS                                                    *dbelveder-contents*
+
+  1. Introduction ....................................... |dbelveder-intro|
+  2. Requirements ....................................... |dbelveder-requirements|
+  3. Setup .............................................. |dbelveder-setup|
+  4. Connections ........................................ |dbelveder-connections|
+  5. Commands ........................................... |dbelveder-commands|
+  6. Explorer ........................................... |dbelveder-explorer|
+  7. Results window ..................................... |dbelveder-results|
+  8. Lua API ............................................ |dbelveder-api|
+  9. Configuration ...................................... |dbelveder-config|
+ 10. Supported databases ................................ |dbelveder-drivers|
+
+================================================================================
+INTRODUCTION                                                   *dbelveder-intro*
+
+dbelveder.nvim is a database client for Neovim. It delegates all database
+connectivity to an external Python process (dbelveder-py), communicating with
+it over newline-delimited JSON on stdio.
+
+Connection parameters are stored in a JSON file on disk (not in the nvim
+config), so they persist across sessions and are shared between any client
+that speaks the dbelveder protocol.
+
+================================================================================
+REQUIREMENTS                                            *dbelveder-requirements*
+
+- Neovim 0.9 or later
+- Python 3.12 or later
+- dbelveder-py installed and on $PATH (or configured via |dbelveder-python_cmd|)
+
+Install the Python backend: >sh
+  pip install dbelveder-py
+<
+For specific databases: >sh
+  pip install 'dbelveder-py[postgres]'
+  pip install 'dbelveder-py[sqlserver]'
+  pip install 'dbelveder-py[mongodb]'
+  pip install 'dbelveder-py[all]'
+<
+================================================================================
+SETUP                                                         *dbelveder-setup*
+
+Call `require("dbelveder").setup()` once in your config: >lua
+  require("dbelveder").setup()
+<
+All options are optional. See |dbelveder-config| for the full reference.
+
+================================================================================
+CONNECTIONS                                              *dbelveder-connections*
+
+Connection parameters are stored in a JSON file, not in your nvim config.
+The default location is: >
+  $XDG_CONFIG_HOME/dbelveder/connections.json
+  (~/.config/dbelveder/connections.json on most systems)
+<
+The directory and file are created automatically when you save your first
+connection. You can edit the file directly, or use the commands below.
+
+FILE FORMAT ~
+>json
+  {
+    "connections": {
+      "local": { "driver": "sqlite", "database": "/home/user/data.db" },
+      "prod":  { "driver": "postgres", "host": "db.example.com",
+                 "port": 5432, "database": "myapp",
+                 "user": "readonly", "password": "secret" }
+    }
+  }
+<
+CREATING A CONNECTION ~
+
+Run |:DbConnect| or |:DbNewConnection| and follow the prompts:
+
+  1. Enter a connection name
+  2. Select the driver
+  3. Fill in driver-specific fields (host, port, database, user, password)
+
+The connection is written to the JSON file immediately and is available in
+all future sessions.
+
+================================================================================
+COMMANDS                                                    *dbelveder-commands*
+
+                                                              *:DbConnect*
+:DbConnect
+    Open a picker listing all saved connections. Selecting
+    "[+ New connection]" launches the new-connection wizard.
+    Tab-completion is available.
+
+:DbConnect {name}
+    Connect directly to the named connection without showing the picker.
+
+                                                        *:DbNewConnection*
+:DbNewConnection
+    Run the new-connection wizard directly. On completion the connection
+    is saved and immediately used.
+
+                                                     *:DbDeleteConnection*
+:DbDeleteConnection {name}
+    Remove the named connection from the connections file.
+    Tab-completion is available.
+
+                                                           *:DbDisconnect*
+:DbDisconnect
+    Close the current database connection.
+
+                                                             *:DbExecute*
+:[range]DbExecute
+    Execute a SQL statement against the current connection and display the
+    results in the |dbelveder-results| window.
+
+    Without a range, executes the current line.
+    With a range (including `'<,'>` from visual mode or `%`), executes all
+    lines in the range joined with newlines.
+
+    Examples: >
+      :DbExecute          " current line
+      :'<,'>DbExecute     " visual selection
+      :%DbExecute         " whole buffer
+<
+                                                             *:DbExplore*
+:DbExplore
+    Open the database explorer sidebar. Requires an active connection.
+    See |dbelveder-explorer|.
+
+                                                                *:DbStop*
+:DbStop
+    Kill the Python backend process.
+
+================================================================================
+EXPLORER                                                    *dbelveder-explorer*
+
+:DbExplore opens a vertical sidebar showing the database object tree.
+
+KEYMAPS ~
+
+  <CR>    Expand or collapse a node. On a leaf node, shows metadata for
+          that object in a notification (column types, row count, etc.).
+
+  R       Refresh the entire tree from the server.
+
+TREE STRUCTURE ~
+
+SQLite: >
+  (root)
+  └── <table | view>
+      ├── columns
+      │   └── <column>  [type]
+      └── indices
+          └── <index>
+<
+PostgreSQL / SQL Server: >
+  (root)
+  └── <schema>
+      └── <table | view>
+          ├── columns
+          │   └── <column>  [type]
+          ├── indices
+          └── constraints
+<
+MongoDB: >
+  (root)
+  └── <database>
+      └── <collection>
+          └── <field>  [python-type]
+<
+================================================================================
+RESULTS WINDOW                                               *dbelveder-results*
+
+Query results are shown in a dedicated buffer named `dbelveder://results`.
+
+- Columns are right-padded and aligned.
+- A separator line is drawn below the header.
+- A row count is shown at the bottom.
+- Rows beyond |dbelveder-max_rows| are dropped with a notice.
+
+The buffer is read-only and reused across queries. Its direction and size
+are controlled by |dbelveder-results-split| and |dbelveder-results-height|.
+
+================================================================================
+LUA API                                                          *dbelveder-api*
+
+                                                      *dbelveder.setup()*
+require("dbelveder").setup({opts})
+    Initialize the plugin. Must be called before any other function.
+    {opts} is optional — see |dbelveder-config|.
+
+                                                    *dbelveder.connect()*
+require("dbelveder").connect()
+    Open the connection picker. Equivalent to |:DbConnect| with no args.
+
+                                               *dbelveder.connect_by_name()*
+require("dbelveder").connect_by_name({name})
+    Connect directly to {name} from the connections file.
+
+                                                 *dbelveder.disconnect()*
+require("dbelveder").disconnect()
+    Disconnect from the current database.
+
+                                                    *dbelveder.execute()*
+require("dbelveder").execute({sql})
+    Execute the SQL string {sql} and open the results window.
+
+                                              *dbelveder.execute_range()*
+require("dbelveder").execute_range({line1}, {line2})
+    Execute lines {line1}–{line2} (1-based) from the current buffer.
+
+                                               *dbelveder.open_explorer()*
+require("dbelveder").open_explorer()
+    Open the explorer sidebar.
+
+                                                      *dbelveder.stop()*
+require("dbelveder").stop()
+    Kill the Python backend process.
+
+CONNECTIONS MODULE ~
+                                                  *dbelveder-connections-api*
+
+require("dbelveder.connections").load()
+    Returns the full connections table: `{ name = params, ... }`.
+
+require("dbelveder.connections").get({name})
+    Returns the params table for {name}, or nil.
+
+require("dbelveder.connections").save({conns})
+    Writes {conns} (a `{ name = params }` table) to the connections file.
+
+require("dbelveder.connections").delete({name})
+    Removes {name} from the connections file.
+
+require("dbelveder.connections").pick({callback})
+    Opens the connection picker. {callback} is called as
+    `callback(name, params)` on selection, or `callback(nil)` on cancel.
+
+require("dbelveder.connections").create({callback})
+    Runs the new-connection wizard. {callback} is called as
+    `callback(name, params)` on completion, or `callback(nil)` on cancel.
+
+================================================================================
+CONFIGURATION                                                 *dbelveder-config*
+
+All keys are optional.
+
+>lua
+  require("dbelveder").setup({
+    python_cmd       = "dbelveder",
+    connections_file = nil,   -- auto-detected from $XDG_CONFIG_HOME
+    keymaps          = { execute = "<CR>" },
+    results          = { split = "below", height = 15, max_rows = 500 },
+  })
+<
+
+                                                       *dbelveder-python_cmd*
+python_cmd ~
+  Type: `string`   Default: `"dbelveder"`
+
+  Shell command used to launch the Python backend. Can include arguments,
+  e.g. `"python -m dbelveder"` or `"/path/to/venv/bin/dbelveder"`.
+
+                                                  *dbelveder-connections_file*
+connections_file ~
+  Type: `string`   Default: `$XDG_CONFIG_HOME/dbelveder/connections.json`
+
+  Path to the JSON file where connections are stored. The directory is
+  created automatically on first save. Override if you want to keep
+  connections somewhere else, e.g. in a dotfiles repo.
+
+                                                          *dbelveder-keymaps*
+keymaps.execute ~
+  Type: `string`   Default: `"<CR>"`
+
+  Key that triggers query execution in the query buffer. Wire it up in
+  your own `ftplugin/sql.lua` with |dbelveder.execute_range()|.
+
+                                                   *dbelveder-results-split*
+results.split ~
+  Type: `"below"` | `"right"`   Default: `"below"`
+
+  Direction of the results window split.
+
+                                                  *dbelveder-results-height*
+results.height ~
+  Type: `integer`   Default: `15`
+
+  Height in lines of the results split (only applies when `split = "below"`).
+
+                                                        *dbelveder-max_rows*
+results.max_rows ~
+  Type: `integer`   Default: `500`
+
+  Maximum number of rows rendered in the results window. Truncation is
+  client-side; the server always returns the full result set.
+
+================================================================================
+SUPPORTED DATABASES                                          *dbelveder-drivers*
+
+Driver value          Database         Extra Python package
+---------------------------------------------------------------------
+"sqlite"              SQLite           (none — stdlib)
+"postgres"            PostgreSQL       psycopg[binary] >= 3
+"postgresql"          PostgreSQL       psycopg[binary] >= 3
+"sqlserver"           SQL Server       mssql-python >= 1.8
+"mssql"               SQL Server       mssql-python >= 1.8
+"mongodb"             MongoDB          pymongo >= 4
+"mongo"               MongoDB          pymongo >= 4
+
+For the full connection parameter reference and tree hierarchy per driver,
+see docs/protocol.md.
+
+================================================================================
+vim:tw=78:ts=2:ft=help:norl:
