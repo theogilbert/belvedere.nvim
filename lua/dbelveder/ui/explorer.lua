@@ -7,6 +7,29 @@ local client = require("dbelveder.client")
 local BUFNAME = "dbelveder://explorer"
 local NS      = vim.api.nvim_create_namespace("dbelveder_explorer")
 
+-- Nerd Font icons for each node type.
+-- Groups (columns/indices/constraints folders) use open/closed folder variants.
+-- Anything not listed falls back to FIELD_ICON (column/field leaf).
+local TYPE_ICONS = {
+  database       = "󰆼 ",
+  schema         = "󱁳 ",
+  table          = "󰓫 ",
+  ["base table"] = "󰓫 ",
+  view           = "󰈈 ",
+  collection     = "󱃗 ",
+  index          = "󰒻 ",
+  constraint     = "󰌾 ",
+}
+local GROUP_ICON  = { closed = " ", open = " " }
+local FIELD_ICON  = "󰠵 "
+
+local function node_icon(node)
+  if node.type == "group" then
+    return node.expanded and GROUP_ICON.open or GROUP_ICON.closed
+  end
+  return TYPE_ICONS[node.type] or FIELD_ICON
+end
+
 -- Each node: {name, type, path, expandable, expanded, children, indent}
 local tree = {}
 
@@ -26,11 +49,17 @@ local function render(buf)
   local lines = {}
   local function walk(nodes, indent)
     for _, node in ipairs(nodes) do
-      local icon = node.expandable
+      local chevron = node.expandable
           and (node.expanded and "▾ " or "▸ ")
           or  "  "
-      lines[#lines + 1] = string.rep("  ", indent) .. icon .. node.name
-              .. (node.type and ("  [" .. node.type .. "]") or "")
+      local icon = node_icon(node)
+      -- Show the type string as a label only for leaf nodes whose type
+      -- carries useful metadata (SQL/Python data types on columns and fields).
+      local label = ""
+      if not node.expandable and not TYPE_ICONS[node.type] and node.type ~= "group" then
+        label = "  " .. node.type
+      end
+      lines[#lines + 1] = string.rep("  ", indent) .. chevron .. icon .. node.name .. label
       if node.expanded and node.children then
         walk(node.children, indent + 1)
       end
