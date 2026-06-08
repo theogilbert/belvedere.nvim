@@ -12,16 +12,32 @@ local DRIVER_FIELDS = {
     { key = "database", prompt = "Database file path: " },
   },
   sqlserver = {
-    { key = "host",               prompt = "Host: ",               default = "localhost"                       },
-    { key = "port",               prompt = "Port: ",               default = "1433"                            },
-    { key = "database",           prompt = "Database: "                                                        },
-    { key = "user",               prompt = "User: "                                                            },
-    { key = "password",           prompt = "Password: "                                                        },
-    { key = "application_intent", prompt = "Application Intent: ", choices = { "READ_WRITE", "READ_ONLY" }     },
+    { key = "host",               prompt = "Host: ",               default = "localhost"                   },
+    { key = "port",               prompt = "Port: ",               default = "1433"                        },
+    { key = "database",           prompt = "Database: "                                                    },
+    { key = "user",               prompt = "User: "                                                        },
+    { key = "application_intent", prompt = "Application Intent: ", choices = { "READ_WRITE", "READ_ONLY" } },
+    { key = "password",           prompt = "Password (empty = none): "                                     },
   },
 }
 
 local DRIVERS = { "sqlite", "sqlserver" }
+
+-- Prompts for a password if the connection was marked as requiring one, then
+-- calls callback(params) with the password injected (never persisted).
+-- Calls callback(nil) on cancel.
+local function prompt_password(params, callback)
+  if not params.requires_password then
+    callback(params)
+    return
+  end
+  vim.ui.input({ prompt = "Password: " }, function(val)
+    if val == nil then callback(nil) return end
+    callback(vim.tbl_extend("force", params, { password = val }))
+  end)
+end
+
+M.prompt_password = prompt_password
 
 -- ── file I/O ──────────────────────────────────────────────────────────────────
 
@@ -104,7 +120,10 @@ function M.pick(callback)
     if choice == "[+ New connection]" then
       M.create(callback)
     else
-      callback(choice, conns[choice])
+      prompt_password(conns[choice], function(params)
+        if not params then callback(nil) return end
+        callback(choice, params)
+      end)
     end
   end)
 end
@@ -118,7 +137,11 @@ function M.create(callback)
     vim.ui.select(DRIVERS, { prompt = "Driver:" }, function(driver)
       if not driver then callback(nil) return end
 
-      local fields = DRIVER_FIELDS[driver] or {}
+      local pw_field, fields = nil, {}
+      for _, f in ipairs(DRIVER_FIELDS[driver] or {}) do
+        if f.key == "password" then pw_field = f else table.insert(fields, f) end
+      end
+
       prompt_sequence(fields, function(values)
         if not values then callback(nil) return end
 
@@ -127,11 +150,26 @@ function M.create(callback)
 
         local params = vim.tbl_extend("force", { driver = driver }, values)
 
-        local conns = M.load()
-        conns[name] = params
-        M.save(conns)
-        vim.notify(("dbelveder: saved %q"):format(name), vim.log.levels.INFO)
-        callback(name, params)
+        local function finish(pw)
+          params.requires_password = pw ~= nil and pw ~= ""
+          local conns = M.load()
+          conns[name] = params  -- saved without password
+          M.save(conns)
+          vim.notify(("dbelveder: saved %q"):format(name), vim.log.levels.INFO)
+          local params_with_pw = params.requires_password
+            and vim.tbl_extend("force", params, { password = pw })
+            or params
+          callback(name, params_with_pw)
+        end
+
+        if pw_field then
+          vim.ui.input({ prompt = pw_field.prompt }, function(pw)
+            if pw == nil then callback(nil) return end
+            finish(pw)
+          end)
+        else
+          finish(nil)
+        end
       end)
     end)
   end)

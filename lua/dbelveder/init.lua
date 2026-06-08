@@ -135,7 +135,10 @@ function M.connect_by_name(name)
     vim.notify(("dbelveder: connection %q not found"):format(name), vim.log.levels.ERROR)
     return
   end
-  M._do_connect(name, params)
+  connections.prompt_password(params, function(params_with_pw)
+    if not params_with_pw then return end
+    M._do_connect(name, params_with_pw)
+  end)
 end
 
 function M._do_connect(name, params)
