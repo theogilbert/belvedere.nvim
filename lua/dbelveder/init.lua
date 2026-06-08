@@ -6,6 +6,7 @@ local hl          = require("dbelveder.hl")
 local connections = require("dbelveder.connections")
 local results     = require("dbelveder.ui.results")
 local explorer    = require("dbelveder.ui.explorer")
+local selection   = require("dbelveder.selection")
 
 -- Active connections: { [name] = { conn_id, driver } }
 -- buf_conns:  per-buffer active connection { [bufnr] = name }
@@ -256,27 +257,14 @@ function M.execute_range(line1, line2)
 end
 
 function M.execute_selection()
-  local start_pos = vim.fn.getpos("'<")
-  local end_pos   = vim.fn.getpos("'>")
-
-  -- lnum == 0 means no prior visual selection exists
-  if start_pos[2] == 0 then
-    vim.notify("dbelveder: no selection — visually select a query first", vim.log.levels.INFO)
+  if not selection.is_in_visual_mode() then
+    vim.notify("dbelveder: must be in visual mode to run execute_selection()", vim.log.levels.WARN)
     return
   end
 
-  local sr = start_pos[2] - 1
-  local sc = start_pos[3] - 1
-  local er = end_pos[2] - 1
-  -- v:maxcol (2147483647) is used for linewise visual — clamp to actual line length
-  local end_line = vim.api.nvim_buf_get_lines(0, er, er + 1, false)[1] or ""
-  local ec = math.min(end_pos[3], #end_line)
-
-  local lines = vim.api.nvim_buf_get_text(0, sr, sc, er, ec, {})
-  local sql   = vim.trim(table.concat(lines, "\n"))
-
+  local sql = selection.get_selection()
   if sql == "" then
-    vim.notify("dbelveder: no selection — visually select a query first", vim.log.levels.INFO)
+    vim.notify("dbelveder: no selection — visually select a query first", vim.log.levels.WARN)
     return
   end
   M.execute(sql)
