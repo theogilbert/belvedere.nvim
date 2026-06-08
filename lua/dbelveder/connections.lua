@@ -88,7 +88,7 @@ function M.pick(callback)
   local conns = M.load()
   local names = vim.tbl_keys(conns)
   table.sort(names)
-  local items = vim.list_extend({ "[+ New connection]" }, names)
+  local items = vim.list_extend(names, { "[+ New connection]" })
 
   vim.ui.select(items, { prompt = "dbelveder — select connection:" }, function(choice)
     if not choice then callback(nil) return end
