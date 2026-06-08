@@ -28,8 +28,9 @@ local function node_icon(node)
 end
 
 local state = {
-  buffer = nil,
-  tree   = {},
+  buffer  = nil,
+  tree    = {},
+  conn_id = nil,
 }
 
 local function render()
@@ -69,7 +70,7 @@ local function node_at_line(line)
 end
 
 local function load_children(node)
-  client.request("explore.list", { path = node.path }, function(err, result)
+  client.request("explore.list", { connection_id = state.conn_id, path = node.path }, function(err, result)
     if err then
       vim.schedule(function()
         vim.notify("dbelveder explorer: " .. err, vim.log.levels.ERROR)
@@ -98,7 +99,7 @@ local function on_enter()
   local node = node_at_line(line)
   if not node then return end
   if not node.expandable then
-    client.request("explore.describe", { path = node.path }, function(err, result)
+    client.request("explore.describe", { connection_id = state.conn_id, path = node.path }, function(err, result)
       if err then
         vim.schedule(function()
           vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
@@ -131,8 +132,14 @@ local function get_or_create_buffer()
 
 end
 
-function M.open()
+function M.open(conn_id)
   get_or_create_buffer()
+
+  -- Reset the tree when switching to a different connection.
+  if conn_id ~= state.conn_id then
+    state.tree    = {}
+    state.conn_id = conn_id
+  end
 
   if vim.fn.bufwinid(state.buffer.buf_id) == -1 then
     vim.cmd("topleft 35vsplit")
@@ -140,7 +147,7 @@ function M.open()
   end
 
   if #state.tree == 0 then
-    client.request("explore.list", { path = {} }, function(err, result)
+    client.request("explore.list", { connection_id = state.conn_id, path = {} }, function(err, result)
       if err then
         vim.schedule(function()
           vim.notify("dbelveder explorer: " .. err, vim.log.levels.ERROR)

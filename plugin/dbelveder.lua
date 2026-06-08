@@ -23,10 +23,23 @@ end, {
   end,
 })
 
+-- :DbUse <name>   — switch the active connection (among already-open ones)
+vim.api.nvim_create_user_command("DbUse", function(opts)
+  local arg = vim.trim(opts.args)
+  if arg == "" then
+    vim.notify("Usage: :DbUse <name>", vim.log.levels.WARN)
+    return
+  end
+  db.use(arg)
+end, {
+  nargs = 1,
+  complete = function() return db.active_names() end,
+})
+
 -- :DbNewConnection    — jump straight to the new-connection wizard
 vim.api.nvim_create_user_command("DbNewConnection", function(_)
   require("dbelveder.connections").create(function(name, params)
-    if name then db._do_connect(params) end
+    if name then db._do_connect(name, params) end
   end)
 end, {})
 
@@ -49,9 +62,13 @@ end, {
   end,
 })
 
-vim.api.nvim_create_user_command("DbDisconnect", function(_)
-  db.disconnect()
-end, {})
+-- :DbDisconnect [name]  — disconnect a named connection, or the active one
+vim.api.nvim_create_user_command("DbDisconnect", function(opts)
+  db.disconnect(vim.trim(opts.args))
+end, {
+  nargs = "?",
+  complete = function() return db.active_names() end,
+})
 
 -- :[range]DbExecute
 vim.api.nvim_create_user_command("DbExecute", function(opts)

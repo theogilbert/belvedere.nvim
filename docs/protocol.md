@@ -2,13 +2,15 @@
 
 Communication between **dbelveder.nvim** (client) and **dbelveder-py** (server) uses newline-delimited JSON over stdio. The client spawns the server as a child process and communicates through its stdin/stdout pipes.
 
+Multiple connections can be open simultaneously. Each `connect` call returns a `connection_id` that must be passed to all subsequent methods operating on that connection.
+
 ## Wire format
 
 Each message is a single JSON object serialized on one line, terminated by `\n`. There is no envelope, framing header, or length prefix — a line boundary is a message boundary.
 
 ```
 {"id":1,"method":"connect","params":{"driver":"sqlite","database":"/tmp/test.db"}}\n
-{"id":1,"result":{"ok":true},"error":null}\n
+{"id":1,"result":{"connection_id":"abc123"},"error":null}\n
 ```
 
 ## Message structure
@@ -37,7 +39,7 @@ Requests are handled concurrently. Responses may arrive out of order — clients
 
 ### `connect`
 
-Opens a database connection. Any previously open connection is closed first.
+Opens a new database connection. Multiple connections can be open at the same time.
 
 **params**
 
@@ -48,17 +50,25 @@ Opens a database connection. Any previously open connection is closed first.
 
 **result**
 
+| Field           | Type            | Description                              |
+|-----------------|-----------------|------------------------------------------|
+| `connection_id` | string or integer | Opaque handle to pass to other methods |
+
 ```json
-{"ok": true}
+{"connection_id": "abc123"}
 ```
 
 ---
 
 ### `disconnect`
 
-Closes the current connection.
+Closes the specified connection.
 
-**params** — `{}` (none)
+**params**
+
+| Field           | Type            | Description                        |
+|-----------------|-----------------|------------------------------------|
+| `connection_id` | string or integer | Connection to close               |
 
 **result**
 
@@ -74,10 +84,11 @@ Runs a SQL statement and returns the result set.
 
 **params**
 
-| Field    | Type            | Description                        |
-|----------|-----------------|------------------------------------|
-| `sql`    | string          | SQL statement to execute           |
-| `params` | array (optional)| Positional bind parameters         |
+| Field           | Type             | Description                        |
+|-----------------|------------------|------------------------------------|
+| `connection_id` | string or integer| Connection to execute on           |
+| `sql`           | string           | SQL statement to execute           |
+| `params`        | array (optional) | Positional bind parameters         |
 
 **result**
 
@@ -89,7 +100,7 @@ Runs a SQL statement and returns the result set.
 **example**
 
 ```json
-{"id":2,"method":"execute","params":{"sql":"SELECT id, name FROM users WHERE active = ?","params":[1]}}
+{"id":2,"method":"execute","params":{"connection_id":"abc123","sql":"SELECT id, name FROM users WHERE active = ?","params":[1]}}
 ```
 ```json
 {"id":2,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]]},"error":null}
@@ -103,9 +114,10 @@ Returns the children of a node in the database object tree. The tree is navigate
 
 **params**
 
-| Field  | Type            | Description                                    |
-|--------|-----------------|------------------------------------------------|
-| `path` | array of strings | Path to the node whose children are requested |
+| Field           | Type             | Description                                    |
+|-----------------|------------------|------------------------------------------------|
+| `connection_id` | string or integer| Connection to explore                          |
+| `path`          | array of strings | Path to the node whose children are requested  |
 
 **result**
 
@@ -116,7 +128,7 @@ Returns the children of a node in the database object tree. The tree is navigate
 **example**
 
 ```json
-{"id":3,"method":"explore.list","params":{"path":[]}}
+{"id":3,"method":"explore.list","params":{"connection_id":"abc123","path":[]}}
 ```
 ```json
 {"id":3,"result":{"items":[{"name":"public","type":"schema","expandable":true}]},"error":null}
@@ -130,11 +142,16 @@ Returns detailed metadata about a specific node.
 
 **params**
 
-| Field  | Type             | Description            |
-|--------|------------------|------------------------|
-| `path` | array of strings | Path to the node       |
+| Field           | Type             | Description            |
+|-----------------|------------------|------------------------|
+| `connection_id` | string or integer| Connection to query    |
+| `path`          | array of strings | Path to the node       |
 
-**result** — driver-specific object (see [Tree hierarchies](#tree-hierarchies)).
+**result**
+
+| Field     | Type   | Description                    |
+|-----------|--------|--------------------------------|
+| `details` | object | Driver-specific metadata object (see [Tree hierarchies](#tree-hierarchies)) |
 
 ---
 
@@ -174,11 +191,13 @@ The `driver` field in the `connect` params selects the backend.
 
 ```json
 {
-  "table": "users",
-  "columns": [
-    {"name": "id",   "type": "INTEGER", "notnull": true,  "pk": true},
-    {"name": "name", "type": "TEXT",    "notnull": false, "pk": false}
-  ]
+  "details": {
+    "table": "users",
+    "columns": [
+      {"name": "id",   "type": "INTEGER", "notnull": true,  "pk": true},
+      {"name": "name", "type": "TEXT",    "notnull": false, "pk": false}
+    ]
+  }
 }
 ```
 
@@ -210,12 +229,14 @@ Requires: `pip install 'psycopg[binary]'`
 
 ```json
 {
-  "schema": "public",
-  "table": "users",
-  "columns": [
-    {"name": "id",   "type": "integer",         "nullable": false, "default": null},
-    {"name": "name", "type": "character varying","nullable": true,  "default": null}
-  ]
+  "details": {
+    "schema": "public",
+    "table": "users",
+    "columns": [
+      {"name": "id",   "type": "integer",         "nullable": false, "default": null},
+      {"name": "name", "type": "character varying","nullable": true,  "default": null}
+    ]
+  }
 }
 ```
 
@@ -263,10 +284,12 @@ Requires: `pip install pymongo`
 
 ```json
 {
-  "database": "mydb",
-  "collection": "users",
-  "count": 42150,
-  "sample_fields": ["_id", "name", "email", "created_at"]
+  "details": {
+    "database": "mydb",
+    "collection": "users",
+    "count": 42150,
+    "sample_fields": ["_id", "name", "email", "created_at"]
+  }
 }
 ```
 
