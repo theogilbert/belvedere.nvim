@@ -75,6 +75,7 @@ vim.api.nvim_create_user_command("DbExecute", function(opts)
   db.execute_range(opts.line1, opts.line2)
 end, { range = true })
 
+
 -- :DbExplore
 vim.api.nvim_create_user_command("DbExplore", function(_)
   db.open_explorer()

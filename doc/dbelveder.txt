@@ -212,6 +212,12 @@ require("dbelveder").execute({sql})
 require("dbelveder").execute_range({line1}, {line2})
     Execute lines {line1}–{line2} (1-based) from the current buffer.
 
+                                           *dbelveder.execute_selection()*
+require("dbelveder").execute_selection()
+    Execute the last visual selection. Reads the `'<` / `'>` marks and
+    uses |nvim_buf_get_text()| so charwise selections are exact. Notifies
+    at INFO level if no selection is present.
+
                                                *dbelveder.open_explorer()*
 require("dbelveder").open_explorer()
     Open the explorer sidebar.

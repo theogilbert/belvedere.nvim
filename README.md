@@ -162,6 +162,10 @@ db.execute("SELECT 1")
 -- Execute lines line1..line2 from the current buffer (1-based).
 db.execute_range(line1, line2)
 
+-- Execute the last visual selection (charwise-aware).
+-- Notifies at INFO level if no selection exists.
+db.execute_selection()
+
 -- Open the explorer sidebar.
 db.open_explorer()
 

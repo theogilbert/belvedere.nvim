@@ -142,6 +142,33 @@ function M.execute_range(line1, line2)
   M.execute(table.concat(lines, "\n"))
 end
 
+function M.execute_selection()
+  local start_pos = vim.fn.getpos("'<")
+  local end_pos   = vim.fn.getpos("'>")
+
+  -- lnum == 0 means no prior visual selection exists
+  if start_pos[2] == 0 then
+    vim.notify("dbelveder: no selection — visually select a query first", vim.log.levels.INFO)
+    return
+  end
+
+  local sr = start_pos[2] - 1
+  local sc = start_pos[3] - 1
+  local er = end_pos[2] - 1
+  -- v:maxcol (2147483647) is used for linewise visual — clamp to actual line length
+  local end_line = vim.api.nvim_buf_get_lines(0, er, er + 1, false)[1] or ""
+  local ec = math.min(end_pos[3], #end_line)
+
+  local lines = vim.api.nvim_buf_get_text(0, sr, sc, er, ec, {})
+  local sql   = vim.trim(table.concat(lines, "\n"))
+
+  if sql == "" then
+    vim.notify("dbelveder: no selection — visually select a query first", vim.log.levels.INFO)
+    return
+  end
+  M.execute(sql)
+end
+
 -- ── explorer / lifecycle ──────────────────────────────────────────────────────
 
 function M.open_explorer()
