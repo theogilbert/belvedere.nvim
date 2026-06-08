@@ -118,10 +118,11 @@ end
 
 local function open_win()
   if is_open() then return end
-  local opts = config.options.results
-  local cmd  = opts.split == "right"
+  local opts     = config.options.results
+  local cmd      = opts.split == "right"
       and "botright vsplit"
       or  ("botright " .. opts.height .. "split")
+  local prev_win = vim.api.nvim_get_current_win()
   vim.cmd(cmd)
   state.win_id = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(state.win_id, state.buffer.buf_id)
@@ -142,6 +143,7 @@ local function open_win()
     once     = true,
     callback = function() teardown() end,
   })
+  vim.api.nvim_set_current_win(prev_win)
 end
 
 local function get_or_create_buffer()
