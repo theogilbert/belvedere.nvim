@@ -7,6 +7,7 @@ local HEADER_FG    = "#9CDCFE"
 local ERROR_FG     = "#CA2722"
 local TRUNCATED_FG = "#666666"
 local ROW_COUNT_FG = "#7F8490"
+local CONN_FG      = "#7DB88A"
 
 local function build_highlights()
   return {
@@ -24,6 +25,8 @@ local function setup_highlights()
   for group, opts in pairs(build_highlights()) do
     vim.api.nvim_set_hl(M.NS_ID, group, opts)
   end
+  -- Defined globally so it works in any buffer's extmarks; default = true allows user override.
+  vim.api.nvim_set_hl(0, "DbelvederConnection", { fg = CONN_FG, italic = true, default = true })
 end
 
 function M.setup()
