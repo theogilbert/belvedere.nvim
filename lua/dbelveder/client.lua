@@ -30,30 +30,35 @@ end
 function M._dispatch(msg)
   local id = msg.id
   if id == nil then return end
-  local cb = state.pending[id]
-  if not cb then return end
+  local entry = state.pending[id]
+  if not entry then return end
+  if msg.progress then
+    if entry.progress then entry.progress(msg.progress) end
+    return
+  end
   state.pending[id] = nil
   local err = msg.error
   if err and err ~= vim.NIL then
-    cb(err, nil)
+    entry.cb(err, nil)
   else
     local result = msg.result
     if result == vim.NIL then result = nil end
-    cb(nil, result)
+    entry.cb(nil, result)
   end
 end
 
 -- ── public API ────────────────────────────────────────────────────────────────
 
--- Send a request; callback is called as callback(err, result).
-function M.request(method, params, callback)
+-- Send a request; callback(err, result) is called on completion.
+-- on_progress(progress) is called for each intermediate progress message (optional).
+function M.request(method, params, callback, on_progress)
   if not state.job_id then
     callback("Backend not running", nil)
     return
   end
   local id      = state.next_id
   state.next_id = id + 1
-  state.pending[id] = callback
+  state.pending[id] = { cb = callback, progress = on_progress }
   local line = vim.json.encode({ id = id, method = method, params = params or {} }) .. "\n"
   vim.fn.chansend(state.job_id, line)
 end

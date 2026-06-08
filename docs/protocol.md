@@ -35,6 +35,37 @@ Requests are handled concurrently. Responses may arrive out of order — clients
 
 ---
 
+## Progress notifications
+
+Long-running methods may send one or more progress messages before the final response. A progress message carries a `progress` object and shares the same `id` as the originating request. The pending request stays open until the final `result`/`error` message arrives.
+
+### Progress message (server → client)
+
+| Field      | Type    | Description                             |
+|------------|---------|-----------------------------------------|
+| `id`       | integer | Matches the originating request `id`    |
+| `progress` | object  | Status update (see below)               |
+
+### Progress object
+
+| Field     | Type   | Description                                                             |
+|-----------|--------|-------------------------------------------------------------------------|
+| `status`  | string | Machine-readable key (e.g. `"reconnecting"`, `"executing"`)            |
+| `message` | string | Human-readable description                                              |
+
+### Example
+
+```
+client → {"id":2,"method":"execute","params":{"connection_id":"abc123","sql":"SELECT ..."}}
+server → {"id":2,"progress":{"status":"reconnecting","message":"Connection lost, reconnecting…"}}
+server → {"id":2,"progress":{"status":"executing","message":"Executing query…"}}
+server → {"id":2,"result":{"columns":[…],"rows":[…]},"error":null}
+```
+
+Methods that currently support progress: `execute`.
+
+---
+
 ## Methods
 
 ### `connect`

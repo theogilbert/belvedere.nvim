@@ -125,7 +125,9 @@ function M.execute(sql)
     return
   end
   results.show_message("Executing…")
-  client.request("execute", { connection_id = conn.conn_id, sql = sql, params = {} },
+  client.request(
+    "execute",
+    { connection_id = conn.conn_id, sql = sql, params = {} },
     function(err, result)
       vim.schedule(function()
         if err then
@@ -133,6 +135,11 @@ function M.execute(sql)
         else
           results.show_results(result.columns or {}, result.rows or {})
         end
+      end)
+    end,
+    function(progress)
+      vim.schedule(function()
+        results.show_message(progress.message or progress.status or "…")
       end)
     end)
 end
