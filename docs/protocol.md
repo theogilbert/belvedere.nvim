@@ -275,14 +275,15 @@ Requires: `pip install 'psycopg[binary]'`
 
 ### `sqlserver` / `mssql`
 
-| Field      | Type    | Default       | Description  |
-|------------|---------|---------------|--------------|
-| `driver`   | string  | —             | `"sqlserver"` |
-| `host`     | string  | `"localhost"` |              |
-| `port`     | integer | `1433`        |              |
-| `database` | string  | `""`          |              |
-| `user`     | string  | `""`          |              |
-| `password` | string  | `""`          |              |
+| Field                  | Type    | Default        | Description                              |
+|------------------------|---------|----------------|------------------------------------------|
+| `driver`               | string  | —              | `"sqlserver"`                            |
+| `host`                 | string  | `"localhost"`  |                                          |
+| `port`                 | integer | `1433`         |                                          |
+| `database`             | string  | `""`           |                                          |
+| `user`                 | string  | `""`           |                                          |
+| `password`             | string  | `""`           |                                          |
+| `application_intent`   | string  | `"READ_WRITE"` | `"READ_WRITE"` or `"READ_ONLY"` (AG replicas) |
 
 Requires: `pip install mssql-python`
 

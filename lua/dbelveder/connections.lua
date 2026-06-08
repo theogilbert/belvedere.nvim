@@ -12,11 +12,12 @@ local DRIVER_FIELDS = {
     { key = "database", prompt = "Database file path: " },
   },
   sqlserver = {
-    { key = "host",     prompt = "Host: ",     default = "localhost" },
-    { key = "port",     prompt = "Port: ",     default = "1433"      },
-    { key = "database", prompt = "Database: "                        },
-    { key = "user",     prompt = "User: "                            },
-    { key = "password", prompt = "Password: "                        },
+    { key = "host",               prompt = "Host: ",               default = "localhost"                       },
+    { key = "port",               prompt = "Port: ",               default = "1433"                            },
+    { key = "database",           prompt = "Database: "                                                        },
+    { key = "user",               prompt = "User: "                                                            },
+    { key = "password",           prompt = "Password: "                                                        },
+    { key = "application_intent", prompt = "Application Intent: ", choices = { "READ_WRITE", "READ_ONLY" }     },
   },
 }
 
@@ -70,12 +71,20 @@ local function prompt_sequence(fields, done)
       return
     end
     local f = fields[i]
-    vim.ui.input({ prompt = f.prompt, default = f.default or "" }, function(val)
-      if val == nil then done(nil) return end
-      -- keep default for empty input only when a default is defined
-      results[f.key] = (val ~= "" and val) or f.default or ""
-      step(i + 1)
-    end)
+    if f.choices then
+      vim.ui.select(f.choices, { prompt = f.prompt }, function(val)
+        if val == nil then done(nil) return end
+        results[f.key] = val
+        vim.schedule(function() step(i + 1) end)
+      end)
+    else
+      vim.ui.input({ prompt = f.prompt, default = f.default or "" }, function(val)
+        if val == nil then done(nil) return end
+        -- keep default for empty input only when a default is defined
+        results[f.key] = (val ~= "" and val) or f.default or ""
+        vim.schedule(function() step(i + 1) end)
+      end)
+    end
   end
   step(1)
 end
