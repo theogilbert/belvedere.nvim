@@ -144,6 +144,9 @@ function M.open(conn_id)
   if vim.fn.bufwinid(state.buffer.buf_id) == -1 then
     vim.cmd("topleft 35vsplit")
     vim.api.nvim_win_set_buf(0, state.buffer.buf_id)
+  vim.api.nvim_set_option_value("number", false, { win = 0 })
+  vim.api.nvim_set_option_value("signcolumn", "no", { win = 0 })
+  vim.api.nvim_set_option_value("fillchars", "eob: ", { win = 0 })
   end
 
   if #state.tree == 0 then
