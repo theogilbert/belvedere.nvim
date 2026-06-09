@@ -39,7 +39,6 @@ end
 
 M.prompt_password = prompt_password
 
--- ── file I/O ──────────────────────────────────────────────────────────────────
 
 local function file_path()
   return config.options.connections_file
@@ -75,7 +74,6 @@ function M.delete(name)
   vim.notify(("dbelveder: deleted connection %q"):format(name), vim.log.levels.INFO)
 end
 
--- ── wizard helpers ────────────────────────────────────────────────────────────
 
 -- Prompts for a sequence of fields, calling done(results) when all are filled.
 -- Calls done(nil) if the user cancels any step.
@@ -105,7 +103,6 @@ local function prompt_sequence(fields, done)
   step(1)
 end
 
--- ── public UI ─────────────────────────────────────────────────────────────────
 
 -- Show a picker with existing connections plus a "New" option.
 -- callback(name, params) on selection, callback(nil) on cancel.

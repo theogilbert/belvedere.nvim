@@ -4,8 +4,9 @@ local client      = require("dbelveder.client")
 local config      = require("dbelveder.config")
 local hl          = require("dbelveder.hl")
 local connections = require("dbelveder.connections")
-local results     = require("dbelveder.ui.results")
-local explorer    = require("dbelveder.ui.explorer")
+local results          = require("dbelveder.ui.results")
+local explorer         = require("dbelveder.ui.explorer")
+local connections_panel = require("dbelveder.ui.connections")
 local selection   = require("dbelveder.selection")
 
 -- Active connections: { [name] = { conn_id, driver } }
@@ -17,7 +18,6 @@ local state = {
   win_labels = {},
 }
 
--- ── label floating windows ────────────────────────────────────────────────────
 
 local function close_win_label(winid)
   local fwin = state.win_labels[winid]
@@ -120,7 +120,6 @@ function M.setup(opts)
   })
 end
 
--- ── connection ────────────────────────────────────────────────────────────────
 
 function M.connect()
   connections.pick(function(name, params)
@@ -221,7 +220,6 @@ function M.active_names()
   return names
 end
 
--- ── query ─────────────────────────────────────────────────────────────────────
 
 function M.execute(sql)
   if not sql or sql == "" then
@@ -273,7 +271,10 @@ function M.execute_selection()
   M.execute(sql)
 end
 
--- ── explorer / lifecycle ──────────────────────────────────────────────────────
+function M.open_connections()
+  connections_panel.open()
+end
+
 
 function M.open_explorer()
   local bufnr = vim.api.nvim_get_current_buf()

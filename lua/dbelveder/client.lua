@@ -12,7 +12,6 @@ local state = {
   pending  = {},  -- id → callback(err, result)
 }
 
--- ── incoming data ─────────────────────────────────────────────────────────────
 
 local function on_stdout(_, lines, _)
   for _, line in ipairs(lines) do
@@ -25,7 +24,6 @@ local function on_stdout(_, lines, _)
   end
 end
 
--- ── response dispatch ─────────────────────────────────────────────────────────
 
 function M._dispatch(msg)
   local id = msg.id
@@ -47,7 +45,6 @@ function M._dispatch(msg)
   end
 end
 
--- ── public API ────────────────────────────────────────────────────────────────
 
 -- Send a request; callback(err, result) is called on completion.
 -- on_progress(progress) is called for each intermediate progress message (optional).

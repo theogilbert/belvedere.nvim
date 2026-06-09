@@ -81,6 +81,10 @@ vim.api.nvim_create_user_command("DbExplore", function(_)
   db.open_explorer()
 end, {})
 
+vim.api.nvim_create_user_command("DbConnections", function(_)
+  db.open_connections()
+end, {})
+
 -- :DbStop
 vim.api.nvim_create_user_command("DbStop", function(_)
   db.stop()

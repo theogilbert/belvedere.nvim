@@ -21,7 +21,6 @@ local state = {
   close_autocmd_id  = nil,
 }
 
--- ── column boundaries and scrolling (from nvim-dap-df/pane.lua) ──────────────
 
 local function scroll_columns(direction)
   if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
@@ -62,7 +61,6 @@ local function scroll_columns(direction)
   end
 end
 
--- ── truncation indicators (from nvim-dap-df/pane.lua) ────────────────────────
 
 local function update_truncation_indicators()
   if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
@@ -98,7 +96,6 @@ local function update_truncation_indicators()
   end
 end
 
--- ── window management ─────────────────────────────────────────────────────────
 
 local function is_open()
   return state.win_id ~= nil and vim.api.nvim_win_is_valid(state.win_id)
@@ -165,7 +162,6 @@ local function get_or_create_buffer()
 
 end
 
--- ── highlight application ─────────────────────────────────────────────────────
 
 local function apply_highlights(tbl, total_rows, max_rows)
   -- Header row (buffer line 0): per-column bold highlight
@@ -180,7 +176,6 @@ local function apply_highlights(tbl, total_rows, max_rows)
   state.buffer:apply_highlight(rules)
 end
 
--- ── public API ────────────────────────────────────────────────────────────────
 
 function M.show_results(columns, rows)
   get_or_create_buffer()
