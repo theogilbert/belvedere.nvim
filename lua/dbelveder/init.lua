@@ -166,7 +166,6 @@ function M._send_connect(name, params, bufnr)
     end
     state.conns[name] = { conn_id = result.connection_id, driver = params.driver }
     set_buf_conn(bufnr, name)
-    explorer.open(result.connection_id)
     vim.notify(("dbelveder: connected to %q (%s)"):format(name, params.driver), vim.log.levels.INFO)
     connections_panel.refresh()
   end)
@@ -181,7 +180,6 @@ function M.use(name)
   local bufnr = vim.api.nvim_get_current_buf()
   if state.buf_conns[bufnr] == name then return end  -- no-op
   set_buf_conn(bufnr, name)
-  explorer.open(state.conns[name].conn_id)
   vim.notify(("dbelveder: active connection: %q"):format(name), vim.log.levels.INFO)
 end
 
@@ -207,12 +205,6 @@ function M.disconnect(name)
       if conn_name == name then
         set_buf_conn(bufnr, nil)
       end
-    end
-    local next_name = next(state.conns)
-    if next_name then
-      explorer.open(state.conns[next_name].conn_id)
-    else
-      explorer.reset()
     end
     vim.notify(("dbelveder: disconnected from %q"):format(name), vim.log.levels.INFO)
     connections_panel.refresh()
