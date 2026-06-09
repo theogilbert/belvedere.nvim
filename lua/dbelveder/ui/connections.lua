@@ -128,6 +128,13 @@ local function on_delete()
   refresh()
 end
 
+local function on_disconnect()
+  local entry = entry_at_cursor()
+  if not entry or entry.type ~= "conn" then return end
+  local db = require("dbelveder")
+  db.disconnect(entry.name)
+end
+
 local function on_new()
   connections.create(function(name, params)
     if not name then return end
@@ -217,11 +224,12 @@ function M.open()
   if not (state.buffer and state.buffer:is_valid()) then
     state.buffer = Buffer:new(BUFNAME, "dbelveder_connections", false, "nofile")
     local hover_key = config.options.keymaps.hover_key
-    state.buffer:set_keymap("n", "<CR>",     on_enter,  { nowait = true, silent = true, desc = "Expand/collapse or connect" })
-    state.buffer:set_keymap("n", "d",        on_delete, { nowait = true, silent = true, desc = "Delete connection" })
-    state.buffer:set_keymap("n", "n",        on_new,    { nowait = true, silent = true, desc = "New connection" })
-    state.buffer:set_keymap("n", "R",        refresh,   { nowait = true, silent = true, desc = "Refresh" })
-    state.buffer:set_keymap("n", hover_key,  on_hover,  { nowait = true, silent = true, desc = "Show error details" })
+    state.buffer:set_keymap("n", "<CR>",     on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect" })
+    state.buffer:set_keymap("n", "x",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
+    state.buffer:set_keymap("n", "d",        on_delete,     { nowait = true, silent = true, desc = "Delete connection" })
+    state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection" })
+    state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh" })
+    state.buffer:set_keymap("n", hover_key,  on_hover,      { nowait = true, silent = true, desc = "Show error details" })
     state.buffer:set_keymap("n", "q", function()
       local win = vim.fn.bufwinid(state.buffer.buf_id)
       if win ~= -1 then vim.api.nvim_win_close(win, true) end

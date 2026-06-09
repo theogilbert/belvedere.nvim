@@ -215,6 +215,7 @@ function M.disconnect(name)
       explorer.reset()
     end
     vim.notify(("dbelveder: disconnected from %q"):format(name), vim.log.levels.INFO)
+    connections_panel.refresh()
   end)
 end
 
