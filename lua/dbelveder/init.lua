@@ -274,9 +274,19 @@ function M.open_connections()
 end
 
 
+function M.open_explorer_for(name)
+  local conn = state.conns[name]
+  if not conn then
+    vim.notify(("dbelveder: not connected to %q — press <CR> to connect first"):format(name), vim.log.levels.ERROR)
+    return
+  end
+  explorer.open(conn.conn_id)
+end
+
 function M.open_explorer()
   local bufnr = vim.api.nvim_get_current_buf()
-  local conn = state.buf_conns[bufnr] and state.conns[state.buf_conns[bufnr]]
+  local name  = state.buf_conns[bufnr] or next(state.conns)
+  local conn  = name and state.conns[name]
   if not conn then
     vim.notify("dbelveder: no active connection — run :DbConnect first", vim.log.levels.WARN)
     return

@@ -144,6 +144,13 @@ local function on_new()
   end)
 end
 
+local function on_explore()
+  local entry = entry_at_cursor()
+  if not entry or entry.type ~= "conn" then return end
+  local db = require("dbelveder")
+  db.open_explorer_for(entry.name)
+end
+
 local function on_hover()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
@@ -225,6 +232,7 @@ function M.open()
     state.buffer = Buffer:new(BUFNAME, "dbelveder_connections", false, "nofile")
     local hover_key = config.options.keymaps.hover_key
     state.buffer:set_keymap("n", "<CR>",     on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect" })
+    state.buffer:set_keymap("n", "e",        on_explore,    { nowait = true, silent = true, desc = "Open explorer" })
     state.buffer:set_keymap("n", "x",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
     state.buffer:set_keymap("n", "d",        on_delete,     { nowait = true, silent = true, desc = "Delete connection" })
     state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection" })
