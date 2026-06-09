@@ -121,20 +121,29 @@ Runs a SQL statement and returns the result set.
 | `sql`           | string           | SQL statement to execute           |
 | `params`        | array (optional) | Positional bind parameters         |
 
-**result**
+**result — SELECT**
 
 | Field     | Type              | Description                       |
 |-----------|-------------------|-----------------------------------|
 | `columns` | array of strings  | Column names, in order            |
 | `rows`    | array of arrays   | Each row is an array of values    |
 
-**example**
+**result — INSERT / UPDATE / DELETE (and other DML)**
+
+| Field           | Type    | Description                             |
+|-----------------|---------|-----------------------------------------|
+| `rows_affected` | integer | Number of rows inserted/updated/deleted |
+
+**examples**
 
 ```json
 {"id":2,"method":"execute","params":{"connection_id":"abc123","sql":"SELECT id, name FROM users WHERE active = ?","params":[1]}}
-```
-```json
 {"id":2,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]]},"error":null}
+```
+
+```json
+{"id":3,"method":"execute","params":{"connection_id":"abc123","sql":"DELETE FROM users WHERE active = 0"}}
+{"id":3,"result":{"rows_affected":4},"error":null}
 ```
 
 ---

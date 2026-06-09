@@ -219,6 +219,31 @@ function M.active_names()
 end
 
 
+local function detect_operation(sql)
+  local word = vim.trim(sql):match("^(%a+)"):lower()
+  if word == "insert" then return "inserted"
+  elseif word == "update" then return "updated"
+  elseif word == "delete" then return "deleted"
+  elseif word == "merge"  then return "merged"
+  else return "affected" end
+end
+
+local function dispatch_result(result, sql)
+  if result.rows_affected ~= nil then
+    results.show_rows_affected(result.rows_affected, detect_operation(sql))
+  else
+    results.show_results(result.columns or {}, result.rows or {})
+  end
+end
+
+local function dispatch_batch_result(idx, total, result, sql)
+  if result.rows_affected ~= nil then
+    results.append_batch_rows_affected(idx, total, result.rows_affected, detect_operation(sql))
+  else
+    results.append_batch_result(idx, total, result.columns or {}, result.rows or {})
+  end
+end
+
 local function split_queries(sql)
   local stmts = {}
   for stmt in sql:gmatch("[^;]+") do
@@ -237,7 +262,7 @@ local function execute_sequence(queries, conn, idx)
         if err then
           results.append_batch_error(idx, #queries, err)
         else
-          results.append_batch_result(idx, #queries, result.columns or {}, result.rows or {})
+          dispatch_batch_result(idx, #queries, result, queries[idx])
         end
         if idx < #queries then
           execute_sequence(queries, conn, idx + 1)
@@ -276,7 +301,7 @@ function M.execute(sql)
         if err then
           results.show_error(err)
         else
-          results.show_results(result.columns or {}, result.rows or {})
+          dispatch_result(result, queries[1])
         end
       end)
     end,

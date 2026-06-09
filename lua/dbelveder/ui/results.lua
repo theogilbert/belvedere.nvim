@@ -271,6 +271,27 @@ function M.show_results(columns, rows)
   update_truncation_indicators()
 end
 
+function M.show_rows_affected(n, verb)
+  get_or_create_buffer()
+  open_win()
+  state.table_data = nil
+  local msg = n .. " row" .. (n == 1 and "" or "s") .. " " .. verb
+  state.buffer:set_content({ msg })
+  state.buffer:apply_highlight({
+    { higroup = "DbelvederRowCount", start = { 0, 0 }, finish = { 0, -1 } },
+  })
+end
+
+function M.append_batch_rows_affected(idx, total, n, verb)
+  local msg = n .. " row" .. (n == 1 and "" or "s") .. " " .. verb
+  table.insert(state.segments, {
+    header   = make_separator(idx, total),
+    lines    = { msg },
+    hl_rules = { { higroup = "DbelvederRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
+  })
+  render_segments()
+end
+
 function M.show_error(msg)
   get_or_create_buffer()
   open_win()
