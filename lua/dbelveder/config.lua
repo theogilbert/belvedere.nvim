@@ -16,7 +16,8 @@ M.defaults = {
 
   -- Keymap inside the query buffer to execute the selection (or whole buffer).
   keymaps = {
-    execute = "<CR>",
+    execute   = "<CR>",
+    hover_key = "K",
   },
 
   -- Results window options.

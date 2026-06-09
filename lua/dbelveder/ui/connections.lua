@@ -4,6 +4,7 @@ local M = {}
 
 local Buffer      = require("dbelveder.buffer")
 local connections = require("dbelveder.connections")
+local config      = require("dbelveder.config")
 local hl          = require("dbelveder.hl")
 
 local BUFNAME          = "dbelveder://connections"
@@ -16,8 +17,9 @@ local state = {
   buffer      = nil,
   line_map    = {},  -- [line_nr] -> { type="header"|"conn", driver, name? }
   expanded    = {},  -- [driver]  -> bool (default false = folded)
-  conn_errors = {},  -- [name]    -> bool
+  conn_errors = {},  -- [name]    -> string (error message)
   conn_loading = {}, -- [name]    -> { frame, timer }
+  hover_win    = nil,
 }
 
 local function build(conns, active_set)
@@ -135,14 +137,91 @@ local function on_new()
   end)
 end
 
+local function on_hover()
+  local entry = entry_at_cursor()
+  if not entry or entry.type ~= "conn" then return end
+  local msg = state.conn_errors[entry.name]
+  if not msg then return end
+
+  -- Second K: enter the existing float so the user can read/scroll.
+  if state.hover_win and vim.api.nvim_win_is_valid(state.hover_win) then
+    pcall(vim.api.nvim_del_augroup_by_name, "DbelvederHoverFloat")
+    local fwin    = state.hover_win
+    local fbuf    = vim.api.nvim_win_get_buf(fwin)
+    local prev    = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_config(fwin, { focusable = true })
+    vim.api.nvim_set_current_win(fwin)
+    for _, key in ipairs({ "q", "<Esc>" }) do
+      vim.keymap.set("n", key, function()
+        pcall(vim.api.nvim_win_close, fwin, true)
+        state.hover_win = nil
+        if vim.api.nvim_win_is_valid(prev) then
+          vim.api.nvim_set_current_win(prev)
+        end
+      end, { buffer = fbuf, silent = true, nowait = true })
+    end
+    return
+  end
+
+  -- First K: open a tooltip float.
+  local lines = vim.split(msg, "\n", { plain = true })
+  local max_w = 1
+  for _, l in ipairs(lines) do max_w = math.max(max_w, vim.fn.strdisplaywidth(l)) end
+  local win_w = math.min(max_w, vim.o.columns - 6)
+
+  -- Height: sum of rows each line occupies under character-wrap.
+  local height = 0
+  for _, l in ipairs(lines) do
+    local w = vim.fn.strdisplaywidth(l)
+    height = height + (w == 0 and 1 or math.ceil(w / win_w))
+  end
+
+  local fbuf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
+  vim.bo[fbuf].modifiable = false
+  vim.bo[fbuf].bufhidden  = "wipe"
+  for i = 0, #lines - 1 do
+    vim.api.nvim_buf_add_highlight(fbuf, -1, "DbelvederConnError", i, 0, -1)
+  end
+
+  local fwin = vim.api.nvim_open_win(fbuf, false, {
+    relative  = "cursor",
+    row       = 1,
+    col       = 0,
+    width     = win_w,
+    height    = height,
+    style     = "minimal",
+    border    = "rounded",
+    title     = " error ",
+    title_pos = "center",
+    focusable = false,
+  })
+  vim.api.nvim_set_option_value("winhl", "FloatBorder:DbelvederConnError", { win = fwin })
+  vim.api.nvim_set_option_value("wrap",  true, { win = fwin })
+
+  state.hover_win = fwin
+
+  vim.api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
+    group    = vim.api.nvim_create_augroup("DbelvederHoverFloat", { clear = true }),
+    buffer   = state.buffer.buf_id,
+    once     = true,
+    callback = function()
+      pcall(vim.api.nvim_win_close, state.hover_win, true)
+      state.hover_win = nil
+    end,
+  })
+end
+
 
 function M.open()
   if not (state.buffer and state.buffer:is_valid()) then
     state.buffer = Buffer:new(BUFNAME, "dbelveder_connections", false, "nofile")
-    state.buffer:set_keymap("n", "<CR>", on_enter,  { nowait = true, silent = true, desc = "Expand/collapse or connect" })
-    state.buffer:set_keymap("n", "d",    on_delete, { nowait = true, silent = true, desc = "Delete connection" })
-    state.buffer:set_keymap("n", "n",    on_new,    { nowait = true, silent = true, desc = "New connection" })
-    state.buffer:set_keymap("n", "R",    refresh,   { nowait = true, silent = true, desc = "Refresh" })
+    local hover_key = config.options.keymaps.hover_key
+    state.buffer:set_keymap("n", "<CR>",     on_enter,  { nowait = true, silent = true, desc = "Expand/collapse or connect" })
+    state.buffer:set_keymap("n", "d",        on_delete, { nowait = true, silent = true, desc = "Delete connection" })
+    state.buffer:set_keymap("n", "n",        on_new,    { nowait = true, silent = true, desc = "New connection" })
+    state.buffer:set_keymap("n", "R",        refresh,   { nowait = true, silent = true, desc = "Refresh" })
+    state.buffer:set_keymap("n", hover_key,  on_hover,  { nowait = true, silent = true, desc = "Show error details" })
     state.buffer:set_keymap("n", "q", function()
       local win = vim.fn.bufwinid(state.buffer.buf_id)
       if win ~= -1 then vim.api.nvim_win_close(win, true) end
@@ -172,8 +251,8 @@ function M.refresh()
   end
 end
 
-function M.set_conn_error(name)
-  state.conn_errors[name] = true
+function M.set_conn_error(name, msg)
+  state.conn_errors[name] = msg or "unknown error"
   M.refresh()
 end
 

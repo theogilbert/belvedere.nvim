@@ -161,7 +161,7 @@ function M._send_connect(name, params, bufnr)
     connections_panel.clear_conn_loading(name)
     if err then
       vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
-      connections_panel.set_conn_error(name)
+      connections_panel.set_conn_error(name, err)
       return
     end
     state.conns[name] = { conn_id = result.connection_id, driver = params.driver }
