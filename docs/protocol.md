@@ -283,7 +283,7 @@ Requires: `pip install 'psycopg[binary]'`
 | `database`             | string  | `""`           |                                          |
 | `user`                 | string  | `""`           |                                          |
 | `password`             | string  | `""`           |                                          |
-| `application_intent`   | string  | `"READ_WRITE"` | `"READ_WRITE"` or `"READ_ONLY"` (AG replicas) |
+| `applicationIntent`   | string  | `"READ_WRITE"` | `"READ_WRITE"` or `"READ_ONLY"` (AG replicas) |
 
 Requires: `pip install mssql-python`
 

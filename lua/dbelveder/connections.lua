@@ -16,7 +16,7 @@ local DRIVER_FIELDS = {
     { key = "port",               prompt = "Port: ",               default = "1433"                        },
     { key = "database",           prompt = "Database: "                                                    },
     { key = "user",               prompt = "User: "                                                        },
-    { key = "application_intent", prompt = "Application Intent: ", choices = { "READ_WRITE", "READ_ONLY" } },
+    { key = "applicationIntent", prompt = "Application Intent: ", choices = { "READ_WRITE", "READ_ONLY" } },
     { key = "password",           prompt = "Password (empty = none): "                                     },
   },
 }
