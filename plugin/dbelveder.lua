@@ -23,18 +23,10 @@ end, {
   end,
 })
 
--- :DbUse <name>   — switch the active connection (among already-open ones)
-vim.api.nvim_create_user_command("DbUse", function(opts)
-  local arg = vim.trim(opts.args)
-  if arg == "" then
-    vim.notify("Usage: :DbUse <name>", vim.log.levels.WARN)
-    return
-  end
-  db.use(arg)
-end, {
-  nargs = 1,
-  complete = function() return db.active_names() end,
-})
+-- :DbAssociate   — pick an open connection to associate with the current buffer
+vim.api.nvim_create_user_command("DbAssociate", function(_)
+  db.associate()
+end, {})
 
 -- :DbNewConnection    — jump straight to the new-connection wizard
 vim.api.nvim_create_user_command("DbNewConnection", function(_)

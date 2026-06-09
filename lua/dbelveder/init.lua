@@ -141,7 +141,6 @@ function M.connect_by_name(name)
 end
 
 function M._do_connect(name, params)
-  local bufnr = vim.api.nvim_get_current_buf()  -- capture before async
   if not client.is_running() then
     local ok, err = pcall(client.start, config.options.python_cmd)
     if not ok then
@@ -149,14 +148,14 @@ function M._do_connect(name, params)
       return
     end
     connections_panel.set_conn_loading(name)
-    vim.defer_fn(function() M._send_connect(name, params, bufnr) end, 200)
+    vim.defer_fn(function() M._send_connect(name, params) end, 200)
   else
     connections_panel.set_conn_loading(name)
-    M._send_connect(name, params, bufnr)
+    M._send_connect(name, params)
   end
 end
 
-function M._send_connect(name, params, bufnr)
+function M._send_connect(name, params)
   client.request("connect", params, function(err, result)
     connections_panel.clear_conn_loading(name)
     if err then
@@ -165,22 +164,23 @@ function M._send_connect(name, params, bufnr)
       return
     end
     state.conns[name] = { conn_id = result.connection_id, driver = params.driver }
-    set_buf_conn(bufnr, name)
     vim.notify(("dbelveder: connected to %q (%s)"):format(name, params.driver), vim.log.levels.INFO)
     connections_panel.refresh()
   end)
 end
 
--- Associate an already-open connection to the current buffer.
-function M.use(name)
-  if not state.conns[name] then
-    vim.notify(("dbelveder: not connected to %q"):format(name), vim.log.levels.ERROR)
+function M.associate()
+  local names = M.active_names()
+  if #names == 0 then
+    vim.notify("dbelveder: no open connections — open the connection panel with :DbConnections", vim.log.levels.WARN)
     return
   end
-  local bufnr = vim.api.nvim_get_current_buf()
-  if state.buf_conns[bufnr] == name then return end  -- no-op
-  set_buf_conn(bufnr, name)
-  vim.notify(("dbelveder: active connection: %q"):format(name), vim.log.levels.INFO)
+  vim.ui.select(names, { prompt = "Associate connection:" }, function(name)
+    if not name then return end
+    local bufnr = vim.api.nvim_get_current_buf()
+    set_buf_conn(bufnr, name)
+    vim.notify(("dbelveder: buffer associated with %q"):format(name), vim.log.levels.INFO)
+  end)
 end
 
 function M.disconnect(name)
