@@ -5,7 +5,9 @@ local M = {}
 local Buffer = require("dbelveder.buffer")
 local client = require("dbelveder.client")
 
-local BUFNAME = "dbelveder://explorer"
+local BUFNAME          = "dbelveder://explorer"
+local SPINNER_FRAMES   = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+local SPINNER_INTERVAL = 80
 
 local TYPE_ICONS = {
   database       = "󰆼 ",
@@ -28,12 +30,42 @@ local function node_icon(node)
 end
 
 local state = {
-  buffer  = nil,
-  tree    = {},
-  conn_id = nil,
+  buffer       = nil,
+  tree         = {},
+  conn_id      = nil,
+  root_loading = false,
 }
 
-local function render()
+local render  -- forward declaration so spinner callbacks can reference it
+
+local spinner = { frame = 1, timer = nil, count = 0 }
+
+local function spinner_start()
+  spinner.count = spinner.count + 1
+  if spinner.timer then return end
+  local timer = vim.uv.new_timer()
+  spinner.timer = timer
+  timer:start(0, SPINNER_INTERVAL, vim.schedule_wrap(function()
+    if spinner.count == 0 then
+      timer:stop()
+      timer:close()
+      spinner.timer = nil
+      return
+    end
+    spinner.frame = (spinner.frame % #SPINNER_FRAMES) + 1
+    render()
+  end))
+end
+
+local function spinner_stop()
+  spinner.count = math.max(0, spinner.count - 1)
+end
+
+render = function()
+  if state.root_loading then
+    state.buffer:set_content({ "  " .. SPINNER_FRAMES[spinner.frame] .. " Loading…" })
+    return
+  end
   local lines = {}
   local function walk(nodes, indent)
     for _, node in ipairs(nodes) do
@@ -45,7 +77,9 @@ local function render()
         label = "  " .. node.type
       end
       lines[#lines + 1] = string.rep("  ", indent) .. chevron .. node_icon(node) .. node.name .. label
-      if node.expanded and node.children then
+      if node.loading then
+        lines[#lines + 1] = string.rep("  ", indent + 1) .. "  " .. SPINNER_FRAMES[spinner.frame] .. " Loading…"
+      elseif node.expanded and node.children then
         walk(node.children, indent + 1)
       end
     end
@@ -70,10 +104,16 @@ local function node_at_line(line)
 end
 
 local function load_children(node)
+  node.loading = true
+  spinner_start()
+  render()
   client.request("explore.list", { connection_id = state.conn_id, path = node.path }, function(err, result)
+    node.loading = false
+    spinner_stop()
     if err then
       vim.schedule(function()
         vim.notify("dbelveder explorer: " .. err, vim.log.levels.ERROR)
+        render()
       end)
       return
     end
@@ -153,10 +193,16 @@ function M.open(conn_id)
   vim.api.nvim_set_current_win(win)
 
   if #state.tree == 0 then
+    state.root_loading = true
+    spinner_start()
+    render()
     client.request("explore.list", { connection_id = state.conn_id, path = {} }, function(err, result)
+      state.root_loading = false
+      spinner_stop()
       if err then
         vim.schedule(function()
           vim.notify("dbelveder explorer: " .. err, vim.log.levels.ERROR)
+          render()
         end)
         return
       end
@@ -179,7 +225,14 @@ function M.open(conn_id)
 end
 
 function M.reset()
-  state.tree = {}
+  state.tree         = {}
+  state.root_loading = false
+  spinner.count      = 0
+  if spinner.timer then
+    spinner.timer:stop()
+    spinner.timer:close()
+    spinner.timer = nil
+  end
 end
 
 return M
