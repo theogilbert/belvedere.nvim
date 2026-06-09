@@ -16,9 +16,10 @@ local BUFNAME = "dbelveder://results"
 local state = {
   buffer            = nil,  -- Buffer instance
   win_id            = nil,
-  table_data        = nil,  -- FormattedTable from table_fmt, or nil
+  table_data        = nil,  -- FormattedTable from table_fmt, or nil (batch mode)
   scroll_autocmd_id = nil,
   close_autocmd_id  = nil,
+  segments          = {},   -- batch mode: { {header, lines, hl_rules} }
 }
 
 
@@ -176,6 +177,71 @@ local function apply_highlights(tbl, total_rows, max_rows)
   state.buffer:apply_highlight(rules)
 end
 
+
+local function make_separator(idx, total)
+  return ("── Query %d / %d "):format(idx, total) .. string.rep("─", 44)
+end
+
+local function render_segments()
+  local all_lines, all_rules = {}, {}
+  for _, seg in ipairs(state.segments) do
+    local hdr_lnum = #all_lines
+    table.insert(all_lines, seg.header)
+    local offset = #all_lines
+    for _, l in ipairs(seg.lines) do table.insert(all_lines, l) end
+    for _, r in ipairs(seg.hl_rules) do
+      table.insert(all_rules, {
+        higroup = r.higroup,
+        start   = { r.start[1] + offset,  r.start[2] },
+        finish  = { r.finish[1] + offset, r.finish[2] },
+      })
+    end
+    table.insert(all_rules, { higroup = "DbelvederHeaderRow",
+      start = { hdr_lnum, 0 }, finish = { hdr_lnum, -1 } })
+    table.insert(all_lines, "")
+  end
+  state.buffer:set_content(all_lines)
+  state.buffer:apply_highlight(all_rules)
+  update_truncation_indicators()
+end
+
+function M.begin_batch(n)
+  get_or_create_buffer()
+  open_win()
+  state.table_data = nil
+  state.segments   = {}
+  state.buffer:set_content({ ("Executing %d quer%s…"):format(n, n == 1 and "y" or "ies") })
+  state.buffer:apply_highlight({})
+end
+
+function M.append_batch_result(idx, total, columns, rows)
+  local max_rows   = config.options.results.max_rows
+  local total_rows = #rows
+  local display    = { columns }
+  for i = 1, math.min(total_rows, max_rows) do table.insert(display, rows[i]) end
+  local tbl     = table_fmt.from_structured_data(display, 1)
+  local content = vim.list_extend({}, tbl.text)
+  table.insert(content, "")
+  local label = total_rows .. " row" .. (total_rows == 1 and "" or "s")
+  if total_rows > max_rows then
+    label = max_rows .. " of " .. total_rows .. " rows (truncated)"
+  end
+  table.insert(content, label)
+  local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 0, 1, tbl)
+  table.insert(rules, { higroup = "DbelvederRowCount",
+    start = { #tbl.text + 1, 0 }, finish = { #tbl.text + 1, -1 } })
+  table.insert(state.segments, { header = make_separator(idx, total), lines = content, hl_rules = rules })
+  render_segments()
+end
+
+function M.append_batch_error(idx, total, msg)
+  table.insert(state.segments, {
+    header   = make_separator(idx, total),
+    lines    = { "Error: " .. msg },
+    hl_rules = { { higroup = "DbelvederError", start = { 0, 0 }, finish = { 0, -1 } } },
+  })
+  render_segments()
+end
 
 function M.show_results(columns, rows)
   get_or_create_buffer()

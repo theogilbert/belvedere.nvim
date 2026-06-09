@@ -219,6 +219,33 @@ function M.active_names()
 end
 
 
+local function split_queries(sql)
+  local stmts = {}
+  for stmt in sql:gmatch("[^;]+") do
+    local trimmed = vim.trim(stmt)
+    if trimmed ~= "" then table.insert(stmts, trimmed) end
+  end
+  return stmts
+end
+
+local function execute_sequence(queries, conn, idx)
+  client.request(
+    "execute",
+    { connection_id = conn.conn_id, sql = queries[idx], params = {} },
+    function(err, result)
+      vim.schedule(function()
+        if err then
+          results.append_batch_error(idx, #queries, err)
+        else
+          results.append_batch_result(idx, #queries, result.columns or {}, result.rows or {})
+        end
+        if idx < #queries then
+          execute_sequence(queries, conn, idx + 1)
+        end
+      end)
+    end)
+end
+
 function M.execute(sql)
   if not sql or sql == "" then
     vim.notify("dbelveder: no SQL to execute", vim.log.levels.WARN)
@@ -227,13 +254,23 @@ function M.execute(sql)
   local bufnr = vim.api.nvim_get_current_buf()
   local conn = state.buf_conns[bufnr] and state.conns[state.buf_conns[bufnr]]
   if not conn then
-    vim.notify("dbelveder: no active connection — run :DbConnect first", vim.log.levels.WARN)
+    vim.notify("dbelveder: no active connection — run :DbAssociate first", vim.log.levels.WARN)
     return
   end
+
+  local is_mongo = conn.driver == "mongodb" or conn.driver == "mongo"
+  local queries  = (not is_mongo and sql:find(";")) and split_queries(sql) or { sql }
+
+  if #queries > 1 then
+    results.begin_batch(#queries)
+    execute_sequence(queries, conn, 1)
+    return
+  end
+
   results.show_message("Executing…")
   client.request(
     "execute",
-    { connection_id = conn.conn_id, sql = sql, params = {} },
+    { connection_id = conn.conn_id, sql = queries[1], params = {} },
     function(err, result)
       vim.schedule(function()
         if err then
