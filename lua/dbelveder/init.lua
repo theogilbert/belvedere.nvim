@@ -257,11 +257,18 @@ local function dispatch_batch_result(idx, total, result, sql)
   end
 end
 
+local function is_only_comments(sql)
+  local s = sql:gsub("/%*.-%*/", ""):gsub("%-%-[^\n]*", "")
+  return vim.trim(s) == ""
+end
+
 local function split_queries(sql)
   local stmts = {}
   for stmt in sql:gmatch("[^;]+") do
     local trimmed = vim.trim(stmt)
-    if trimmed ~= "" then table.insert(stmts, trimmed) end
+    if trimmed ~= "" and not is_only_comments(trimmed) then
+      table.insert(stmts, trimmed)
+    end
   end
   return stmts
 end
