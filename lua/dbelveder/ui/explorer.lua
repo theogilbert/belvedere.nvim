@@ -141,15 +141,16 @@ function M.open(conn_id)
     state.conn_id = conn_id
   end
 
-  if vim.fn.bufwinid(state.buffer.buf_id) == -1 then
-    local prev_win = vim.api.nvim_get_current_win()
+  local win = vim.fn.bufwinid(state.buffer.buf_id)
+  if win == -1 then
     vim.cmd("topleft 35vsplit")
     vim.api.nvim_win_set_buf(0, state.buffer.buf_id)
     vim.api.nvim_set_option_value("number",    false,  { win = 0 })
     vim.api.nvim_set_option_value("signcolumn", "no",  { win = 0 })
     vim.api.nvim_set_option_value("fillchars", "eob: ", { win = 0 })
-    vim.api.nvim_set_current_win(prev_win)
+    win = vim.fn.bufwinid(state.buffer.buf_id)
   end
+  vim.api.nvim_set_current_win(win)
 
   if #state.tree == 0 then
     client.request("explore.list", { connection_id = state.conn_id, path = {} }, function(err, result)

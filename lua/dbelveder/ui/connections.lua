@@ -250,13 +250,11 @@ function M.open()
     return
   end
 
-  local prev_win = vim.api.nvim_get_current_win()
   vim.cmd("botright 35vsplit")
   vim.api.nvim_win_set_buf(0, state.buffer.buf_id)
   vim.api.nvim_set_option_value("number",     false,   { win = 0 })
   vim.api.nvim_set_option_value("signcolumn", "no",    { win = 0 })
   vim.api.nvim_set_option_value("fillchars",  "eob: ", { win = 0 })
-  vim.api.nvim_set_current_win(prev_win)
 
   refresh()
 end
