@@ -1,6 +1,6 @@
 # dbelveder.nvim
 
-A Neovim database client. Connects to SQLite, PostgreSQL, SQL Server, and MongoDB through an external Python backend ([dbelveder-py](../dbelveder-py)), communicating over newline-delimited JSON on stdio.
+A Neovim database client. Connects to SQLite and SQL Server through an external Python backend ([dbelveder-py](../dbelveder-py)), communicating over newline-delimited JSON on stdio.
 
 ## Requirements
 
@@ -13,11 +13,8 @@ Install **dbelveder-py** first:
 
 ```sh
 pip install dbelveder-py
-# or, for specific databases:
-pip install 'dbelveder-py[postgres]'
+# or with driver-specific dependencies:
 pip install 'dbelveder-py[sqlserver]'
-pip install 'dbelveder-py[mongodb]'
-pip install 'dbelveder-py[all]'
 ```
 
 Then install the plugin with your plugin manager:
@@ -32,19 +29,9 @@ Then install the plugin with your plugin manager:
 }
 ```
 
-**packer.nvim**
-```lua
-use {
-  "you/dbelveder.nvim",
-  config = function()
-    require("dbelveder").setup()
-  end,
-}
-```
-
 ## Setup
 
-`setup()` is required but takes no mandatory options:
+`setup()` is required. All options have defaults:
 
 ```lua
 require("dbelveder").setup({
@@ -57,6 +44,13 @@ require("dbelveder").setup({
   --          (~/.config/dbelveder/connections.json on most systems)
   -- connections_file = vim.fn.expand("~/.config/dbelveder/connections.json"),
 
+  keymaps = {
+    -- Keymap inside query buffers to execute.
+    execute   = "<CR>",
+    -- Key in the connections panel to show the error details float.
+    hover_key = "K",
+  },
+
   -- Results window appearance.
   results = {
     split    = "below",  -- "below" | "right"
@@ -66,9 +60,87 @@ require("dbelveder").setup({
 })
 ```
 
-## Connections
+## Workflow
 
-Connections are stored in `~/.config/dbelveder/connections.json` (XDG-compliant, not inside the nvim config). The file is created automatically when you save your first connection.
+### 1. Manage connections
+
+Open the connections panel with `:DbConnections`. Connections are grouped by driver and persist across sessions in `~/.config/dbelveder/connections.json`.
+
+| Key | Action |
+|-----|--------|
+| `<CR>` | Expand/collapse a driver group, or connect to the database under the cursor |
+| `n` | Create a new connection (guided wizard) |
+| `d` | Delete the saved connection under the cursor |
+| `x` | Disconnect from the database under the cursor |
+| `e` | Open the explorer for the connected database under the cursor |
+| `K` | Show the connection error message in a float (press `K` again to enter it) |
+| `R` | Refresh the panel |
+| `q` | Close the panel |
+
+Status indicators next to each connection name:
+
+| Symbol | Meaning |
+|--------|---------|
+| `✓` | Connected (green) |
+| `✗` | Last connection attempt failed (red) — press `K` for details |
+| `⠋…` | Connecting (animated spinner) |
+
+### 2. Associate a buffer
+
+Once a connection is open, associate it with the buffer you want to query:
+
+```
+:DbAssociate
+```
+
+A picker lists all currently open connections. Select one — the buffer is now linked and a label appears in the bottom-left corner of the window.
+
+### 3. Execute queries
+
+Write SQL in the associated buffer and run:
+
+| Command | What it executes |
+|---------|-----------------|
+| `:DbExecute` | Current line |
+| `:'<,'>DbExecute` | Visual selection |
+| `:%DbExecute` | Whole buffer |
+
+Results appear in a split window with aligned columns and a row count. For DML queries (`INSERT`, `UPDATE`, `DELETE`) the affected row count is shown instead of a table.
+
+**Multiple queries:** if the SQL contains `;`, each statement is sent as a separate request and results are shown as labelled sections (`── Query 1 / 3 ──`, etc.). This does not apply to MongoDB-style drivers.
+
+### 4. Explore the schema
+
+Press `e` on a connected database in the connections panel, or run `:DbExplore`.
+
+| Key | Action |
+|-----|--------|
+| `<CR>` | Expand / collapse a node; describe a leaf |
+| `R` | Refresh the tree from the server |
+
+A spinner is shown while a node's children are loading.
+
+---
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `:DbConnections` | Toggle the connections panel |
+| `:DbAssociate` | Associate the current buffer with an open connection |
+| `:DbConnect [name]` | Connect to a saved connection by name (or open a picker) |
+| `:DbNewConnection` | Open the new-connection wizard |
+| `:DbDeleteConnection <name>` | Remove a saved connection |
+| `:DbDisconnect [name]` | Disconnect a named connection, or the current buffer's connection |
+| `:[range]DbExecute` | Execute SQL (range, selection, or current line) |
+| `:DbExplore` | Open the schema explorer |
+| `:DbStop` | Kill the Python backend process |
+
+---
+
+## Connections file
+
+Connections are stored in `~/.config/dbelveder/connections.json` (XDG-compliant). The file is created automatically on first save. Passwords are not stored — you are prompted at connect time.
 
 ```json
 {
@@ -77,67 +149,56 @@ Connections are stored in `~/.config/dbelveder/connections.json` (XDG-compliant,
       "driver": "sqlite",
       "database": "/home/user/data.db"
     },
-    "prod": {
-      "driver": "postgres",
+    "prod-mssql": {
+      "driver": "sqlserver",
       "host": "db.example.com",
-      "port": 5432,
+      "port": 1433,
       "database": "myapp",
-      "user": "readonly",
-      "password": "secret"
+      "user": "readonly"
     }
   }
 }
 ```
 
-You can edit the file directly, or use the built-in commands.
+---
 
-## Commands
+## Supported databases
 
-| Command | Description |
-|---|---|
-| `:DbConnect` | Open a picker to select or create a connection |
-| `:DbConnect <name>` | Connect directly by name (tab-completion available) |
-| `:DbNewConnection` | Jump straight to the new-connection wizard |
-| `:DbDeleteConnection <name>` | Remove a saved connection (tab-completion available) |
-| `:DbDisconnect` | Close the current connection |
-| `:[range]DbExecute` | Execute a SQL statement (range or current line) |
-| `:DbExplore` | Open the database explorer sidebar |
-| `:DbStop` | Kill the Python backend process |
+| Driver value | Database | Extra Python package |
+|---|---|---|
+| `"sqlite"` | SQLite | _(none, stdlib)_ |
+| `"sqlserver"` / `"mssql"` | SQL Server | `mssql-python>=1.8` |
 
-### Creating a connection
+---
 
-Run `:DbConnect` (or `:DbNewConnection`) and follow the prompts:
+## Tree hierarchies
 
-1. Enter a name for the connection
-2. Select the driver from a list
-3. Fill in the driver-specific fields (host, port, database, user, password)
+**SQLite**
+```
+(root)
+└── <table|view>
+    ├── columns
+    │   └── <column>  [type]
+    ├── indices
+    │   └── <index>
+    └── foreign_keys
+        └── <fk>
+```
 
-The connection is saved to the JSON file immediately and can be reused across sessions.
+**SQL Server**
+```
+(root)
+└── <schema>
+    └── <table|view>
+        ├── columns
+        │   └── <column>  [type]
+        ├── indices
+        │   └── <index>
+        └── constraints
+            └── <constraint>
+```
 
-### Connecting
-
-- `:DbConnect` — opens a picker showing all saved connections plus a **[+ New connection]** entry
-- `:DbConnect prod` — connects directly without the picker; supports tab-completion
-
-### Executing queries
-
-Write SQL in any buffer, then execute it:
-
-- `:DbExecute` — executes the current line
-- `:'<,'>DbExecute` — executes the visual selection
-- `:%DbExecute` — executes the whole buffer
-
-Results appear in a split window. Columns are aligned and a row count is shown at the bottom.
-
-### Explorer
-
-`:DbExplore` opens a sidebar showing the database object tree.
-
-| Key | Action |
-|---|---|
-| `<CR>` | Expand / collapse a node |
-| `<CR>` on a leaf | Show metadata for that object |
-| `R` | Refresh the tree from the server |
+---
 
 ## Lua API
 
@@ -147,29 +208,31 @@ local db = require("dbelveder")
 -- Configure (call once at startup).
 db.setup(opts)
 
--- Open the connection picker.
-db.connect()
+-- Open the connections panel.
+db.open_connections()
 
--- Connect directly by name (looks up the connections file).
-db.connect_by_name("prod")
+-- Connect to a saved connection by name.
+db.connect_by_name("prod-mssql")
 
--- Disconnect from the current connection.
-db.disconnect()
+-- Associate the current buffer with an open connection (shows a picker).
+db.associate()
 
--- Execute a SQL string.
+-- Disconnect from a named connection.
+db.disconnect("prod-mssql")
+
+-- Execute a SQL string against the current buffer's connection.
 db.execute("SELECT 1")
 
 -- Execute lines line1..line2 from the current buffer (1-based).
 db.execute_range(line1, line2)
 
--- Execute the last visual selection (charwise-aware).
--- Notifies at INFO level if no selection exists.
+-- Execute the last visual selection.
 db.execute_selection()
 
--- Open the explorer sidebar.
-db.open_explorer()
+-- Open the explorer for a specific connection by name.
+db.open_explorer_for("prod-mssql")
 
--- Kill the backend process.
+-- Kill the backend process and clear all state.
 db.stop()
 ```
 
@@ -180,59 +243,11 @@ local conns = require("dbelveder.connections")
 conns.load()
 
 -- Get a single connection by name.
-conns.get("prod")
-
--- Save a connection programmatically.
-local all = conns.load()
-all["ci"] = { driver = "postgres", host = "ci-db", database = "test", user = "ci", password = "" }
-conns.save(all)
+conns.get("prod-mssql")
 
 -- Delete a connection.
 conns.delete("old-db")
 
--- Open the picker (used internally by :DbConnect).
-conns.pick(function(name, params) ... end)
-
--- Run the new-connection wizard (used internally by :DbNewConnection).
+-- Open the new-connection wizard.
 conns.create(function(name, params) ... end)
-```
-
-## Supported databases
-
-| Driver value | Database | Extra Python package |
-|---|---|---|
-| `"sqlite"` | SQLite | _(none, stdlib)_ |
-| `"postgres"` / `"postgresql"` | PostgreSQL | `psycopg[binary]>=3` |
-| `"sqlserver"` / `"mssql"` | SQL Server | `mssql-python>=1.8` |
-| `"mongodb"` / `"mongo"` | MongoDB | `pymongo>=4` |
-
-## Tree hierarchies
-
-**SQLite**
-```
-(root)
-└── <table|view>
-    ├── columns
-    │   └── <column>  [type]
-    └── indices
-        └── <index>
-```
-
-**PostgreSQL / SQL Server**
-```
-(root)
-└── <schema>
-    └── <table|view>
-        ├── columns
-        │   └── <column>  [type]
-        ├── indices
-        └── constraints
-```
-
-**MongoDB**
-```
-(root)
-└── <database>
-    └── <collection>
-        └── <field>  [python-type]
 ```
