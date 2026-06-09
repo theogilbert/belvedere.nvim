@@ -27,6 +27,7 @@ local function setup_highlights()
   end
   -- Defined globally so it works in any buffer's extmarks; default = true allows user override.
   vim.api.nvim_set_hl(0, "DbelvederConnection", { fg = CONN_FG, italic = true, default = true })
+  vim.api.nvim_set_hl(0, "DbelvederConnError",  { fg = ERROR_FG, default = true })
 end
 
 function M.setup()

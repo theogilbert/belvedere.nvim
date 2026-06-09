@@ -6,13 +6,18 @@ local Buffer      = require("dbelveder.buffer")
 local connections = require("dbelveder.connections")
 local hl          = require("dbelveder.hl")
 
-local BUFNAME     = "dbelveder://connections"
-local ACTIVE_MARK = " ●"
+local BUFNAME          = "dbelveder://connections"
+local ACTIVE_MARK      = " ✓"
+local ERROR_MARK       = " ✗"
+local SPINNER_FRAMES   = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+local SPINNER_INTERVAL = 80  -- ms
 
 local state = {
-  buffer   = nil,
-  line_map = {},  -- [line_nr] -> { type="header"|"conn", driver, name? }
-  expanded = {},  -- [driver]  -> bool (default false = folded)
+  buffer      = nil,
+  line_map    = {},  -- [line_nr] -> { type="header"|"conn", driver, name? }
+  expanded    = {},  -- [driver]  -> bool (default false = folded)
+  conn_errors = {},  -- [name]    -> bool
+  conn_loading = {}, -- [name]    -> { frame, timer }
 }
 
 local function build(conns, active_set)
@@ -41,10 +46,26 @@ local function build(conns, active_set)
 
     if expanded then
       for _, name in ipairs(names) do
-        local active = active_set[name]
-        table.insert(lines, "    " .. name .. (active and ACTIVE_MARK or ""))
+        local active   = active_set[name]
+        local loading  = state.conn_loading[name]
+        local has_err  = state.conn_errors[name]
+        local mark
+        if active then
+          mark = ACTIVE_MARK
+        elseif loading then
+          mark = " " .. SPINNER_FRAMES[loading.frame]
+        elseif has_err then
+          mark = ERROR_MARK
+        else
+          mark = ""
+        end
+        table.insert(lines, "    " .. name .. mark)
         table.insert(line_map, { type = "conn", name = name, driver = driver })
-        if active then hl_rules[#lines] = "DbelvederConnection" end
+        if active then
+          hl_rules[#lines] = "DbelvederConnection"
+        elseif has_err then
+          hl_rules[#lines] = "DbelvederConnError"
+        end
       end
     end
   end
@@ -92,6 +113,7 @@ local function on_enter()
     state.expanded[entry.driver] = not state.expanded[entry.driver]
     refresh()
   else
+    state.conn_errors[entry.name] = nil
     local db = require("dbelveder")
     db.connect_by_name(entry.name)
   end
@@ -148,6 +170,35 @@ function M.refresh()
   if state.buffer and state.buffer:is_valid() then
     refresh()
   end
+end
+
+function M.set_conn_error(name)
+  state.conn_errors[name] = true
+  M.refresh()
+end
+
+function M.clear_conn_loading(name)
+  local entry = state.conn_loading[name]
+  if not entry then return end
+  state.conn_loading[name] = nil
+  if entry.timer then
+    entry.timer:stop()
+    entry.timer:close()
+  end
+end
+
+function M.set_conn_loading(name)
+  M.clear_conn_loading(name)
+  local entry = { frame = 1 }
+  local timer = vim.uv.new_timer()
+  entry.timer = timer
+  state.conn_loading[name] = entry
+  timer:start(0, SPINNER_INTERVAL, vim.schedule_wrap(function()
+    local e = state.conn_loading[name]
+    if not e then return end
+    e.frame = (e.frame % #SPINNER_FRAMES) + 1
+    M.refresh()
+  end))
 end
 
 return M

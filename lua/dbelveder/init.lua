@@ -148,22 +148,27 @@ function M._do_connect(name, params)
       vim.notify("dbelveder: " .. tostring(err), vim.log.levels.ERROR)
       return
     end
+    connections_panel.set_conn_loading(name)
     vim.defer_fn(function() M._send_connect(name, params, bufnr) end, 200)
   else
+    connections_panel.set_conn_loading(name)
     M._send_connect(name, params, bufnr)
   end
 end
 
 function M._send_connect(name, params, bufnr)
   client.request("connect", params, function(err, result)
+    connections_panel.clear_conn_loading(name)
     if err then
       vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
+      connections_panel.set_conn_error(name)
       return
     end
     state.conns[name] = { conn_id = result.connection_id, driver = params.driver }
     set_buf_conn(bufnr, name)
     explorer.open(result.connection_id)
     vim.notify(("dbelveder: connected to %q (%s)"):format(name, params.driver), vim.log.levels.INFO)
+    connections_panel.refresh()
   end)
 end
 
