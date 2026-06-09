@@ -62,7 +62,12 @@ end, {
   complete = function() return db.active_names() end,
 })
 
--- :[range]DbExecute
+-- :DbRun   — visual selection or current line (mode-aware)
+vim.api.nvim_create_user_command("DbRun", function(_)
+  db.execute()
+end, {})
+
+-- :[range]DbExecute  — explicit line range
 vim.api.nvim_create_user_command("DbExecute", function(opts)
   db.execute_range(opts.line1, opts.line2)
 end, { range = true })

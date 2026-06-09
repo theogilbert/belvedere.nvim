@@ -98,6 +98,19 @@ end
 function M.setup(opts)
   config.setup(opts)
   hl.setup()
+
+  local key = config.options.keymaps.execute
+  if key and key ~= "" then
+    vim.keymap.set("n", key, M.execute,
+      { desc = "Execute current line", silent = true })
+    vim.keymap.set("x", key, function()
+      -- Exit visual mode first so getpos("v") is still valid.
+      vim.api.nvim_feedkeys(
+        vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+      M.execute()
+    end, { desc = "Execute selection", silent = true })
+  end
+
   local aug = vim.api.nvim_create_augroup("DbelvederConnLabels", { clear = true })
   -- Show or hide the label whenever the buffer in a window changes.
   vim.api.nvim_create_autocmd("BufEnter", {
@@ -271,7 +284,7 @@ local function execute_sequence(queries, conn, idx)
     end)
 end
 
-function M.execute(sql)
+local function execute_sql(sql)
   if not sql or sql == "" then
     vim.notify("dbelveder: no SQL to execute", vim.log.levels.WARN)
     return
@@ -314,21 +327,25 @@ end
 
 function M.execute_range(line1, line2)
   local lines = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
-  M.execute(table.concat(lines, "\n"))
+  execute_sql(table.concat(lines, "\n"))
 end
 
-function M.execute_selection()
-  if not selection.is_in_visual_mode() then
-    vim.notify("dbelveder: must be in visual mode to run execute_selection()", vim.log.levels.WARN)
-    return
+function M.execute()
+  local sql
+  if selection.is_in_visual_mode() then
+    sql = selection.get_selection()
+    if not sql or sql == "" then
+      vim.notify("dbelveder: empty selection", vim.log.levels.WARN)
+      return
+    end
+  else
+    sql = vim.api.nvim_get_current_line()
+    if vim.trim(sql) == "" then
+      vim.notify("dbelveder: current line is empty", vim.log.levels.WARN)
+      return
+    end
   end
-
-  local sql = selection.get_selection()
-  if sql == "" then
-    vim.notify("dbelveder: no selection — visually select a query first", vim.log.levels.WARN)
-    return
-  end
-  M.execute(sql)
+  execute_sql(sql)
 end
 
 function M.open_connections()

@@ -99,11 +99,14 @@ A picker lists all currently open connections. Select one — the buffer is now 
 
 Write SQL in the associated buffer and run:
 
-| Command | What it executes |
-|---------|-----------------|
-| `:DbExecute` | Current line |
-| `:'<,'>DbExecute` | Visual selection |
+| Command / key | What it executes |
+|---------------|-----------------|
+| `:DbRun` (or configured key in normal mode) | Current line |
+| `:DbRun` (or configured key in visual mode) | Visual selection |
+| `:'<,'>DbExecute` | Explicit line range |
 | `:%DbExecute` | Whole buffer |
+
+The `keymaps.execute` option (default `<CR>`) is automatically bound in both `n` and `x` modes to `:DbRun`.
 
 Results appear in a split window with aligned columns and a row count. For DML queries (`INSERT`, `UPDATE`, `DELETE`) the affected row count is shown instead of a table.
 
@@ -220,14 +223,12 @@ db.associate()
 -- Disconnect from a named connection.
 db.disconnect("prod-mssql")
 
--- Execute a SQL string against the current buffer's connection.
-db.execute("SELECT 1")
-
 -- Execute lines line1..line2 from the current buffer (1-based).
 db.execute_range(line1, line2)
 
--- Execute the last visual selection.
-db.execute_selection()
+-- Execute the visual selection (x mode) or the current line (n mode).
+-- This is what :DbRun and the configured keymaps.execute key call.
+db.execute()
 
 -- Open the explorer for a specific connection by name.
 db.open_explorer_for("prod-mssql")
