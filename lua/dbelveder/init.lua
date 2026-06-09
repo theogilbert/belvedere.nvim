@@ -220,7 +220,7 @@ end
 
 
 local function detect_operation(sql)
-  local word = vim.trim(sql):match("^(%a+)"):lower()
+  local word = (vim.trim(sql):match("^(%a+)") or ""):lower()
   if word == "insert" then return "inserted"
   elseif word == "update" then return "updated"
   elseif word == "delete" then return "deleted"
