@@ -153,39 +153,14 @@ local function on_explore()
   db.open_explorer_for(entry.name)
 end
 
-local function on_hover()
-  local entry = entry_at_cursor()
-  if not entry or entry.type ~= "conn" then return end
-  local msg = state.conn_errors[entry.name]
-  if not msg then return end
+-- Fields from the saved connection that are client-only and not displayed.
+local HIDDEN_CONN_FIELDS = { password = true, requires_password = true, server = true }
 
-  -- Second K: enter the existing float so the user can read/scroll.
-  if state.hover_win and vim.api.nvim_win_is_valid(state.hover_win) then
-    pcall(vim.api.nvim_del_augroup_by_name, "DbelvederHoverFloat")
-    local fwin    = state.hover_win
-    local fbuf    = vim.api.nvim_win_get_buf(fwin)
-    local prev    = vim.api.nvim_get_current_win()
-    vim.api.nvim_win_set_config(fwin, { focusable = true })
-    vim.api.nvim_set_current_win(fwin)
-    for _, key in ipairs({ "q", "<Esc>" }) do
-      vim.keymap.set("n", key, function()
-        pcall(vim.api.nvim_win_close, fwin, true)
-        state.hover_win = nil
-        if vim.api.nvim_win_is_valid(prev) then
-          vim.api.nvim_set_current_win(prev)
-        end
-      end, { buffer = fbuf, silent = true, nowait = true })
-    end
-    return
-  end
-
-  -- First K: open a tooltip float.
-  local lines = vim.split(msg, "\n", { plain = true })
+local function open_hover_float(lines, title, border_hl, line_hl)
   local max_w = 1
   for _, l in ipairs(lines) do max_w = math.max(max_w, vim.fn.strdisplaywidth(l)) end
   local win_w = math.min(max_w, vim.o.columns - 6)
 
-  -- Height: sum of rows each line occupies under character-wrap.
   local height = 0
   for _, l in ipairs(lines) do
     local w = vim.fn.strdisplaywidth(l)
@@ -196,8 +171,10 @@ local function on_hover()
   vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
   vim.bo[fbuf].modifiable = false
   vim.bo[fbuf].bufhidden  = "wipe"
-  for i = 0, #lines - 1 do
-    vim.api.nvim_buf_add_highlight(fbuf, -1, "DbelvederConnError", i, 0, -1)
+  if line_hl then
+    for i = 0, #lines - 1 do
+      vim.api.nvim_buf_add_highlight(fbuf, -1, line_hl, i, 0, -1)
+    end
   end
 
   local fwin = vim.api.nvim_open_win(fbuf, false, {
@@ -208,12 +185,14 @@ local function on_hover()
     height    = height,
     style     = "minimal",
     border    = "rounded",
-    title     = " error ",
+    title     = " " .. title .. " ",
     title_pos = "center",
     focusable = false,
   })
-  vim.api.nvim_set_option_value("winhl", "FloatBorder:DbelvederConnError", { win = fwin })
-  vim.api.nvim_set_option_value("wrap",  true, { win = fwin })
+  if border_hl then
+    vim.api.nvim_set_option_value("winhl", "FloatBorder:" .. border_hl, { win = fwin })
+  end
+  vim.api.nvim_set_option_value("wrap", true, { win = fwin })
 
   state.hover_win = fwin
 
@@ -228,8 +207,85 @@ local function on_hover()
   })
 end
 
+local function on_hover()
+  local entry = entry_at_cursor()
+  if not entry or entry.type ~= "conn" then return end
+
+  -- Second K: enter the existing float so the user can read/scroll.
+  if state.hover_win and vim.api.nvim_win_is_valid(state.hover_win) then
+    pcall(vim.api.nvim_del_augroup_by_name, "DbelvederHoverFloat")
+    local fwin = state.hover_win
+    local fbuf = vim.api.nvim_win_get_buf(fwin)
+    local prev = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_config(fwin, { focusable = true })
+    vim.api.nvim_set_current_win(fwin)
+    for _, key in ipairs({ "q", "<Esc>" }) do
+      vim.keymap.set("n", key, function()
+        pcall(vim.api.nvim_win_close, fwin, true)
+        state.hover_win = nil
+        if vim.api.nvim_win_is_valid(prev) then
+          vim.api.nvim_set_current_win(prev)
+        end
+      end, { buffer = fbuf, silent = true, nowait = true })
+    end
+    return
+  end
+
+  local err_msg = state.conn_errors[entry.name]
+  if err_msg then
+    open_hover_float(
+      vim.split(err_msg, "\n", { plain = true }),
+      "error", "DbelvederConnError", "DbelvederConnError")
+    return
+  end
+
+  -- No error: show saved connection details.
+  local params = connections.load()[entry.name]
+  if not params then return end
+
+  -- Build a key→label map from cached capabilities for the matching driver.
+  local labels = {}
+  local caps = require("dbelveder.client").capabilities()
+  if caps then
+    for _, db in ipairs(caps.drivers or {}) do
+      if db.driver == params.driver then
+        for _, p in ipairs(db.params or {}) do
+          if p.key and p.label then labels[p.key] = p.label end
+        end
+        break
+      end
+    end
+  end
+
+  local keys = {}
+  for k in pairs(params) do
+    if not HIDDEN_CONN_FIELDS[k] then table.insert(keys, k) end
+  end
+  table.sort(keys, function(a, b)
+    if a == "driver" then return true end
+    if b == "driver" then return false end
+    return a < b
+  end)
+
+  local label_w = 0
+  for _, k in ipairs(keys) do
+    label_w = math.max(label_w, #(labels[k] or k))
+  end
+  local lines = {}
+  for _, k in ipairs(keys) do
+    local label = labels[k] or k
+    table.insert(lines, label .. string.rep(" ", label_w - #label) .. "  " .. tostring(params[k]))
+  end
+
+  open_hover_float(lines, entry.name, nil, nil)
+end
+
 
 function M.open()
+  -- Warm the capabilities cache so hover labels are available immediately.
+  local db = require("dbelveder")
+  db.ensure_backend_with_caps(function() end)
+
   if not (state.buffer and state.buffer:is_valid()) then
     state.buffer = Buffer:new(BUFNAME, "dbelveder_connections", false, "nofile")
     local hover_key = config.options.keymaps.hover_key

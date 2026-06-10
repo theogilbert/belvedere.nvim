@@ -242,7 +242,7 @@ Returns detailed metadata about a specific node.
 
 | Field     | Type   | Description                    |
 |-----------|--------|--------------------------------|
-| `details` | object | Driver-specific metadata object (see [Tree hierarchies](#tree-hierarchies)) |
+| `details` | object | Driver-specific metadata object (see [Tree hierarchies](#tree-hierarchies)) | 
 
 ---
 

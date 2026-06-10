@@ -177,10 +177,16 @@ function M._do_connect(name, params)
       return
     end
     connections_panel.set_conn_loading(name)
-    vim.defer_fn(function() M._send_connect(name, params) end, 200)
+    vim.defer_fn(function()
+      client.ensure_capabilities(function()
+        M._send_connect(name, params)
+      end)
+    end, 200)
   else
     connections_panel.set_conn_loading(name)
-    M._send_connect(name, params)
+    client.ensure_capabilities(function()
+      M._send_connect(name, params)
+    end)
   end
 end
 

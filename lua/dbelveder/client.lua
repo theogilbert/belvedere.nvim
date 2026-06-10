@@ -97,6 +97,11 @@ function M.ensure_capabilities(callback)
   end)
 end
 
+-- Returns the cached capabilities synchronously, or nil if not yet fetched.
+function M.capabilities()
+  return caps_cache
+end
+
 function M.reset_capabilities()
   caps_cache   = nil
   caps_pending = {}
