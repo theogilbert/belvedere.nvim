@@ -168,8 +168,15 @@ function M._do_connect(name, params)
   end
 end
 
+-- Fields stored in the connections file that must not be forwarded to the server.
+local CLIENT_ONLY_FIELDS = { server = true, requires_password = true }
+
 function M._send_connect(name, params)
-  client.request("connect", params, function(err, result)
+  local server_params = {}
+  for k, v in pairs(params) do
+    if not CLIENT_ONLY_FIELDS[k] then server_params[k] = v end
+  end
+  client.request("connect", server_params, function(err, result)
     connections_panel.clear_conn_loading(name)
     if err then
       vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
