@@ -12,6 +12,9 @@ local state = {
   pending  = {},  -- id → callback(err, result)
 }
 
+local caps_cache   = nil  -- cached capabilities result
+local caps_pending = {}   -- callbacks waiting for the first fetch
+
 
 local function on_stdout(_, lines, _)
   for _, line in ipairs(lines) do
@@ -56,7 +59,8 @@ function M.request(method, params, callback, on_progress)
   local id      = state.next_id
   state.next_id = id + 1
   state.pending[id] = { cb = callback, progress = on_progress }
-  local line = vim.json.encode({ id = id, method = method, params = params or {} }) .. "\n"
+  local p = (params == nil or vim.tbl_isempty(params)) and vim.empty_dict() or params
+  local line = vim.json.encode({ id = id, method = method, params = p }) .. "\n"
   vim.fn.chansend(state.job_id, line)
 end
 
@@ -80,10 +84,29 @@ function M.start(cmd)
   state.job_id = job_id
 end
 
+-- Fetch capabilities once and cache.  Subsequent calls return immediately.
+function M.ensure_capabilities(callback)
+  if caps_cache then callback(caps_cache) return end
+  table.insert(caps_pending, callback)
+  if #caps_pending > 1 then return end  -- request already in-flight
+  M.request("capabilities", {}, function(err, result)
+    caps_cache = (not err and result) or { server = "", databases = {} }
+    local waiting = caps_pending
+    caps_pending = {}
+    for _, cb in ipairs(waiting) do cb(caps_cache) end
+  end)
+end
+
+function M.reset_capabilities()
+  caps_cache   = nil
+  caps_pending = {}
+end
+
 function M.stop()
   if state.job_id then
     vim.fn.jobstop(state.job_id)
   end
+  M.reset_capabilities()
 end
 
 function M.is_running()

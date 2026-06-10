@@ -134,10 +134,26 @@ function M.setup(opts)
 end
 
 
+-- Start the backend if needed, then deliver capabilities to callback.
+function M.ensure_backend_with_caps(callback)
+  if not client.is_running() then
+    local ok, err = pcall(client.start, config.options.python_cmd)
+    if not ok then
+      vim.notify("dbelveder: " .. tostring(err), vim.log.levels.ERROR)
+      return
+    end
+    vim.defer_fn(function() client.ensure_capabilities(callback) end, 200)
+  else
+    client.ensure_capabilities(callback)
+  end
+end
+
 function M.connect()
-  connections.pick(function(name, params)
-    if not name then return end
-    M._do_connect(name, params)
+  M.ensure_backend_with_caps(function(caps)
+    connections.pick(caps, function(name, params)
+      if not name then return end
+      M._do_connect(name, params)
+    end)
   end)
 end
 
@@ -388,7 +404,7 @@ function M.open_explorer()
 end
 
 function M.stop()
-  client.stop()
+  client.stop()  -- also resets capabilities cache
   state.conns = {}
   for winid in pairs(state.win_labels) do
     close_win_label(winid)

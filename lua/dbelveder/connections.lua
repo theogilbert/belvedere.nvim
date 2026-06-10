@@ -6,22 +6,12 @@ local M = {}
 
 local config = require("dbelveder.config")
 
--- Driver-specific fields shown in the new-connection wizard.
-local DRIVER_FIELDS = {
-  sqlite = {
-    { key = "database", prompt = "Database file path: " },
-  },
-  sqlserver = {
-    { key = "host",               prompt = "Host: ",               default = "localhost"                   },
-    { key = "port",               prompt = "Port: ",               default = "1433"                        },
-    { key = "database",           prompt = "Database: "                                                    },
-    { key = "user",               prompt = "User: "                                                        },
-    { key = "applicationIntent", prompt = "Application Intent: ", choices = { "READ_WRITE", "READ_ONLY" } },
-    { key = "password",           prompt = "Password (empty = none): "                                     },
-  },
-}
-
-local DRIVERS = { "sqlite", "sqlserver" }
+-- vim.json.decode maps JSON null to vim.NIL, a truthy userdata sentinel.
+-- Use this instead of plain `v or default` wherever a value comes from JSON.
+local function jval(v, default)
+  if v == nil or v == vim.NIL then return default end
+  return v
+end
 
 -- Prompts for a password if the connection was marked as requiring one, then
 -- calls callback(params) with the password injected (never persisted).
@@ -85,17 +75,19 @@ local function prompt_sequence(fields, done)
       return
     end
     local f = fields[i]
-    if f.choices then
-      vim.ui.select(f.choices, { prompt = f.prompt }, function(val)
+    local choices = type(f.choices) == "table" and f.choices or nil
+    local prompt  = jval(f.label, "")
+    local default = jval(f.default)
+    if choices then
+      vim.ui.select(choices, { prompt = prompt }, function(val)
         if val == nil then done(nil) return end
         results[f.key] = val
         vim.schedule(function() step(i + 1) end)
       end)
     else
-      vim.ui.input({ prompt = f.prompt, default = f.default or "" }, function(val)
+      vim.ui.input({ prompt = prompt, default = default ~= nil and tostring(default) or "" }, function(val)
         if val == nil then done(nil) return end
-        -- keep default for empty input only when a default is defined
-        results[f.key] = (val ~= "" and val) or f.default or ""
+        results[f.key] = (val ~= "" and val) or default or ""
         vim.schedule(function() step(i + 1) end)
       end)
     end
@@ -105,8 +97,9 @@ end
 
 
 -- Show a picker with existing connections plus a "New" option.
+-- caps is the capabilities object from the server (passed to M.create if needed).
 -- callback(name, params) on selection, callback(nil) on cancel.
-function M.pick(callback)
+function M.pick(caps, callback)
   local conns = M.load()
   local names = vim.tbl_keys(conns)
   table.sort(names)
@@ -115,7 +108,7 @@ function M.pick(callback)
   vim.ui.select(items, { prompt = "dbelveder — select connection:" }, function(choice)
     if not choice then callback(nil) return end
     if choice == "[+ New connection]" then
-      M.create(callback)
+      M.create(caps, callback)
     else
       prompt_password(conns[choice], function(params)
         if not params then callback(nil) return end
@@ -125,27 +118,46 @@ function M.pick(callback)
   end)
 end
 
--- Run the new-connection wizard, save the result, then call callback(name, params).
--- Calls callback(nil) if the user cancels.
-function M.create(callback)
+-- Run the new-connection wizard using server-announced capabilities.
+-- caps: { server, databases = [{driver, params=[{key,type,label,...}]}] }
+-- callback(name, params) on success, callback(nil) on cancel.
+function M.create(caps, callback)
+  caps = caps or { server = "", databases = {} }
+
   vim.ui.input({ prompt = "Connection name: " }, function(name)
     if not name or name == "" then callback(nil) return end
 
-    vim.ui.select(DRIVERS, { prompt = "Driver:" }, function(driver)
+    local drivers = {}
+    for _, tech in ipairs(caps.databases) do
+      table.insert(drivers, tech.driver)
+    end
+
+    vim.ui.select(drivers, { prompt = "Database:" }, function(driver)
       if not driver then callback(nil) return end
 
-      local pw_field, fields = nil, {}
-      for _, f in ipairs(DRIVER_FIELDS[driver] or {}) do
-        if f.key == "password" then pw_field = f else table.insert(fields, f) end
+      local tech_params = {}
+      for _, tech in ipairs(caps.databases) do
+        if tech.driver == driver then tech_params = tech.params or {} break end
+      end
+
+      local pw_param, fields = nil, {}
+      for _, p in ipairs(tech_params) do
+        if p.secret then pw_param = p else table.insert(fields, p) end
       end
 
       prompt_sequence(fields, function(values)
         if not values then callback(nil) return end
 
-        -- coerce numeric port
-        if values.port then values.port = tonumber(values.port) or values.port end
+        -- Coerce fields the server declared as integers
+        for _, p in ipairs(fields) do
+          if p.type == "integer" and values[p.key] then
+            values[p.key] = tonumber(values[p.key]) or values[p.key]
+          end
+        end
 
-        local params = vim.tbl_extend("force", { driver = driver }, values)
+        local server = caps.server ~= "" and caps.server or nil
+        local params = vim.tbl_extend("force",
+          { driver = driver, server = server }, values)
 
         local function finish(pw)
           params.requires_password = pw ~= nil and pw ~= ""
@@ -159,8 +171,8 @@ function M.create(callback)
           callback(name, params_with_pw)
         end
 
-        if pw_field then
-          vim.ui.input({ prompt = pw_field.prompt, secret = true }, function(pw)
+        if pw_param then
+          vim.ui.input({ prompt = pw_param.label .. ": ", secret = true }, function(pw)
             if pw == nil then callback(nil) return end
             finish(pw)
           end)

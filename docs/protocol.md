@@ -68,6 +68,55 @@ Methods that currently support progress: `execute`.
 
 ## Methods
 
+### `capabilities`
+
+Returns the server's name and the full list of databases it supports, including the connection parameters each database accepts. Clients should call this once after starting the server and use the result to drive connection wizards instead of hard-coding driver lists.
+
+**params** — none (`{}`)
+
+**result**
+
+| Field          | Type                        | Description                        |
+|----------------|-----------------------------|------------------------------------|
+| `server`       | string                      | Human-readable server name (e.g. `"dbelveder"`) |
+| `databases` | array of [Database](#database) | Supported drivers/databases |
+
+**example**
+
+```json
+{"id":1,"method":"capabilities","params":{}}
+```
+```json
+{
+  "id": 1,
+  "result": {
+    "server": "dbelveder",
+    "databases": [
+      {
+        "driver": "sqlite",
+        "params": [
+          {"key": "database", "type": "string", "label": "Database file path", "required": true}
+        ]
+      },
+      {
+        "driver": "sqlserver",
+        "params": [
+          {"key": "host",              "type": "string",  "label": "Host",               "default": "localhost"},
+          {"key": "port",              "type": "integer", "label": "Port",               "default": 1433},
+          {"key": "database",          "type": "string",  "label": "Database"},
+          {"key": "user",              "type": "string",  "label": "User"},
+          {"key": "applicationIntent", "type": "enum",    "label": "Application Intent", "choices": ["READ_WRITE", "READ_ONLY"]},
+          {"key": "password",          "type": "string",  "label": "Password",           "secret": true}
+        ]
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+---
+
 ### `connect`
 
 Opens a new database connection. Multiple connections can be open at the same time.
@@ -197,6 +246,29 @@ Returns detailed metadata about a specific node.
 
 ---
 
+## Database
+
+Each entry in the `capabilities.databases` array:
+
+| Field    | Type                              | Description                                     |
+|----------|-----------------------------------|-------------------------------------------------|
+| `driver` | string                            | Driver identifier; passed as `driver` in `connect.params` |
+| `params` | array of [DatabaseParam](#databaseparam) | Connection parameters, in display order |
+
+## DatabaseParam
+
+| Field      | Type    | Required | Description                                                        |
+|------------|---------|----------|--------------------------------------------------------------------|
+| `key`      | string  | yes      | Parameter key sent in `connect.params`                             |
+| `type`     | string  | yes      | `"string"`, `"integer"`, or `"enum"`                               |
+| `label`    | string  | yes      | Human-readable label for UI display                                |
+| `required` | boolean | no       | Whether a non-empty value is required (default `false`)            |
+| `default`  | string or integer | no | Default value pre-filled in the UI                       |
+| `choices`  | array of strings | for `"enum"` | Allowed values                                    |
+| `secret`   | boolean | no       | Mask input in the UI (e.g. for passwords); never persisted to disk |
+
+---
+
 ## ExploreItem
 
 Each item returned by `explore.list` has this shape:
@@ -211,14 +283,9 @@ Each item returned by `explore.list` has this shape:
 
 ## Drivers
 
-The `driver` field in the `connect` params selects the backend.
+The `driver` field in `connect.params` selects the backend. Connection parameters accepted by each driver are announced at runtime via [`capabilities`](#capabilities) — the tables below document tree structure only.
 
 ### `sqlite`
-
-| Field      | Type   | Default | Description              |
-|------------|--------|---------|--------------------------|
-| `driver`   | string | —       | `"sqlite"`               |
-| `database` | string | —       | File path or `":memory:"` |
 
 **Tree hierarchy**
 
@@ -248,17 +315,16 @@ The `driver` field in the `connect` params selects the backend.
 
 ### `sqlserver` / `mssql`
 
-| Field                  | Type    | Default        | Description                              |
-|------------------------|---------|----------------|------------------------------------------|
-| `driver`               | string  | —              | `"sqlserver"`                            |
-| `host`                 | string  | `"localhost"`  |                                          |
-| `port`                 | integer | `1433`         |                                          |
-| `database`             | string  | `""`           |                                          |
-| `user`                 | string  | `""`           |                                          |
-| `password`             | string  | `""`           |                                          |
-| `applicationIntent`   | string  | `"READ_WRITE"` | `"READ_WRITE"` or `"READ_ONLY"` (AG replicas) |
-
 Requires: `pip install mssql-python`
 
-**Tree hierarchy** — same as PostgreSQL (`schema → table → columns/indices/constraints`), using `INFORMATION_SCHEMA` views.
+**Tree hierarchy**
+
+| Path                                        | Items returned                              |
+|---------------------------------------------|---------------------------------------------|
+| `[]`                                        | Schemas (`type`: `"schema"`)                |
+| `[schema]`                                  | Tables and views                            |
+| `[schema, table]`                           | Groups: `columns`, `indices`, `constraints` |
+| `[schema, table, "columns"]`                | Column names and types                      |
+| `[schema, table, "indices"]`                | Index names                                 |
+| `[schema, table, "constraints"]`            | Constraint names                            |
 

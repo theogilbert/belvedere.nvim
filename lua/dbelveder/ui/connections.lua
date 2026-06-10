@@ -23,51 +23,51 @@ local state = {
 }
 
 local function build(conns, active_set)
-  local by_driver, driver_order = {}, {}
+  -- Determine whether saved connections span multiple servers.
+  local server_set = {}
+  for _, p in pairs(conns) do server_set[p.server or ""] = true end
+  local multi_server = vim.tbl_count(server_set) > 1
+
+  -- Group by {driver, server}.  Key uses NUL as separator (never in names).
+  local groups, group_order = {}, {}
   for name, params in pairs(conns) do
-    local d = params.driver or "unknown"
-    if not by_driver[d] then
-      by_driver[d] = {}
-      table.insert(driver_order, d)
+    local driver = params.driver or "unknown"
+    local server = params.server
+    local gkey   = driver .. (server and ("\0" .. server) or "")
+    local label  = driver .. (multi_server and server and (" (" .. server .. ")") or "")
+    if not groups[gkey] then
+      groups[gkey] = { label = label, names = {} }
+      table.insert(group_order, gkey)
     end
-    table.insert(by_driver[d], name)
+    table.insert(groups[gkey].names, name)
   end
-  table.sort(driver_order)
-  for _, names in pairs(by_driver) do table.sort(names) end
+  table.sort(group_order)
+  for _, gkey in ipairs(group_order) do table.sort(groups[gkey].names) end
 
   local lines, line_map, hl_rules = {}, {}, {}
 
-  for _, driver in ipairs(driver_order) do
-    local names    = by_driver[driver]
-    local expanded = state.expanded[driver]
+  for _, gkey in ipairs(group_order) do
+    local g        = groups[gkey]
+    local expanded = state.expanded[gkey]
     local chevron  = expanded and "▾ " or "▸ "
-    local count    = " (" .. #names .. ")"
-    table.insert(lines, chevron .. driver .. count)
-    table.insert(line_map, { type = "header", driver = driver })
+    table.insert(lines, chevron .. g.label .. " (" .. #g.names .. ")")
+    table.insert(line_map, { type = "header", gkey = gkey })
     hl_rules[#lines] = "DbelvederHeaderRow"
 
     if expanded then
-      for _, name in ipairs(names) do
-        local active   = active_set[name]
-        local loading  = state.conn_loading[name]
-        local has_err  = state.conn_errors[name]
+      for _, name in ipairs(g.names) do
+        local active  = active_set[name]
+        local loading = state.conn_loading[name]
+        local has_err = state.conn_errors[name]
         local mark
-        if active then
-          mark = ACTIVE_MARK
-        elseif loading then
-          mark = " " .. SPINNER_FRAMES[loading.frame]
-        elseif has_err then
-          mark = ERROR_MARK
-        else
-          mark = ""
-        end
+        if active then mark = ACTIVE_MARK
+        elseif loading then mark = " " .. SPINNER_FRAMES[loading.frame]
+        elseif has_err then mark = ERROR_MARK
+        else mark = "" end
         table.insert(lines, "    " .. name .. mark)
-        table.insert(line_map, { type = "conn", name = name, driver = driver })
-        if active then
-          hl_rules[#lines] = "DbelvederConnection"
-        elseif has_err then
-          hl_rules[#lines] = "DbelvederConnError"
-        end
+        table.insert(line_map, { type = "conn", name = name })
+        if active then hl_rules[#lines] = "DbelvederConnection"
+        elseif has_err then hl_rules[#lines] = "DbelvederConnError" end
       end
     end
   end
@@ -112,7 +112,7 @@ local function on_enter()
   local entry = entry_at_cursor()
   if not entry then return end
   if entry.type == "header" then
-    state.expanded[entry.driver] = not state.expanded[entry.driver]
+    state.expanded[entry.gkey] = not state.expanded[entry.gkey]
     refresh()
   else
     state.conn_errors[entry.name] = nil
@@ -136,11 +136,13 @@ local function on_disconnect()
 end
 
 local function on_new()
-  connections.create(function(name, params)
-    if not name then return end
-    local db = require("dbelveder")
-    db._do_connect(name, params)
-    refresh()
+  local db = require("dbelveder")
+  db.ensure_backend_with_caps(function(caps)
+    connections.create(caps, function(name, params)
+      if not name then return end
+      db._do_connect(name, params)
+      refresh()
+    end)
   end)
 end
 
