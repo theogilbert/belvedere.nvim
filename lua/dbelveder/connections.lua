@@ -119,24 +119,24 @@ function M.pick(caps, callback)
 end
 
 -- Run the new-connection wizard using server-announced capabilities.
--- caps: { server, databases = [{driver, params=[{key,type,label,...}]}] }
+-- caps: { server, drivers = [{driver, params=[{key,type,label,...}]}] }
 -- callback(name, params) on success, callback(nil) on cancel.
 function M.create(caps, callback)
-  caps = caps or { server = "", databases = {} }
+  caps = caps or { server = "", drivers = {} }
 
   vim.ui.input({ prompt = "Connection name: " }, function(name)
     if not name or name == "" then callback(nil) return end
 
     local drivers = {}
-    for _, tech in ipairs(caps.databases) do
+    for _, tech in ipairs(caps.drivers) do
       table.insert(drivers, tech.driver)
     end
 
-    vim.ui.select(drivers, { prompt = "Database:" }, function(driver)
+    vim.ui.select(drivers, { prompt = "Driver:" }, function(driver)
       if not driver then callback(nil) return end
 
       local tech_params = {}
-      for _, tech in ipairs(caps.databases) do
+      for _, tech in ipairs(caps.drivers) do
         if tech.driver == driver then tech_params = tech.params or {} break end
       end
 

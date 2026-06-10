@@ -70,7 +70,7 @@ Methods that currently support progress: `execute`.
 
 ### `capabilities`
 
-Returns the server's name and the full list of databases it supports, including the connection parameters each database accepts. Clients should call this once after starting the server and use the result to drive connection wizards instead of hard-coding driver lists.
+Returns the server's name and the full list of drivers it supports, including the connection parameters each driver accepts. Clients should call this once after starting the server and use the result to drive connection wizards instead of hard-coding driver lists.
 
 **params** — none (`{}`)
 
@@ -79,7 +79,7 @@ Returns the server's name and the full list of databases it supports, including 
 | Field          | Type                        | Description                        |
 |----------------|-----------------------------|------------------------------------|
 | `server`       | string                      | Human-readable server name (e.g. `"dbelveder"`) |
-| `databases` | array of [Database](#database) | Supported drivers/databases |
+| `drivers` | array of [Driver](#driver) | Supported drivers |
 
 **example**
 
@@ -91,7 +91,7 @@ Returns the server's name and the full list of databases it supports, including 
   "id": 1,
   "result": {
     "server": "dbelveder",
-    "databases": [
+    "drivers": [
       {
         "driver": "sqlite",
         "params": [
@@ -246,16 +246,16 @@ Returns detailed metadata about a specific node.
 
 ---
 
-## Database
+## Driver
 
-Each entry in the `capabilities.databases` array:
+Each entry in the `capabilities.drivers` array:
 
 | Field    | Type                              | Description                                     |
 |----------|-----------------------------------|-------------------------------------------------|
 | `driver` | string                            | Driver identifier; passed as `driver` in `connect.params` |
-| `params` | array of [DatabaseParam](#databaseparam) | Connection parameters, in display order |
+| `params` | array of [DriverParam](#driverparam) | Connection parameters, in display order |
 
-## DatabaseParam
+## DriverParam
 
 | Field      | Type    | Required | Description                                                        |
 |------------|---------|----------|--------------------------------------------------------------------|

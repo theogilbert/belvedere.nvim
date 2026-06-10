@@ -90,7 +90,7 @@ function M.ensure_capabilities(callback)
   table.insert(caps_pending, callback)
   if #caps_pending > 1 then return end  -- request already in-flight
   M.request("capabilities", {}, function(err, result)
-    caps_cache = (not err and result) or { server = "", databases = {} }
+    caps_cache = (not err and result) or { server = "", drivers = {} }
     local waiting = caps_pending
     caps_pending = {}
     for _, cb in ipairs(waiting) do cb(caps_cache) end
