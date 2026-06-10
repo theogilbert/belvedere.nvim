@@ -135,6 +135,16 @@ local function on_disconnect()
   db.disconnect(entry.name)
 end
 
+local function on_edit()
+  local entry = entry_at_cursor()
+  if not entry or entry.type ~= "conn" then return end
+  local caps = require("dbelveder.client").capabilities()
+  connections.edit(entry.name, caps, function(new_name, _params)
+    if not new_name then return end
+    refresh()
+  end)
+end
+
 local function on_new()
   local db = require("dbelveder")
   db.ensure_backend_with_caps(function(caps)
@@ -293,6 +303,7 @@ function M.open()
     state.buffer:set_keymap("n", "e",        on_explore,    { nowait = true, silent = true, desc = "Open explorer" })
     state.buffer:set_keymap("n", "x",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
     state.buffer:set_keymap("n", "d",        on_delete,     { nowait = true, silent = true, desc = "Delete connection" })
+    state.buffer:set_keymap("n", "r",        on_edit,       { nowait = true, silent = true, desc = "Edit connection" })
     state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection" })
     state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh" })
     state.buffer:set_keymap("n", hover_key,  on_hover,      { nowait = true, silent = true, desc = "Show error details" })

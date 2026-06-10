@@ -184,4 +184,88 @@ function M.create(caps, callback)
   end)
 end
 
+-- Edit (rename + update fields) an existing connection.
+-- caps: capabilities object (may be nil — field editing is skipped without it).
+-- callback(new_name, params) on success, callback(nil) on cancel.
+function M.edit(name, caps, callback)
+  caps = caps or { server = "", drivers = {} }
+  local conns = M.load()
+  local current = conns[name]
+  if not current then
+    vim.notify(("dbelveder: connection %q not found"):format(name), vim.log.levels.ERROR)
+    callback(nil)
+    return
+  end
+
+  vim.ui.input({ prompt = "Connection name: ", default = name }, function(new_name)
+    if not new_name or new_name == "" then callback(nil) return end
+
+    if new_name ~= name and conns[new_name] then
+      vim.notify(("dbelveder: %q already exists"):format(new_name), vim.log.levels.ERROR)
+      callback(nil)
+      return
+    end
+
+    -- Defer: suit calls stopinsert after on_confirm returns, which would kill
+    -- any new input opened synchronously here.
+    vim.schedule(function()
+    local driver = current.driver
+    local tech_params = {}
+    for _, tech in ipairs(caps.drivers) do
+      if tech.driver == driver then tech_params = tech.params or {} break end
+    end
+
+    local pw_param, fields = nil, {}
+    for _, p in ipairs(tech_params) do
+      if p.secret then pw_param = p else table.insert(fields, p) end
+    end
+
+    -- Pre-fill each field with its current saved value.
+    local fields_prefilled = {}
+    for _, p in ipairs(fields) do
+      local f = vim.tbl_extend("force", {}, p)
+      local cur = current[p.key]
+      if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
+      table.insert(fields_prefilled, f)
+    end
+
+    prompt_sequence(fields_prefilled, function(values)
+      if not values then callback(nil) return end
+
+      for _, p in ipairs(fields_prefilled) do
+        if p.type == "integer" and values[p.key] then
+          values[p.key] = tonumber(values[p.key]) or values[p.key]
+        end
+      end
+
+      local params = vim.tbl_extend("force",
+        { driver = driver, server = current.server }, values)
+
+      local function finish(pw, requires_pw)
+        params.requires_password = requires_pw
+        local conns2 = M.load()
+        if new_name ~= name then conns2[name] = nil end
+        conns2[new_name] = params
+        M.save(conns2)
+        vim.notify(("dbelveder: saved %q"):format(new_name), vim.log.levels.INFO)
+        local final = (requires_pw and pw ~= nil and pw ~= "")
+          and vim.tbl_extend("force", params, { password = pw })
+          or params
+        callback(new_name, final)
+      end
+
+      if pw_param then
+        vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
+          if pw == nil then callback(nil) return end
+          if pw == "" then finish(nil, current.requires_password)
+          else finish(pw, true) end
+        end)
+      else
+        finish(nil, false)
+      end
+    end)
+    end)  -- vim.schedule
+  end)
+end
+
 return M
