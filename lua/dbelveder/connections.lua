@@ -31,7 +31,7 @@ local function prompt_password(params, callback)
     callback(params)
     return
   end
-  vim.ui.input({ prompt = "Password: " }, function(val)
+  vim.ui.input({ prompt = "Password: ", secret = true }, function(val)
     if val == nil then callback(nil) return end
     callback(vim.tbl_extend("force", params, { password = val }))
   end)
@@ -160,7 +160,7 @@ function M.create(callback)
         end
 
         if pw_field then
-          vim.ui.input({ prompt = pw_field.prompt }, function(pw)
+          vim.ui.input({ prompt = pw_field.prompt, secret = true }, function(pw)
             if pw == nil then callback(nil) return end
             finish(pw)
           end)
