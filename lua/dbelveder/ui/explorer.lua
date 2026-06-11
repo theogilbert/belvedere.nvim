@@ -33,6 +33,7 @@ local state = {
   buffer       = nil,
   tree         = {},
   conn_id      = nil,
+  conn_label   = nil,  -- "name (driver)" shown in the buffer name
   root_loading = false,
 }
 
@@ -180,13 +181,19 @@ local function get_or_create_buffer()
   end, { nowait = true, silent = true, desc = "Refresh explorer" })
 end
 
-function M.open(conn_id)
+--- @param conn_id any
+--- @param conn_name string
+--- @param driver string
+function M.open(conn_id, conn_name, driver)
   get_or_create_buffer()
 
   -- Reset the tree when switching to a different connection.
   if conn_id ~= state.conn_id then
-    state.tree    = {}
-    state.conn_id = conn_id
+    state.tree       = {}
+    state.conn_id    = conn_id
+    state.conn_label = conn_name .. " (" .. driver .. ")"
+    pcall(vim.api.nvim_buf_set_name, state.buffer.buf_id,
+      BUFNAME .. " [" .. state.conn_label .. "]")
   end
 
   local win = vim.fn.bufwinid(state.buffer.buf_id)
@@ -194,6 +201,13 @@ function M.open(conn_id)
     win = window.open_sidebar(state.buffer.buf_id, "left")
   end
   vim.api.nvim_set_current_win(win)
+
+  if state.conn_label then
+    -- Escape % so statusline format doesn't misinterpret it.
+    local label = state.conn_label:gsub("%%", "%%%%")
+    vim.api.nvim_set_option_value("winbar",
+      "%#DbelvederHeaderRow#  " .. label, { win = win })
+  end
 
   if #state.tree == 0 then
     load_root()

@@ -222,7 +222,7 @@ function M.open_explorer_for(name)
     vim.notify(("dbelveder: not connected to %q — press <CR> to connect first"):format(name), vim.log.levels.ERROR)
     return
   end
-  explorer.open(conn.conn_id)
+  explorer.open(conn.conn_id, name, conn.driver)
 end
 
 function M.open_explorer()
@@ -233,7 +233,7 @@ function M.open_explorer()
     vim.notify("dbelveder: no active connection — run :DbConnect first", vim.log.levels.WARN)
     return
   end
-  explorer.open(conn.conn_id)
+  explorer.open(conn.conn_id, name, conn.driver)
 end
 
 function M.stop()
