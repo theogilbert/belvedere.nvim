@@ -70,6 +70,7 @@ Open the connections panel with `:DbConnections`. Connections are grouped by dri
 |-----|--------|
 | `<CR>` | Expand/collapse a driver group, or connect to the database under the cursor |
 | `n` | Create a new connection (guided wizard) |
+| `r` | Edit the saved connection under the cursor |
 | `d` | Delete the saved connection under the cursor |
 | `x` | Disconnect from the database under the cursor |
 | `e` | Open the explorer for the connected database under the cursor |
@@ -93,7 +94,7 @@ Once a connection is open, associate it with the buffer you want to query:
 :DbAssociate
 ```
 
-A picker lists all currently open connections. Select one — the buffer is now linked and a label appears in the bottom-left corner of the window.
+A picker lists all currently open connections. Select one — the buffer is now linked and a "Connected to name (driver)" label appears at the bottom of the window.
 
 ### 3. Execute queries
 
@@ -106,7 +107,7 @@ Write SQL in the associated buffer and run:
 | `:'<,'>DbExecute` | Explicit line range |
 | `:%DbExecute` | Whole buffer |
 
-The `keymaps.execute` option (default `<CR>`) is automatically bound in both `n` and `x` modes to `:DbRun`.
+The `keymaps.execute` option (default `<CR>`) is automatically bound in both `n` and `x` modes. In buffers that have no associated connection the key does nothing (no warning); use `:DbRun` or `:DbExecute` directly for an explicit error.
 
 Results appear in a split window with aligned columns and a row count. For DML queries (`INSERT`, `UPDATE`, `DELETE`) the affected row count is shown instead of a table.
 
@@ -119,9 +120,9 @@ Press `e` on a connected database in the connections panel, or run `:DbExplore`.
 | Key | Action |
 |-----|--------|
 | `<CR>` | Expand / collapse a node; describe a leaf |
-| `R` | Refresh the tree from the server |
+| `R` | Refresh the tree, bypassing the server-side schema cache |
 
-A spinner is shown while a node's children are loading.
+The window title bar shows the connection name and driver. A spinner is shown while a node's children are loading.
 
 ---
 
@@ -136,8 +137,10 @@ A spinner is shown while a node's children are loading.
 | `:DbDeleteConnection <name>` | Remove a saved connection |
 | `:DbDisconnect [name]` | Disconnect a named connection, or the current buffer's connection |
 | `:[range]DbExecute` | Execute SQL (range, selection, or current line) |
+| `:DbRun` | Execute the visual selection or the current line |
 | `:DbExplore` | Open the schema explorer |
 | `:DbStop` | Kill the Python backend process |
+| `:DbRestart` | Restart the Python backend process (clears all state) |
 
 ---
 
@@ -235,6 +238,9 @@ db.open_explorer_for("prod-mssql")
 
 -- Kill the backend process and clear all state.
 db.stop()
+
+-- Restart the backend process (stop + start, clears all state).
+db.restart()
 ```
 
 ```lua
@@ -249,6 +255,6 @@ conns.get("prod-mssql")
 -- Delete a connection.
 conns.delete("old-db")
 
--- Open the new-connection wizard.
-conns.create(function(name, params) ... end)
+-- Open the new-connection wizard (caps from ensure_backend_with_caps).
+conns.create(caps, function(name, params) ... end)
 ```

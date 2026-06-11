@@ -9,7 +9,7 @@ CONTENTS                                                    *dbelveder-contents*
   1. Introduction ....................................... |dbelveder-intro|
   2. Requirements ....................................... |dbelveder-requirements|
   3. Setup .............................................. |dbelveder-setup|
-  4. Connections ........................................ |dbelveder-connections|
+  4. Connections panel .................................. |dbelveder-connections|
   5. Commands ........................................... |dbelveder-commands|
   6. Explorer ........................................... |dbelveder-explorer|
   7. Results window ..................................... |dbelveder-results|
@@ -53,40 +53,54 @@ Call `require("dbelveder").setup()` once in your config: >lua
 All options are optional. See |dbelveder-config| for the full reference.
 
 ================================================================================
-CONNECTIONS                                              *dbelveder-connections*
+CONNECTIONS PANEL                                        *dbelveder-connections*
 
-Connection parameters are stored in a JSON file, not in your nvim config.
+Open the connections panel with |:DbConnections|. Connections are grouped by
+driver and persist across sessions. A "Connected to name (driver)" label
+appears at the bottom of any window whose buffer has an associated connection.
+
+CONNECTIONS FILE ~
+
 The default location is: >
   $XDG_CONFIG_HOME/dbelveder/connections.json
   (~/.config/dbelveder/connections.json on most systems)
 <
 The directory and file are created automatically when you save your first
-connection. You can edit the file directly, or use the commands below.
+connection. You can edit the file directly, or use the panel keymaps below.
 
-FILE FORMAT ~
->json
-  {
-    "connections": {
-      "local": { "driver": "sqlite", "database": "/home/user/data.db" },
-      "prod":  { "driver": "postgres", "host": "db.example.com",
-                 "port": 5432, "database": "myapp",
-                 "user": "readonly", "password": "secret" }
-    }
-  }
-<
-CREATING A CONNECTION ~
+PANEL KEYMAPS ~
 
-Run |:DbConnect| or |:DbNewConnection| and follow the prompts:
+  <CR>    Expand/collapse a driver group, or connect to the database under
+          the cursor.
+  n       Run the new-connection wizard.
+  r       Edit the connection under the cursor (rename and update fields).
+  d       Delete the saved connection under the cursor.
+  x       Disconnect from the database under the cursor.
+  e       Open the explorer for the connected database under the cursor.
+  K       Show connection details in a hover float. If an error occurred,
+          shows the error message. Press K again to enter the float
+          (then q or <Esc> to close it).
+  R       Refresh the panel.
+  q       Close the panel.
 
-  1. Enter a connection name
-  2. Select the driver
-  3. Fill in driver-specific fields (host, port, database, user, password)
+STATUS INDICATORS ~
 
-The connection is written to the JSON file immediately and is available in
-all future sessions.
+  ✓   Connected (green highlight)
+  ✗   Last connection attempt failed (red) — press K for details
+  ⠋…  Connecting in progress (animated spinner)
 
 ================================================================================
 COMMANDS                                                    *dbelveder-commands*
+
+                                                           *:DbConnections*
+:DbConnections
+    Toggle the connections panel sidebar.
+
+                                                             *:DbAssociate*
+:DbAssociate
+    Open a picker listing all currently open connections. Selecting one
+    associates the current buffer with that connection. The buffer can then
+    be used to execute queries.
 
                                                               *:DbConnect*
 :DbConnect
@@ -108,17 +122,19 @@ COMMANDS                                                    *dbelveder-commands*
     Tab-completion is available.
 
                                                            *:DbDisconnect*
-:DbDisconnect
-    Close the current database connection.
+:DbDisconnect [{name}]
+    Disconnect the named connection. If {name} is omitted, disconnects
+    the connection associated with the current buffer.
+
+                                                                 *:DbRun*
+:DbRun
+    Execute the visual selection (when called from visual mode) or the
+    current line (normal mode) against the current buffer's connection.
 
                                                              *:DbExecute*
 :[range]DbExecute
-    Execute a SQL statement against the current connection and display the
-    results in the |dbelveder-results| window.
-
-    Without a range, executes the current line.
-    With a range (including `'<,'>` from visual mode or `%`), executes all
-    lines in the range joined with newlines.
+    Execute lines in {range} (joined with newlines) against the current
+    buffer's connection and display the results.
 
     Examples: >
       :DbExecute          " current line
@@ -127,24 +143,34 @@ COMMANDS                                                    *dbelveder-commands*
 <
                                                              *:DbExplore*
 :DbExplore
-    Open the database explorer sidebar. Requires an active connection.
+    Open the schema explorer sidebar for the connection associated with
+    the current buffer (falls back to any open connection).
     See |dbelveder-explorer|.
 
                                                                 *:DbStop*
 :DbStop
-    Kill the Python backend process.
+    Kill the Python backend process and clear all session state.
+
+                                                             *:DbRestart*
+:DbRestart
+    Restart the Python backend process. Equivalent to |:DbStop| followed
+    by starting the backend again. All state (open connections, buffer
+    associations) is cleared.
 
 ================================================================================
 EXPLORER                                                    *dbelveder-explorer*
 
-:DbExplore opens a vertical sidebar showing the database object tree.
+|:DbExplore| opens a vertical sidebar showing the database object tree.
+The window title bar (winbar) displays the connection name and driver.
+The buffer is named `dbelveder://explorer [name (driver)]`.
 
 KEYMAPS ~
 
   <CR>    Expand or collapse a node. On a leaf node, shows metadata for
-          that object in a notification (column types, row count, etc.).
+          that object (column types, etc.).
 
-  R       Refresh the entire tree from the server.
+  R       Refresh the entire tree from the server, bypassing the
+          server-side schema cache.
 
 TREE STRUCTURE ~
 
@@ -179,6 +205,10 @@ Query results are shown in a dedicated buffer named `dbelveder://results`.
 - Columns are right-padded and aligned.
 - A separator line is drawn below the header.
 - A row count is shown at the bottom.
+- DML queries (INSERT, UPDATE, DELETE) show an affected-row count instead.
+- Multiple statements separated by `;` are executed sequentially; each
+  result is shown under a labelled heading (`── Query 1 / 3 ──`, etc.).
+  This does not apply to MongoDB-style drivers.
 - Rows beyond |dbelveder-max_rows| are dropped with a notice.
 
 The buffer is read-only and reused across queries. Its direction and size
@@ -192,6 +222,10 @@ require("dbelveder").setup({opts})
     Initialize the plugin. Must be called before any other function.
     {opts} is optional — see |dbelveder-config|.
 
+                                              *dbelveder.open_connections()*
+require("dbelveder").open_connections()
+    Toggle the connections panel. Equivalent to |:DbConnections|.
+
                                                     *dbelveder.connect()*
 require("dbelveder").connect()
     Open the connection picker. Equivalent to |:DbConnect| with no args.
@@ -200,31 +234,45 @@ require("dbelveder").connect()
 require("dbelveder").connect_by_name({name})
     Connect directly to {name} from the connections file.
 
+                                                  *dbelveder.associate()*
+require("dbelveder").associate()
+    Open a picker of active connections and associate the current buffer
+    with the chosen one. Equivalent to |:DbAssociate|.
+
                                                  *dbelveder.disconnect()*
-require("dbelveder").disconnect()
-    Disconnect from the current database.
+require("dbelveder").disconnect({name})
+    Disconnect {name}. Pass an empty string to disconnect the connection
+    of the current buffer.
 
                                                     *dbelveder.execute()*
-require("dbelveder").execute({sql})
-    Execute the SQL string {sql} and open the results window.
+require("dbelveder").execute()
+    Execute the visual selection or the current line against the current
+    buffer's connection. This is what |:DbRun| and the configured
+    `keymaps.execute` key call.
+    Silently does nothing if the buffer has no associated connection
+    (the keymap path); use |:DbRun| for an explicit error.
 
                                               *dbelveder.execute_range()*
 require("dbelveder").execute_range({line1}, {line2})
     Execute lines {line1}–{line2} (1-based) from the current buffer.
 
-                                           *dbelveder.execute_selection()*
-require("dbelveder").execute_selection()
-    Execute the last visual selection. Reads the `'<` / `'>` marks and
-    uses |nvim_buf_get_text()| so charwise selections are exact. Notifies
-    at INFO level if no selection is present.
-
                                                *dbelveder.open_explorer()*
 require("dbelveder").open_explorer()
-    Open the explorer sidebar.
+    Open the explorer for the current buffer's connection (or any open
+    connection). Equivalent to |:DbExplore|.
+
+                                            *dbelveder.open_explorer_for()*
+require("dbelveder").open_explorer_for({name})
+    Open the explorer for the named connection specifically.
 
                                                       *dbelveder.stop()*
 require("dbelveder").stop()
-    Kill the Python backend process.
+    Kill the Python backend process and clear all state.
+    Equivalent to |:DbStop|.
+
+                                                   *dbelveder.restart()*
+require("dbelveder").restart()
+    Restart the Python backend process. Equivalent to |:DbRestart|.
 
 CONNECTIONS MODULE ~
                                                   *dbelveder-connections-api*
@@ -241,12 +289,15 @@ require("dbelveder.connections").save({conns})
 require("dbelveder.connections").delete({name})
     Removes {name} from the connections file.
 
-require("dbelveder.connections").pick({callback})
-    Opens the connection picker. {callback} is called as
-    `callback(name, params)` on selection, or `callback(nil)` on cancel.
+require("dbelveder.connections").pick({caps}, {callback})
+    Opens the connection picker. {caps} is the capabilities object from
+    the server (used if the user selects "New connection"). {callback}
+    is called as `callback(name, params)` on selection, or
+    `callback(nil)` on cancel.
 
-require("dbelveder.connections").create({callback})
-    Runs the new-connection wizard. {callback} is called as
+require("dbelveder.connections").create({caps}, {callback})
+    Runs the new-connection wizard using {caps} from the server to drive
+    the driver list and field prompts. {callback} is called as
     `callback(name, params)` on completion, or `callback(nil)` on cancel.
 
 ================================================================================
@@ -258,8 +309,11 @@ All keys are optional.
   require("dbelveder").setup({
     python_cmd       = "dbelveder",
     connections_file = nil,   -- auto-detected from $XDG_CONFIG_HOME
-    keymaps          = { execute = "<CR>" },
-    results          = { split = "below", height = 15, max_rows = 500 },
+    keymaps = {
+      execute   = "<CR>",
+      hover_key = "K",
+    },
+    results = { split = "below", height = 15, max_rows = 500 },
   })
 <
 
@@ -275,15 +329,23 @@ connections_file ~
   Type: `string`   Default: `$XDG_CONFIG_HOME/dbelveder/connections.json`
 
   Path to the JSON file where connections are stored. The directory is
-  created automatically on first save. Override if you want to keep
-  connections somewhere else, e.g. in a dotfiles repo.
+  created automatically on first save.
 
-                                                          *dbelveder-keymaps*
+                                                     *dbelveder-execute-key*
 keymaps.execute ~
   Type: `string`   Default: `"<CR>"`
 
-  Key that triggers query execution in the query buffer. Wire it up in
-  your own `ftplugin/sql.lua` with |dbelveder.execute_range()|.
+  Global key bound in `n` and `x` modes to execute the current line or
+  visual selection. In buffers with no associated connection the key does
+  nothing (no warning). Set to `""` to disable the global keymap and wire
+  it up yourself per filetype.
+
+                                                    *dbelveder-hover-key*
+keymaps.hover_key ~
+  Type: `string`   Default: `"K"`
+
+  Key inside the connections panel to open the hover float (connection
+  details or error message).
 
                                                    *dbelveder-results-split*
 results.split ~
@@ -316,6 +378,11 @@ Driver value          Database         Extra Python package
 "mssql"               SQL Server       mssql-python >= 1.8
 "mongodb"             MongoDB          pymongo >= 4
 "mongo"               MongoDB          pymongo >= 4
+
+Driver identifiers and their connection parameters are announced at runtime
+by the server via the `capabilities` protocol method. The list above reflects
+the default dbelveder-py distribution; custom backends may expose different
+drivers.
 
 For the full connection parameter reference and tree hierarchy per driver,
 see docs/protocol.md.
