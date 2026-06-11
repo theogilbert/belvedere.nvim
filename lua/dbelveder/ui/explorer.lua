@@ -143,6 +143,32 @@ local function on_enter()
   end
 end
 
+-- Fetch the root node list from the server and repopulate state.tree.
+-- @param reset_cache boolean|nil  pass true to discard the server-side cache
+local function load_root(reset_cache)
+  local params = { connection_id = state.conn_id, path = {} }
+  if reset_cache then params.reset_cache = true end
+  state.root_loading = true
+  spinner:start()
+  render()
+  client.request("explore.list", params, function(err, result)
+    state.root_loading = false
+    spinner:stop()
+    if err then
+      vim.schedule(function()
+        vim.notify("dbelveder explorer: " .. err, vim.log.levels.ERROR)
+        render()
+      end)
+      return
+    end
+    state.tree = {}
+    for _, item in ipairs(result.items or {}) do
+      state.tree[#state.tree + 1] = make_node(item, { item.name })
+    end
+    vim.schedule(render)
+  end)
+end
+
 local function get_or_create_buffer()
   if state.buffer and state.buffer:is_valid() then return end
   state.buffer = Buffer:new(BUFNAME, "dbelveder_explorer", false, "nofile")
@@ -150,9 +176,8 @@ local function get_or_create_buffer()
     { nowait = true, silent = true, desc = "Expand / collapse / describe" })
   state.buffer:set_keymap("n", "R", function()
     state.tree = {}
-    M.open(state.conn_id)
+    load_root(true)
   end, { nowait = true, silent = true, desc = "Refresh explorer" })
-
 end
 
 function M.open(conn_id)
@@ -171,25 +196,7 @@ function M.open(conn_id)
   vim.api.nvim_set_current_win(win)
 
   if #state.tree == 0 then
-    state.root_loading = true
-    spinner:start()
-    render()
-    client.request("explore.list", { connection_id = state.conn_id, path = {} }, function(err, result)
-      state.root_loading = false
-      spinner:stop()
-      if err then
-        vim.schedule(function()
-          vim.notify("dbelveder explorer: " .. err, vim.log.levels.ERROR)
-          render()
-        end)
-        return
-      end
-      state.tree = {}
-      for _, item in ipairs(result.items or {}) do
-        state.tree[#state.tree + 1] = make_node(item, { item.name })
-      end
-      vim.schedule(render)
-    end)
+    load_root()
   else
     render()
   end
