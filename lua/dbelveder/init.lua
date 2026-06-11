@@ -42,13 +42,19 @@ function M.setup(opts)
 
   local key = config.options.keymaps.execute
   if key and key ~= "" then
-    vim.keymap.set("n", key, M.execute,
+    -- Silently pass through when the buffer has no associated connection.
+    -- Explicit commands (:DbRun, :DbExecute) still produce the "no connection" warning.
+    local function try_execute()
+      if not conn_for_buf(vim.api.nvim_get_current_buf()) then return end
+      M.execute()
+    end
+    vim.keymap.set("n", key, try_execute,
       { desc = "Execute current line", silent = true })
     vim.keymap.set("x", key, function()
       -- Exit visual mode first so getpos("v") is still valid.
       vim.api.nvim_feedkeys(
         vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
-      M.execute()
+      try_execute()
     end, { desc = "Execute selection", silent = true })
   end
 end
@@ -237,13 +243,24 @@ function M.open_explorer()
   explorer.open(conn.conn_id, name, conn.driver)
 end
 
-function M.stop()
+local function teardown()
   client.stop()  -- also resets capabilities cache
   state.conns     = {}
   state.buf_conns = {}
   conn_label.clear_all()
   explorer.reset()
+end
+
+function M.stop()
+  teardown()
   vim.notify("dbelveder: backend stopped", vim.log.levels.INFO)
+end
+
+function M.restart()
+  teardown()
+  if start_backend() then
+    vim.notify("dbelveder: backend restarted", vim.log.levels.INFO)
+  end
 end
 
 return M

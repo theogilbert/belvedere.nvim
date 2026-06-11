@@ -85,3 +85,8 @@ end, {})
 vim.api.nvim_create_user_command("DbStop", function(_)
   db.stop()
 end, {})
+
+-- :DbRestart
+vim.api.nvim_create_user_command("DbRestart", function(_)
+  db.restart()
+end, {})
