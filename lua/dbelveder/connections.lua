@@ -65,6 +65,29 @@ function M.delete(name)
 end
 
 
+-- Return the {fields, pw_param} for a given driver from capabilities.
+local function driver_fields(caps, driver)
+  for _, tech in ipairs(caps.drivers or {}) do
+    if tech.driver == driver then
+      local pw_param, fields = nil, {}
+      for _, p in ipairs(tech.params or {}) do
+        if p.secret then pw_param = p else table.insert(fields, p) end
+      end
+      return fields, pw_param
+    end
+  end
+  return {}, nil
+end
+
+-- Coerce fields declared as integers from their string input values.
+local function coerce_integer_fields(fields, values)
+  for _, p in ipairs(fields) do
+    if p.type == "integer" and values[p.key] then
+      values[p.key] = tonumber(values[p.key]) or values[p.key]
+    end
+  end
+end
+
 -- Prompts for a sequence of fields, calling done(results) when all are filled.
 -- Calls done(nil) if the user cancels any step.
 local function prompt_sequence(fields, done)
@@ -127,33 +150,17 @@ function M.create(caps, callback)
   vim.ui.input({ prompt = "Connection name: " }, function(name)
     if not name or name == "" then callback(nil) return end
 
-    local drivers = {}
-    for _, tech in ipairs(caps.drivers) do
-      table.insert(drivers, tech.driver)
-    end
+    local driver_names = vim.tbl_map(function(t) return t.driver end, caps.drivers)
 
-    vim.ui.select(drivers, { prompt = "Driver:" }, function(driver)
+    vim.ui.select(driver_names, { prompt = "Driver:" }, function(driver)
       if not driver then callback(nil) return end
 
-      local tech_params = {}
-      for _, tech in ipairs(caps.drivers) do
-        if tech.driver == driver then tech_params = tech.params or {} break end
-      end
-
-      local pw_param, fields = nil, {}
-      for _, p in ipairs(tech_params) do
-        if p.secret then pw_param = p else table.insert(fields, p) end
-      end
+      local fields, pw_param = driver_fields(caps, driver)
 
       prompt_sequence(fields, function(values)
         if not values then callback(nil) return end
 
-        -- Coerce fields the server declared as integers
-        for _, p in ipairs(fields) do
-          if p.type == "integer" and values[p.key] then
-            values[p.key] = tonumber(values[p.key]) or values[p.key]
-          end
-        end
+        coerce_integer_fields(fields, values)
 
         local server = caps.server ~= "" and caps.server or nil
         local params = vim.tbl_extend("force",
@@ -210,15 +217,7 @@ function M.edit(name, caps, callback)
     -- any new input opened synchronously here.
     vim.schedule(function()
     local driver = current.driver
-    local tech_params = {}
-    for _, tech in ipairs(caps.drivers) do
-      if tech.driver == driver then tech_params = tech.params or {} break end
-    end
-
-    local pw_param, fields = nil, {}
-    for _, p in ipairs(tech_params) do
-      if p.secret then pw_param = p else table.insert(fields, p) end
-    end
+    local fields, pw_param = driver_fields(caps, driver)
 
     -- Pre-fill each field with its current saved value.
     local fields_prefilled = {}
@@ -232,11 +231,7 @@ function M.edit(name, caps, callback)
     prompt_sequence(fields_prefilled, function(values)
       if not values then callback(nil) return end
 
-      for _, p in ipairs(fields_prefilled) do
-        if p.type == "integer" and values[p.key] then
-          values[p.key] = tonumber(values[p.key]) or values[p.key]
-        end
-      end
+      coerce_integer_fields(fields_prefilled, values)
 
       local params = vim.tbl_extend("force",
         { driver = driver, server = current.server }, values)

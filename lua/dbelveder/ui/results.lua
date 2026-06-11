@@ -12,6 +12,18 @@ local M = {}
 
 local BUFNAME = "dbelveder://results"
 
+local function rows_label(total, max_rows)
+  local s = total .. " row" .. (total == 1 and "" or "s")
+  if total > max_rows then
+    return max_rows .. " of " .. total .. " rows (truncated)"
+  end
+  return s
+end
+
+local function rows_affected_msg(n, verb)
+  return n .. " row" .. (n == 1 and "" or "s") .. " " .. verb
+end
+
 
 local state = {
   buffer            = nil,  -- Buffer instance
@@ -222,11 +234,7 @@ function M.append_batch_result(idx, total, columns, rows)
   local tbl     = table_fmt.from_structured_data(display, 1)
   local content = vim.list_extend({}, tbl.text)
   table.insert(content, "")
-  local label = total_rows .. " row" .. (total_rows == 1 and "" or "s")
-  if total_rows > max_rows then
-    label = max_rows .. " of " .. total_rows .. " rows (truncated)"
-  end
-  table.insert(content, label)
+  table.insert(content, rows_label(total_rows, max_rows))
   local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 0, 1, tbl)
   table.insert(rules, { higroup = "DbelvederRowCount",
     start = { #tbl.text + 1, 0 }, finish = { #tbl.text + 1, -1 } })
@@ -260,11 +268,7 @@ function M.show_results(columns, rows)
   -- Buffer content: formatted table + blank line + row count
   local content = vim.list_extend({}, tbl.text)
   table.insert(content, "")
-  local count_label = total_rows .. " row" .. (total_rows == 1 and "" or "s")
-  if total_rows > max_rows then
-    count_label = max_rows .. " of " .. total_rows .. " rows (truncated)"
-  end
-  table.insert(content, count_label)
+  table.insert(content, rows_label(total_rows, max_rows))
 
   state.buffer:set_content(content)
   apply_highlights(tbl, total_rows, max_rows)
@@ -275,18 +279,16 @@ function M.show_rows_affected(n, verb)
   get_or_create_buffer()
   open_win()
   state.table_data = nil
-  local msg = n .. " row" .. (n == 1 and "" or "s") .. " " .. verb
-  state.buffer:set_content({ msg })
+  state.buffer:set_content({ rows_affected_msg(n, verb) })
   state.buffer:apply_highlight({
     { higroup = "DbelvederRowCount", start = { 0, 0 }, finish = { 0, -1 } },
   })
 end
 
 function M.append_batch_rows_affected(idx, total, n, verb)
-  local msg = n .. " row" .. (n == 1 and "" or "s") .. " " .. verb
   table.insert(state.segments, {
     header   = make_separator(idx, total),
-    lines    = { msg },
+    lines    = { rows_affected_msg(n, verb) },
     hl_rules = { { higroup = "DbelvederRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
   })
   render_segments()

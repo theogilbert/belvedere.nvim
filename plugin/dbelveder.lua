@@ -3,6 +3,15 @@ vim.g.loaded_dbelveder = true
 
 local db = require("dbelveder")
 
+-- Names of all saved connections, sorted — used for command completion.
+local function saved_connection_names()
+  local ok, conns = pcall(require("dbelveder.connections").load)
+  if not ok then return {} end
+  local names = vim.tbl_keys(conns)
+  table.sort(names)
+  return names
+end
+
 -- :DbConnect          — open the connection picker
 -- :DbConnect <name>   — connect directly by name
 vim.api.nvim_create_user_command("DbConnect", function(opts)
@@ -14,13 +23,7 @@ vim.api.nvim_create_user_command("DbConnect", function(opts)
   end
 end, {
   nargs = "?",
-  complete = function()
-    local ok, conns = pcall(require("dbelveder.connections").load)
-    if not ok then return {} end
-    local names = vim.tbl_keys(conns)
-    table.sort(names)
-    return names
-  end,
+  complete = saved_connection_names,
 })
 
 -- :DbAssociate   — pick an open connection to associate with the current buffer
@@ -30,8 +33,10 @@ end, {})
 
 -- :DbNewConnection    — jump straight to the new-connection wizard
 vim.api.nvim_create_user_command("DbNewConnection", function(_)
-  require("dbelveder.connections").create(function(name, params)
-    if name then db._do_connect(name, params) end
+  db.ensure_backend_with_caps(function(caps)
+    require("dbelveder.connections").create(caps, function(name, params)
+      if name then db._do_connect(name, params) end
+    end)
   end)
 end, {})
 
@@ -45,13 +50,7 @@ vim.api.nvim_create_user_command("DbDeleteConnection", function(opts)
   require("dbelveder.connections").delete(arg)
 end, {
   nargs = 1,
-  complete = function()
-    local ok, conns = pcall(require("dbelveder.connections").load)
-    if not ok then return {} end
-    local names = vim.tbl_keys(conns)
-    table.sort(names)
-    return names
-  end,
+  complete = saved_connection_names,
 })
 
 -- :DbDisconnect [name]  — disconnect a named connection, or the active one

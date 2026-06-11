@@ -6,19 +6,19 @@ local Buffer      = require("dbelveder.buffer")
 local connections = require("dbelveder.connections")
 local config      = require("dbelveder.config")
 local hl          = require("dbelveder.hl")
+local window      = require("dbelveder.ui.window")
+local Spinner     = require("dbelveder.ui.spinner")
 
-local BUFNAME          = "dbelveder://connections"
-local ACTIVE_MARK      = " ✓"
-local ERROR_MARK       = " ✗"
-local SPINNER_FRAMES   = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
-local SPINNER_INTERVAL = 80  -- ms
+local BUFNAME     = "dbelveder://connections"
+local ACTIVE_MARK = " ✓"
+local ERROR_MARK  = " ✗"
 
 local state = {
   buffer      = nil,
   line_map    = {},  -- [line_nr] -> { type="header"|"conn", driver, name? }
   expanded    = {},  -- [driver]  -> bool (default false = folded)
   conn_errors = {},  -- [name]    -> string (error message)
-  conn_loading = {}, -- [name]    -> { frame, timer }
+  conn_loading = {}, -- [name]    -> Spinner (while a connect is in flight)
   hover_win    = nil,
 }
 
@@ -61,7 +61,7 @@ local function build(conns, active_set)
         local has_err = state.conn_errors[name]
         local mark
         if active then mark = ACTIVE_MARK
-        elseif loading then mark = " " .. SPINNER_FRAMES[loading.frame]
+        elseif loading then mark = " " .. loading:glyph()
         elseif has_err then mark = ERROR_MARK
         else mark = "" end
         table.insert(lines, "    " .. name .. mark)
@@ -319,12 +319,7 @@ function M.open()
     return
   end
 
-  vim.cmd("botright 35vsplit")
-  vim.api.nvim_win_set_buf(0, state.buffer.buf_id)
-  vim.api.nvim_set_option_value("number",     false,   { win = 0 })
-  vim.api.nvim_set_option_value("signcolumn", "no",    { win = 0 })
-  vim.api.nvim_set_option_value("fillchars",  "eob: ", { win = 0 })
-
+  window.open_sidebar(state.buffer.buf_id, "right")
   refresh()
 end
 
@@ -340,27 +335,17 @@ function M.set_conn_error(name, msg)
 end
 
 function M.clear_conn_loading(name)
-  local entry = state.conn_loading[name]
-  if not entry then return end
+  local spinner = state.conn_loading[name]
+  if not spinner then return end
   state.conn_loading[name] = nil
-  if entry.timer then
-    entry.timer:stop()
-    entry.timer:close()
-  end
+  spinner:reset()
 end
 
 function M.set_conn_loading(name)
   M.clear_conn_loading(name)
-  local entry = { frame = 1 }
-  local timer = vim.uv.new_timer()
-  entry.timer = timer
-  state.conn_loading[name] = entry
-  timer:start(0, SPINNER_INTERVAL, vim.schedule_wrap(function()
-    local e = state.conn_loading[name]
-    if not e then return end
-    e.frame = (e.frame % #SPINNER_FRAMES) + 1
-    M.refresh()
-  end))
+  local spinner = Spinner.new(function() M.refresh() end)
+  state.conn_loading[name] = spinner
+  spinner:start()
 end
 
 return M
