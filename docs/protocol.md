@@ -94,12 +94,14 @@ Returns the server's name and the full list of drivers it supports, including th
     "drivers": [
       {
         "driver": "sqlite",
+        "label": "SQLite",
         "params": [
           {"key": "database", "type": "string", "label": "Database file path", "required": true}
         ]
       },
       {
         "driver": "sqlserver",
+        "label": "SQL Server",
         "params": [
           {"key": "host",              "type": "string",  "label": "Host",               "default": "localhost"},
           {"key": "port",              "type": "integer", "label": "Port",               "default": 1433},
@@ -253,6 +255,7 @@ Each entry in the `capabilities.drivers` array:
 | Field    | Type                              | Description                                     |
 |----------|-----------------------------------|-------------------------------------------------|
 | `driver` | string                            | Driver identifier; passed as `driver` in `connect.params` |
+| `label`  | string                            | Human-readable display name (e.g. `"SQLite"`, `"SQL Server"`) |
 | `params` | array of [DriverParam](#driverparam) | Connection parameters, in display order |
 
 ## DriverParam

@@ -151,10 +151,12 @@ function M.create(caps, callback)
     if not name or name == "" then callback(nil) return end
 
     vim.schedule(function()
-      local driver_names = vim.tbl_map(function(t) return t.driver end, caps.drivers)
-
-      vim.ui.select(driver_names, { prompt = "Driver:" }, function(driver)
-        if not driver then callback(nil) return end
+      vim.ui.select(caps.drivers, {
+        prompt      = "Driver:",
+        format_item = function(d) return d.label or d.driver end,
+      }, function(d)
+        if not d then callback(nil) return end
+        local driver = d.driver
 
         vim.schedule(function()
           local fields, pw_param = driver_fields(caps, driver)
@@ -166,7 +168,7 @@ function M.create(caps, callback)
 
             local server = caps.server ~= "" and caps.server or nil
             local params = vim.tbl_extend("force",
-              { driver = driver, server = server }, values)
+              { driver = driver, driver_label = d.label, server = server }, values)
 
             local function finish(pw)
               params.requires_password = pw ~= nil and pw ~= ""
@@ -237,8 +239,13 @@ function M.edit(name, caps, callback)
 
       coerce_integer_fields(fields_prefilled, values)
 
+      -- Refresh the label from caps if available; fall back to whatever was saved.
+      local driver_label = current.driver_label
+      for _, d in ipairs(caps.drivers or {}) do
+        if d.driver == driver then driver_label = d.label; break end
+      end
       local params = vim.tbl_extend("force",
-        { driver = driver, server = current.server }, values)
+        { driver = driver, driver_label = driver_label, server = current.server }, values)
 
       local function finish(pw, requires_pw)
         params.requires_password = requires_pw

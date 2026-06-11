@@ -54,31 +54,23 @@ function M.setup(opts)
 end
 
 
--- A freshly-spawned backend needs a moment before it can answer requests.
-local STARTUP_DELAY_MS = 200
-
 -- Start the backend if it isn't already running.
--- Returns (ok, fresh): ok=false means it failed; fresh=true means we just started it.
+-- Returns false (and notifies) if the process could not be spawned.
 local function start_backend()
-  if client.is_running() then return true, false end
+  if client.is_running() then return true end
   local ok, err = pcall(client.start, config.options.python_cmd)
   if not ok then
     vim.notify("dbelveder: " .. tostring(err), vim.log.levels.ERROR)
-    return false, false
+    return false
   end
-  return true, true
+  return true
 end
 
 -- Start the backend if needed, then deliver capabilities to `callback`.
 -- Returns false if the backend could not be started.
 function M.ensure_backend_with_caps(callback)
-  local ok, fresh = start_backend()
-  if not ok then return false end
-  if fresh then
-    vim.defer_fn(function() client.ensure_capabilities(callback) end, STARTUP_DELAY_MS)
-  else
-    client.ensure_capabilities(callback)
-  end
+  if not start_backend() then return false end
+  client.ensure_capabilities(callback)
   return true
 end
 
@@ -112,7 +104,7 @@ function M._do_connect(name, params)
 end
 
 -- Fields stored in the connections file that must not be forwarded to the server.
-local CLIENT_ONLY_FIELDS = { server = true, requires_password = true }
+local CLIENT_ONLY_FIELDS = { server = true, requires_password = true, driver_label = true }
 
 function M._send_connect(name, params)
   local server_params = {}

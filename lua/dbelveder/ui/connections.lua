@@ -22,7 +22,7 @@ local state = {
   hover_win    = nil,
 }
 
-local function build(conns, active_set)
+local function build(conns, active_set, driver_labels)
   -- Determine whether saved connections span multiple servers.
   local server_set = {}
   for _, p in pairs(conns) do server_set[p.server or ""] = true end
@@ -34,7 +34,7 @@ local function build(conns, active_set)
     local driver = params.driver or "unknown"
     local server = params.server
     local gkey   = driver .. (server and ("\0" .. server) or "")
-    local label  = driver .. (multi_server and server and (" (" .. server .. ")") or "")
+    local label  = (params.driver_label or driver_labels[driver] or driver) .. (multi_server and server and (" (" .. server .. ")") or "")
     if not groups[gkey] then
       groups[gkey] = { label = label, names = {} }
       table.insert(group_order, gkey)
@@ -80,8 +80,16 @@ local function refresh()
   local active_set = {}
   for _, n in ipairs(db.active_names()) do active_set[n] = true end
 
+  local driver_labels = {}
+  local caps = require("dbelveder.client").capabilities()
+  if caps then
+    for _, d in ipairs(caps.drivers or {}) do
+      if d.label then driver_labels[d.driver] = d.label end
+    end
+  end
+
   local conns = connections.load()
-  local lines, line_map, hl_rules = build(conns, active_set)
+  local lines, line_map, hl_rules = build(conns, active_set, driver_labels)
   state.line_map = line_map
 
   if #lines == 0 then
@@ -164,7 +172,7 @@ local function on_explore()
 end
 
 -- Fields from the saved connection that are client-only and not displayed.
-local HIDDEN_CONN_FIELDS = { password = true, requires_password = true, server = true }
+local HIDDEN_CONN_FIELDS = { password = true, requires_password = true, server = true, driver_label = true }
 
 local function open_hover_float(lines, title, border_hl, line_hl)
   local max_w = 1
@@ -294,7 +302,7 @@ end
 function M.open()
   -- Warm the capabilities cache so hover labels are available immediately.
   local db = require("dbelveder")
-  db.ensure_backend_with_caps(function() end)
+  db.ensure_backend_with_caps(function() M.refresh() end)
 
   if not (state.buffer and state.buffer:is_valid()) then
     state.buffer = Buffer:new(BUFNAME, "dbelveder_connections", false, "nofile")
