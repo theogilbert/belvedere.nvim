@@ -18,18 +18,27 @@ local state = {
   buf_conns = {},
 }
 
+-- Compute the display label for a connection: "name (driver)".
+local function conn_display_label(name)
+  local conn = state.conns[name]
+  return (conn and conn.driver) and (name .. " (" .. conn.driver .. ")") or name
+end
+
 -- Associate (or, with name=nil, dissociate) a buffer and update its window labels.
 local function set_buf_conn(bufnr, name)
   state.buf_conns[bufnr] = name
   for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-    if name then conn_label.show(winid, name) else conn_label.hide(winid) end
+    if name then conn_label.show(winid, conn_display_label(name)) else conn_label.hide(winid) end
   end
 end
 
 function M.setup(opts)
   config.setup(opts)
   hl.setup()
-  conn_label.setup(function(bufnr) return state.buf_conns[bufnr] end)
+  conn_label.setup(function(bufnr)
+    local name = state.buf_conns[bufnr]
+    return name and conn_display_label(name)
+  end)
 
   local key = config.options.keymaps.execute
   if key and key ~= "" then
