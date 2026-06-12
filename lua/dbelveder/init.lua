@@ -124,7 +124,7 @@ function M._send_connect(name, params)
       connections_panel.set_conn_error(name, err)
       return
     end
-    state.conns[name] = { conn_id = result.connection_id, driver = params.driver }
+    state.conns[name] = { conn_id = result.connection_id, driver = params.driver, name = name, driver_label = params.driver_label }
     vim.notify(("dbelveder: connected to %q (%s)"):format(name, params.driver), vim.log.levels.INFO)
     connections_panel.refresh()
   end)

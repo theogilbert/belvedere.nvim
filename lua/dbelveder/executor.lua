@@ -102,6 +102,7 @@ end
 --- @param conn table  { conn_id, driver }
 --- @param query string
 function M.run(conn, query)
+  results.set_conn_name(conn.name, conn.driver_label)
   local queries = (not is_mongo(conn.driver) and query:find(";"))
       and split_queries(query) or { query }
 

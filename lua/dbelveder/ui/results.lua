@@ -176,6 +176,14 @@ local function get_or_create_buffer()
 end
 
 
+function M.set_conn_name(name, driver_label)
+  get_or_create_buffer()
+  local label = name and (driver_label and (name .. " (" .. driver_label .. ")") or name)
+  local title = label and (BUFNAME .. " [" .. label .. "]") or BUFNAME
+  pcall(vim.api.nvim_buf_set_name, state.buffer.buf_id, title)
+end
+
+
 local function apply_highlights(tbl, total_rows, max_rows)
   -- Header row (buffer line 0): per-column bold highlight
   local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 0, 1, tbl)
