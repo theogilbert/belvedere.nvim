@@ -18,6 +18,12 @@ local state = {
   buf_conns = {},
 }
 
+-- Resolve the connection associated with `bufnr`, or nil.
+local function conn_for_buf(bufnr)
+  local name = state.buf_conns[bufnr]
+  return name and state.conns[name]
+end
+
 -- Compute the display label for a connection: "name (driver)".
 local function conn_display_label(name)
   local conn = state.conns[name]
@@ -136,7 +142,14 @@ function M.associate()
     vim.notify("dbelveder: no open connections — open the connection panel with :DbConnections", vim.log.levels.WARN)
     return
   end
-  vim.ui.select(names, { prompt = "Associate connection:" }, function(name)
+  vim.ui.select(names, {
+    prompt      = "Associate connection:",
+    format_item = function(name)
+      local conn  = state.conns[name]
+      local label = conn and conn.driver_label
+      return label and (name .. " (" .. label .. ")") or name
+    end,
+  }, function(name)
     if not name then return end
     set_buf_conn(vim.api.nvim_get_current_buf(), name)
     vim.notify(("dbelveder: buffer associated with %q"):format(name), vim.log.levels.INFO)
@@ -176,12 +189,6 @@ function M.active_names()
   return names
 end
 
-
--- Resolve the connection associated with `bufnr`, or nil.
-local function conn_for_buf(bufnr)
-  local name = state.buf_conns[bufnr]
-  return name and state.conns[name]
-end
 
 local function execute_sql(sql)
   if not sql or sql == "" then
