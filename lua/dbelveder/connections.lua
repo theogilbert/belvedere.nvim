@@ -47,6 +47,7 @@ function M.save(conns)
   local path = file_path()
   vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
   vim.fn.writefile({ vim.json.encode({ connections = conns }) }, path)
+  vim.uv.fs_chmod(path, tonumber("600", 8))
 end
 
 function M.get(name)
