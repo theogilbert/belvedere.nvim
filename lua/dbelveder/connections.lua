@@ -314,4 +314,86 @@ function M.edit(name, caps, callback)
   end)
 end
 
+-- Clone source_name as new_name, running the same field-edit wizard as M.edit
+-- with all values pre-filled from the source connection.
+-- callback(new_name, params) on success, callback(nil) on cancel.
+function M.clone(source_name, new_name, caps, callback)
+  caps = caps or { server = "", drivers = {} }
+  local conns   = M.load()
+  local current = conns[source_name]
+  if not current then
+    vim.notify(("dbelveder: connection %q not found"):format(source_name), vim.log.levels.ERROR)
+    callback(nil)
+    return
+  end
+
+  vim.schedule(function()
+    local driver = current.driver
+    local fields, pw_param = driver_fields(caps, driver)
+
+    local fields_prefilled = {}
+    for _, p in ipairs(fields) do
+      local f   = vim.tbl_extend("force", {}, p)
+      local cur = current[p.key]
+      if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
+      table.insert(fields_prefilled, f)
+    end
+
+    prompt_sequence(fields_prefilled, function(values)
+      if not values then callback(nil) return end
+
+      coerce_integer_fields(fields_prefilled, values)
+
+      local driver_label = current.driver_label
+      for _, d in ipairs(caps.drivers or {}) do
+        if d.driver == driver then driver_label = d.label; break end
+      end
+      local params = vim.tbl_extend("force",
+        { driver = driver, driver_label = driver_label, server = current.server }, values)
+
+      local function finish(pw, remember)
+        if pw ~= nil and pw ~= "" then
+          if remember then
+            params.password          = pw
+            params.requires_password = false
+          else
+            params.requires_password = true
+          end
+        else
+          if current.password then
+            params.password          = current.password
+            params.requires_password = false
+          else
+            params.requires_password = current.requires_password
+          end
+          pw = current.password
+        end
+        local conns2 = M.load()
+        conns2[new_name] = params
+        M.save(conns2)
+        vim.notify(("dbelveder: saved %q"):format(new_name), vim.log.levels.INFO)
+        local final = (pw ~= nil and pw ~= "")
+          and vim.tbl_extend("force", params, { password = pw })
+          or params
+        callback(new_name, final)
+      end
+
+      if pw_param then
+        vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
+          if pw == nil then callback(nil) return end
+          if pw == "" then finish(nil, false); return end
+          vim.schedule(function()
+            vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(choice)
+              if choice == nil then callback(nil) return end
+              finish(pw, choice == "Yes")
+            end)
+          end)
+        end)
+      else
+        finish(nil, false)
+      end
+    end)
+  end)
+end
+
 return M
