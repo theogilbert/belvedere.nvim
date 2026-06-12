@@ -132,8 +132,13 @@ end
 local function on_delete()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  connections.delete(entry.name)
-  refresh()
+  vim.ui.select({ "No", "Yes" }, {
+    prompt = ('Remove connection %q?'):format(entry.name),
+  }, function(choice)
+    if choice ~= "Yes" then return end
+    connections.delete(entry.name)
+    refresh()
+  end)
 end
 
 local function on_disconnect()
