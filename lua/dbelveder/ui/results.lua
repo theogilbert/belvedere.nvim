@@ -3,14 +3,23 @@
 -- One buffer per connection, named "dbelveder://results [name (driver)]".
 -- Buffers are listed so the user can :b between them. A single split window
 -- is reused; switching connections swaps the buffer shown in it.
-local Buffer    = require("dbelveder.buffer")
-local table_fmt = require("dbelveder.table")
-local hl        = require("dbelveder.hl")
-local config    = require("dbelveder.config")
+local Buffer     = require("dbelveder.buffer")
+local table_fmt  = require("dbelveder.table")
+local hl         = require("dbelveder.hl")
+local config     = require("dbelveder.config")
+local col_picker = require("dbelveder.ui.col_picker")
 
 local M = {}
 
 local BUFNAME = "dbelveder://results"
+
+local render_table  -- forward declaration; defined after apply_highlights below
+
+local function same_columns(a, b)
+  if #a ~= #b then return false end
+  for i, c in ipairs(a) do if c ~= b[i] then return false end end
+  return true
+end
 
 local function rows_label(total, max_rows)
   local s = total .. " row" .. (total == 1 and "" or "s")
@@ -190,7 +199,14 @@ local function get_or_create_buf_state(conn_name, buf_title)
   vim.bo[buf.buf_id].buflisted = true
   table_fmt.setup_buf_hl(buf.buf_id)
 
-  local bs = { buffer = buf, table_data = nil, segments = {} }
+  local bs = {
+    buffer      = buf,
+    table_data  = nil,
+    segments    = {},
+    raw_columns = nil,
+    raw_rows    = nil,
+    vis_columns = nil,
+  }
   state.buffers[conn_name] = bs
 
   buf:set_keymap("n", "q", function()
@@ -204,6 +220,13 @@ local function get_or_create_buf_state(conn_name, buf_title)
     { desc = "Scroll right one column", silent = true })
   buf:set_keymap("n", "H", function() scroll_columns(-1) end,
     { desc = "Scroll left one column",  silent = true })
+  buf:set_keymap("n", "c", function()
+    if not bs.raw_columns then return end
+    col_picker.open(bs.raw_columns, bs.vis_columns, function(sel)
+      bs.vis_columns = sel
+      render_table(bs)
+    end)
+  end, { desc = "Select displayed columns", silent = true })
 
   return bs
 end
@@ -218,6 +241,37 @@ local function apply_highlights(bs, tbl)
     finish  = { rowcount_buf_line, -1 },
   })
   bs.buffer:apply_highlight(rules)
+end
+
+
+render_table = function(bs)
+  local max_rows   = config.options.results.max_rows
+  local total_rows = #bs.raw_rows
+
+  -- Build index map: vis column name → position in raw_columns
+  local col_indices = {}
+  for _, vc in ipairs(bs.vis_columns) do
+    for i, rc in ipairs(bs.raw_columns) do
+      if rc == vc then table.insert(col_indices, i); break end
+    end
+  end
+
+  local display = { bs.vis_columns }
+  for i = 1, math.min(total_rows, max_rows) do
+    local row = {}
+    for _, idx in ipairs(col_indices) do table.insert(row, bs.raw_rows[i][idx]) end
+    table.insert(display, row)
+  end
+
+  local tbl = table_fmt.from_structured_data(display, 1)
+  bs.table_data = tbl
+
+  local content = vim.list_extend({}, tbl.text)
+  table.insert(content, "")
+  table.insert(content, rows_label(total_rows, max_rows))
+  bs.buffer:set_content(content)
+  apply_highlights(bs, tbl)
+  update_truncation_indicators()
 end
 
 
@@ -295,23 +349,15 @@ function M.append_batch_error(idx, total, msg)
 end
 
 function M.show_results(columns, rows)
-  local bs          = active_bs()
-  local max_rows    = config.options.results.max_rows
-  local total_rows  = #rows
-  local display     = { columns }
-  for i = 1, math.min(total_rows, max_rows) do table.insert(display, rows[i]) end
-
-  local tbl = table_fmt.from_structured_data(display, 1)
-  bs.table_data = tbl
-
-  local content = vim.list_extend({}, tbl.text)
-  table.insert(content, "")
-  table.insert(content, rows_label(total_rows, max_rows))
-
+  local bs = active_bs()
+  -- Reset vis_columns when the query returns a different schema.
+  if not bs.raw_columns or not same_columns(bs.raw_columns, columns) then
+    bs.vis_columns = vim.list_extend({}, columns)
+  end
+  bs.raw_columns = columns
+  bs.raw_rows    = rows
   ensure_win(bs.buffer.buf_id)
-  bs.buffer:set_content(content)
-  apply_highlights(bs, tbl)
-  update_truncation_indicators()
+  render_table(bs)
 end
 
 function M.show_rows_affected(n, verb)
