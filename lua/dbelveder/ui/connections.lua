@@ -75,6 +75,18 @@ local function build(conns, active_set, driver_labels)
   return lines, line_map, hl_rules
 end
 
+local FOOTER = "Press g? in any pane for help"
+
+-- Pad `lines` with blank lines so the footer lands on the last visible row.
+local function append_footer(lines)
+  local win        = state.buffer and vim.fn.bufwinid(state.buffer.buf_id) or -1
+  local win_height = win ~= -1 and vim.api.nvim_win_get_height(win) or 0
+  local padding    = math.max(0, win_height - #lines - 2)
+  for _ = 1, padding do table.insert(lines, "") end
+  table.insert(lines, "")
+  table.insert(lines, FOOTER)
+end
+
 local function refresh()
   local db = require("dbelveder")  -- lazy: avoids circular dependency
   local active_set = {}
@@ -92,11 +104,9 @@ local function refresh()
   local lines, line_map, hl_rules = build(conns, active_set, driver_labels)
   state.line_map = line_map
 
-  if #lines == 0 then
-    state.buffer:set_content({ "(no saved connections)" })
-    return
-  end
+  if #lines == 0 then lines = { "(no saved connections)" } end
 
+  append_footer(lines)
   state.buffer:set_content(lines)
 
   local rules = {}
@@ -107,6 +117,11 @@ local function refresh()
       finish  = { lnum - 1, -1 },
     })
   end
+  table.insert(rules, {
+    higroup = "DbelvederHelp",
+    start   = { #lines - 1, 0 },
+    finish  = { #lines - 1, -1 },
+  })
   state.buffer:apply_highlight(rules)
 end
 
@@ -311,6 +326,9 @@ function M.open()
 
   if not (state.buffer and state.buffer:is_valid()) then
     state.buffer = Buffer:new(BUFNAME, "dbelveder_connections", false, "nofile")
+    vim.api.nvim_create_autocmd("WinResized", {
+      callback = function() M.refresh() end,
+    })
     local hover_key = config.options.keymaps.hover_key
     state.buffer:set_keymap("n", "<CR>",     on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect" })
     state.buffer:set_keymap("n", "x",        on_explore,    { nowait = true, silent = true, desc = "Open explorer" })
@@ -332,7 +350,8 @@ function M.open()
     return
   end
 
-  window.open_sidebar(state.buffer.buf_id, "right")
+  local win = window.open_sidebar(state.buffer.buf_id, "right")
+  vim.api.nvim_win_set_hl_ns(win, hl.NS_ID)
   refresh()
 end
 
