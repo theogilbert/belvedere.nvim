@@ -1,8 +1,8 @@
 -- Query results window.
 --
--- Uses box-drawing characters for the table (table_fmt), a Buffer class for
--- clean content/highlight management (buffer), and truncation indicators plus
--- column-boundary scrolling adapted from nvim-dap-df/pane.lua.
+-- One buffer per connection, named "dbelveder://results [name (driver)]".
+-- Buffers are listed so the user can :b between them. A single split window
+-- is reused; switching connections swaps the buffer shown in it.
 local Buffer    = require("dbelveder.buffer")
 local table_fmt = require("dbelveder.table")
 local hl        = require("dbelveder.hl")
@@ -25,20 +25,36 @@ local function rows_affected_msg(n, verb)
 end
 
 
+-- Per-connection buffer state.
+-- buffers[conn_name] = { buffer=Buffer, table_data=nil|FormattedTable, segments={} }
 local state = {
-  buffer            = nil,  -- Buffer instance
+  buffers           = {},
   win_id            = nil,
-  table_data        = nil,  -- FormattedTable from table_fmt, or nil (batch mode)
+  active_conn       = nil,  -- set by set_conn_name before each query
   scroll_autocmd_id = nil,
   close_autocmd_id  = nil,
-  segments          = {},   -- batch mode: { {header, lines, hl_rules} }
 }
+
+local function active_bs()
+  return state.active_conn and state.buffers[state.active_conn]
+end
+
+-- Find the buf_state for whichever buffer is currently shown in the results window.
+local function win_bs()
+  if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return nil end
+  local buf_id = vim.api.nvim_win_get_buf(state.win_id)
+  for _, bs in pairs(state.buffers) do
+    if bs.buffer.buf_id == buf_id then return bs end
+  end
+  return nil
+end
 
 
 local function scroll_columns(direction)
   if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
-  if not state.table_data then return end
-  local boundaries = table_fmt.column_boundaries(state.table_data.columns_width)
+  local bs = win_bs()
+  if not bs or not bs.table_data then return end
+  local boundaries = table_fmt.column_boundaries(bs.table_data.columns_width)
 
   local leftcol
   vim.api.nvim_win_call(state.win_id, function()
@@ -77,11 +93,13 @@ end
 
 local function update_truncation_indicators()
   if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
-  local buf_id = state.buffer.buf_id
+  local bs = win_bs()
+  if not bs then return end
+  local buf_id = bs.buffer.buf_id
   vim.api.nvim_buf_clear_namespace(buf_id, hl.TRUNCATION_NS_ID, 0, -1)
 
-  if not state.table_data then return end
-  local boundaries = table_fmt.column_boundaries(state.table_data.columns_width)
+  if not bs.table_data then return end
+  local boundaries = table_fmt.column_boundaries(bs.table_data.columns_width)
 
   local win_width = vim.api.nvim_win_get_width(state.win_id)
   local leftcol = 0
@@ -126,8 +144,7 @@ local function teardown()
   state.win_id = nil
 end
 
-local function open_win()
-  if is_open() then return end
+local function open_win(buf_id)
   local opts     = config.options.results
   local cmd      = opts.split == "right"
       and "botright vsplit"
@@ -135,12 +152,12 @@ local function open_win()
   local prev_win = vim.api.nvim_get_current_win()
   vim.cmd(cmd)
   state.win_id = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(state.win_id, state.buffer.buf_id)
+  vim.api.nvim_win_set_buf(state.win_id, buf_id)
 
-  vim.api.nvim_set_option_value("number",      false, { win = state.win_id })
-  vim.api.nvim_set_option_value("signcolumn",  "no",  { win = state.win_id })
-  vim.api.nvim_set_option_value("winfixheight", true, { win = state.win_id })
-  vim.api.nvim_set_option_value("winfixwidth",  true, { win = state.win_id })
+  vim.api.nvim_set_option_value("number",       false, { win = state.win_id })
+  vim.api.nvim_set_option_value("signcolumn",   "no",  { win = state.win_id })
+  vim.api.nvim_set_option_value("winfixheight", true,  { win = state.win_id })
+  vim.api.nvim_set_option_value("winfixwidth",  true,  { win = state.win_id })
   vim.api.nvim_set_option_value("wrap",         false, { win = state.win_id })
   vim.api.nvim_win_set_hl_ns(state.win_id, hl.NS_ID)
 
@@ -156,45 +173,51 @@ local function open_win()
   vim.api.nvim_set_current_win(prev_win)
 end
 
-local function get_or_create_buffer()
-  if state.buffer and state.buffer:is_valid() then return end
-  state.buffer = Buffer:new(BUFNAME, "dbelveder_results", false, "nofile")
-  table_fmt.setup_buf_hl(state.buffer.buf_id)
-  -- Keymaps live on the buffer and survive window close/reopen.
-  state.buffer:set_keymap("n", "q", function()
+-- Open the results window if closed; otherwise just swap the buffer inside it.
+local function ensure_win(buf_id)
+  if is_open() then
+    vim.api.nvim_win_set_buf(state.win_id, buf_id)
+  else
+    open_win(buf_id)
+  end
+end
+
+local function get_or_create_buf_state(conn_name, buf_title)
+  local existing = state.buffers[conn_name]
+  if existing and existing.buffer:is_valid() then return existing end
+
+  local buf = Buffer:new(buf_title, "dbelveder_results", false, "nofile", "hide")
+  vim.bo[buf.buf_id].buflisted = true
+  table_fmt.setup_buf_hl(buf.buf_id)
+
+  local bs = { buffer = buf, table_data = nil, segments = {} }
+  state.buffers[conn_name] = bs
+
+  buf:set_keymap("n", "q", function()
     if is_open() then
       local win = state.win_id
       teardown()
       vim.api.nvim_win_close(win, true)
     end
   end, { desc = "Close results window", silent = true })
-  state.buffer:set_keymap("n", "L", function() scroll_columns(1)  end,
+  buf:set_keymap("n", "L", function() scroll_columns(1)  end,
     { desc = "Scroll right one column", silent = true })
-  state.buffer:set_keymap("n", "H", function() scroll_columns(-1) end,
+  buf:set_keymap("n", "H", function() scroll_columns(-1) end,
     { desc = "Scroll left one column",  silent = true })
 
+  return bs
 end
 
 
-function M.set_conn_name(name, driver_label)
-  get_or_create_buffer()
-  local label = name and (driver_label and (name .. " (" .. driver_label .. ")") or name)
-  local title = label and (BUFNAME .. " [" .. label .. "]") or BUFNAME
-  pcall(vim.api.nvim_buf_set_name, state.buffer.buf_id, title)
-end
-
-
-local function apply_highlights(tbl, total_rows, max_rows)
-  -- Header row (buffer line 0): per-column bold highlight
+local function apply_highlights(bs, tbl)
   local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 0, 1, tbl)
-  -- Row-count line: last line in the buffer
-  local rowcount_buf_line = #tbl.text + 1  -- blank line is at #tbl.text, count at +1
+  local rowcount_buf_line = #tbl.text + 1
   table.insert(rules, {
     higroup = "DbelvederRowCount",
     start   = { rowcount_buf_line, 0 },
     finish  = { rowcount_buf_line, -1 },
   })
-  state.buffer:apply_highlight(rules)
+  bs.buffer:apply_highlight(rules)
 end
 
 
@@ -202,9 +225,9 @@ local function make_separator(idx, total)
   return ("── Query %d / %d "):format(idx, total) .. string.rep("─", 44)
 end
 
-local function render_segments()
+local function render_segments(bs)
   local all_lines, all_rules = {}, {}
-  for _, seg in ipairs(state.segments) do
+  for _, seg in ipairs(bs.segments) do
     local hdr_lnum = #all_lines
     table.insert(all_lines, seg.header)
     local offset = #all_lines
@@ -220,21 +243,32 @@ local function render_segments()
       start = { hdr_lnum, 0 }, finish = { hdr_lnum, -1 } })
     table.insert(all_lines, "")
   end
-  state.buffer:set_content(all_lines)
-  state.buffer:apply_highlight(all_rules)
+  bs.buffer:set_content(all_lines)
+  bs.buffer:apply_highlight(all_rules)
   update_truncation_indicators()
 end
 
+
+-- Set the active connection for subsequent show calls. Creates the buffer if needed.
+function M.set_conn_name(name, driver_label)
+  local label     = name and (driver_label and (name .. " (" .. driver_label .. ")") or name)
+  local buf_title = label and (BUFNAME .. " [" .. label .. "]") or BUFNAME
+  local key       = name or ""
+  get_or_create_buf_state(key, buf_title)
+  state.active_conn = key
+end
+
 function M.begin_batch(n)
-  get_or_create_buffer()
-  open_win()
-  state.table_data = nil
-  state.segments   = {}
-  state.buffer:set_content({ ("Executing %d quer%s…"):format(n, n == 1 and "y" or "ies") })
-  state.buffer:apply_highlight({})
+  local bs = active_bs()
+  ensure_win(bs.buffer.buf_id)
+  bs.table_data = nil
+  bs.segments   = {}
+  bs.buffer:set_content({ ("Executing %d quer%s…"):format(n, n == 1 and "y" or "ies") })
+  bs.buffer:apply_highlight({})
 end
 
 function M.append_batch_result(idx, total, columns, rows)
+  local bs         = active_bs()
   local max_rows   = config.options.results.max_rows
   local total_rows = #rows
   local display    = { columns }
@@ -246,78 +280,76 @@ function M.append_batch_result(idx, total, columns, rows)
   local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 0, 1, tbl)
   table.insert(rules, { higroup = "DbelvederRowCount",
     start = { #tbl.text + 1, 0 }, finish = { #tbl.text + 1, -1 } })
-  table.insert(state.segments, { header = make_separator(idx, total), lines = content, hl_rules = rules })
-  render_segments()
+  table.insert(bs.segments, { header = make_separator(idx, total), lines = content, hl_rules = rules })
+  render_segments(bs)
 end
 
 function M.append_batch_error(idx, total, msg)
-  table.insert(state.segments, {
+  local bs = active_bs()
+  table.insert(bs.segments, {
     header   = make_separator(idx, total),
     lines    = { "Error: " .. msg },
     hl_rules = { { higroup = "DbelvederError", start = { 0, 0 }, finish = { 0, -1 } } },
   })
-  render_segments()
+  render_segments(bs)
 end
 
 function M.show_results(columns, rows)
-  get_or_create_buffer()
-  open_win()
-
+  local bs          = active_bs()
   local max_rows    = config.options.results.max_rows
   local total_rows  = #rows
   local display     = { columns }
-  for i = 1, math.min(total_rows, max_rows) do
-    table.insert(display, rows[i])
-  end
+  for i = 1, math.min(total_rows, max_rows) do table.insert(display, rows[i]) end
 
   local tbl = table_fmt.from_structured_data(display, 1)
-  state.table_data = tbl
+  bs.table_data = tbl
 
-  -- Buffer content: formatted table + blank line + row count
   local content = vim.list_extend({}, tbl.text)
   table.insert(content, "")
   table.insert(content, rows_label(total_rows, max_rows))
 
-  state.buffer:set_content(content)
-  apply_highlights(tbl, total_rows, max_rows)
+  ensure_win(bs.buffer.buf_id)
+  bs.buffer:set_content(content)
+  apply_highlights(bs, tbl)
   update_truncation_indicators()
 end
 
 function M.show_rows_affected(n, verb)
-  get_or_create_buffer()
-  open_win()
-  state.table_data = nil
-  state.buffer:set_content({ rows_affected_msg(n, verb) })
-  state.buffer:apply_highlight({
+  local bs = active_bs()
+  bs.table_data = nil
+  ensure_win(bs.buffer.buf_id)
+  bs.buffer:set_content({ rows_affected_msg(n, verb) })
+  bs.buffer:apply_highlight({
     { higroup = "DbelvederRowCount", start = { 0, 0 }, finish = { 0, -1 } },
   })
 end
 
 function M.append_batch_rows_affected(idx, total, n, verb)
-  table.insert(state.segments, {
+  local bs = active_bs()
+  table.insert(bs.segments, {
     header   = make_separator(idx, total),
     lines    = { rows_affected_msg(n, verb) },
     hl_rules = { { higroup = "DbelvederRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
   })
-  render_segments()
+  render_segments(bs)
 end
 
 function M.show_error(msg)
-  get_or_create_buffer()
-  open_win()
-  state.table_data = nil
-  state.buffer:set_content({ "Error: " .. msg })
-  state.buffer:apply_highlight({
+  local bs = active_bs()
+  bs.table_data = nil
+  ensure_win(bs.buffer.buf_id)
+  bs.buffer:set_content({ "Error: " .. msg })
+  bs.buffer:apply_highlight({
     { higroup = "DbelvederError", start = { 0, 0 }, finish = { 0, -1 } },
   })
 end
 
 function M.show_message(msg)
-  get_or_create_buffer()
-  open_win()
-  state.table_data = nil
-  state.buffer:set_content({ msg })
-  state.buffer:apply_highlight({})
+  local bs = active_bs()
+  bs.table_data = nil
+  ensure_win(bs.buffer.buf_id)
+  bs.buffer:set_content({ msg })
+  bs.buffer:apply_highlight({})
 end
 
 return M
