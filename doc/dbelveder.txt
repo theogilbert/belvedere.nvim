@@ -21,8 +21,11 @@ CONTENTS                                                    *dbelveder-contents*
 INTRODUCTION                                                   *dbelveder-intro*
 
 dbelveder.nvim is a database client for Neovim. It delegates all database
-connectivity to an external Python process (dbelveder-py), communicating with
-it over newline-delimited JSON on stdio.
+connectivity to an external server process, communicating with it over
+newline-delimited JSON on stdio (the dbelveder protocol).
+
+Any server that implements the protocol can be used. dbelveder-py is the
+reference implementation: https://github.com/dbelveder/dbelveder-py
 
 Connection parameters are stored in a JSON file on disk (not in the nvim
 config), so they persist across sessions and are shared between any client
@@ -32,18 +35,9 @@ that speaks the dbelveder protocol.
 REQUIREMENTS                                            *dbelveder-requirements*
 
 - Neovim 0.9 or later
-- Python 3.12 or later
-- dbelveder-py installed and on $PATH (or configured via |dbelveder-python_cmd|)
-
-Install the Python backend: >sh
-  pip install dbelveder-py
-<
-For specific databases: >sh
-  pip install 'dbelveder-py[postgres]'
-  pip install 'dbelveder-py[sqlserver]'
-  pip install 'dbelveder-py[mongodb]'
-  pip install 'dbelveder-py[all]'
-<
+- A server that implements the dbelveder protocol, on $PATH or configured
+  via |dbelveder-python_cmd|. See your server's documentation for
+  installation instructions and supported drivers.
 ================================================================================
 SETUP                                                         *dbelveder-setup*
 
@@ -73,10 +67,13 @@ PANEL KEYMAPS ~
   <CR>    Expand/collapse a driver group, or connect to the database under
           the cursor.
   n       Run the new-connection wizard.
-  r       Edit the connection under the cursor (rename and update fields).
-  d       Delete the saved connection under the cursor.
-  x       Disconnect from the database under the cursor.
-  e       Open the explorer for the connected database under the cursor.
+  e       Edit the connection under the cursor (rename and update fields).
+  c       Clone the connection under the cursor (prompts for a new name,
+          pre-fills all fields from the original).
+  r       Remove the saved connection under the cursor (prompts for
+          confirmation).
+  d       Disconnect from the database under the cursor.
+  x       Open the explorer for the connected database under the cursor.
   K       Show connection details in a hover float. If an error occurred,
           shows the error message. Press K again to enter the float
           (then q or <Esc> to close it).
@@ -149,12 +146,12 @@ COMMANDS                                                    *dbelveder-commands*
 
                                                                 *:DbStop*
 :DbStop
-    Kill the Python backend process and clear all session state.
+    Kill the server process and clear all session state.
 
                                                              *:DbRestart*
 :DbRestart
-    Restart the Python backend process. Equivalent to |:DbStop| followed
-    by starting the backend again. All state (open connections, buffer
+    Restart the server process. Equivalent to |:DbStop| followed by
+    starting the server again. All state (open connections, buffer
     associations) is cleared.
 
 ================================================================================
@@ -174,29 +171,8 @@ KEYMAPS ~
 
 TREE STRUCTURE ~
 
-SQLite: >
-  (root)
-  └── <table | view>
-      ├── columns
-      │   └── <column>  [type]
-      └── indices
-          └── <index>
-<
-PostgreSQL / SQL Server: >
-  (root)
-  └── <schema>
-      └── <table | view>
-          ├── columns
-          │   └── <column>  [type]
-          ├── indices
-          └── constraints
-<
-MongoDB: >
-  (root)
-  └── <database>
-      └── <collection>
-          └── <field>  [python-type]
-<
+The tree hierarchy is entirely defined by the server. Refer to your
+server's documentation for the object tree it exposes per driver.
 ================================================================================
 RESULTS WINDOW                                               *dbelveder-results*
 
@@ -208,7 +184,6 @@ Query results are shown in a dedicated buffer named `dbelveder://results`.
 - DML queries (INSERT, UPDATE, DELETE) show an affected-row count instead.
 - Multiple statements separated by `;` are executed sequentially; each
   result is shown under a labelled heading (`── Query 1 / 3 ──`, etc.).
-  This does not apply to MongoDB-style drivers.
 - Rows beyond |dbelveder-max_rows| are dropped with a notice.
 
 The buffer is read-only and reused across queries. Its direction and size
@@ -249,8 +224,12 @@ require("dbelveder").execute()
     Execute the visual selection or the current line against the current
     buffer's connection. This is what |:DbRun| and the configured
     `keymaps.execute` key call.
-    Silently does nothing if the buffer has no associated connection
-    (the keymap path); use |:DbRun| for an explicit error.
+
+    When invoked via the `keymaps.execute` binding:
+    - If the key is `"<CR>"` (the default), silently does nothing when the
+      buffer has no associated connection — use |:DbRun| for an explicit
+      warning.
+    - For any other configured key, the warning is shown.
 
                                               *dbelveder.execute_range()*
 require("dbelveder").execute_range({line1}, {line2})
@@ -267,12 +246,12 @@ require("dbelveder").open_explorer_for({name})
 
                                                       *dbelveder.stop()*
 require("dbelveder").stop()
-    Kill the Python backend process and clear all state.
+    Kill the server process and clear all state.
     Equivalent to |:DbStop|.
 
                                                    *dbelveder.restart()*
 require("dbelveder").restart()
-    Restart the Python backend process. Equivalent to |:DbRestart|.
+    Restart the server process. Equivalent to |:DbRestart|.
 
 CONNECTIONS MODULE ~
                                                   *dbelveder-connections-api*
@@ -300,6 +279,11 @@ require("dbelveder.connections").create({caps}, {callback})
     the driver list and field prompts. {callback} is called as
     `callback(name, params)` on completion, or `callback(nil)` on cancel.
 
+require("dbelveder.connections").clone({source}, {new_name}, {caps}, {cb})
+    Clones the connection named {source} as {new_name}, running the same
+    field-edit wizard with all values pre-filled. {cb} is called as
+    `cb(new_name, params)` on completion, or `cb(nil)` on cancel.
+
 ================================================================================
 CONFIGURATION                                                 *dbelveder-config*
 
@@ -321,8 +305,7 @@ All keys are optional.
 python_cmd ~
   Type: `string`   Default: `"dbelveder"`
 
-  Shell command used to launch the Python backend. Can include arguments,
-  e.g. `"python -m dbelveder"` or `"/path/to/venv/bin/dbelveder"`.
+  Shell command used to launch the server process. Can include arguments.
 
                                                   *dbelveder-connections_file*
 connections_file ~
@@ -336,9 +319,10 @@ keymaps.execute ~
   Type: `string`   Default: `"<CR>"`
 
   Global key bound in `n` and `x` modes to execute the current line or
-  visual selection. In buffers with no associated connection the key does
-  nothing (no warning). Set to `""` to disable the global keymap and wire
-  it up yourself per filetype.
+  visual selection. When set to `"<CR>"`, the key silently does nothing in
+  buffers with no associated connection (to avoid spurious warnings on
+  every Enter press). For any other key, the "no active connection" warning
+  is shown. Set to `""` to disable the global keymap.
 
                                                     *dbelveder-hover-key*
 keymaps.hover_key ~
@@ -369,23 +353,15 @@ results.max_rows ~
 ================================================================================
 SUPPORTED DATABASES                                          *dbelveder-drivers*
 
-Driver value          Database         Extra Python package
----------------------------------------------------------------------
-"sqlite"              SQLite           (none — stdlib)
-"postgres"            PostgreSQL       psycopg[binary] >= 3
-"postgresql"          PostgreSQL       psycopg[binary] >= 3
-"sqlserver"           SQL Server       mssql-python >= 1.8
-"mssql"               SQL Server       mssql-python >= 1.8
-"mongodb"             MongoDB          pymongo >= 4
-"mongo"               MongoDB          pymongo >= 4
+The available drivers depend entirely on the server. Driver identifiers and
+their connection parameters are announced at runtime via the `capabilities`
+protocol method — the plugin uses this response to populate the connection
+wizard and does not hard-code any driver list.
 
-Driver identifiers and their connection parameters are announced at runtime
-by the server via the `capabilities` protocol method. The list above reflects
-the default dbelveder-py distribution; custom backends may expose different
-drivers.
+Refer to your server's documentation for the drivers it supports.
 
-For the full connection parameter reference and tree hierarchy per driver,
-see docs/protocol.md.
+For the protocol specification (wire format and methods) see
+docs/protocol.md.
 
 ================================================================================
 vim:tw=78:ts=2:ft=help:norl:
