@@ -4,6 +4,7 @@
 -- Right panel: selected columns (in display order).
 -- j/k navigate within the focused panel; h/l switch panels.
 -- Tab/Enter/Space move the item under the cursor to the other panel.
+-- K/J (right panel only) move the item under the cursor up/down.
 -- q/Esc close (changes are already applied live via the on_change callback).
 local hl        = require("dbelveder.hl")
 local table_fmt = require("dbelveder.table")
@@ -40,9 +41,7 @@ local function render()
     table.insert(lines, pad(ltext, cw) .. SEP .. pad(rtext, cw))
   end
 
-  vim.bo[p.buf].modifiable = true
   vim.api.nvim_buf_set_lines(p.buf, 0, -1, false, lines)
-  vim.bo[p.buf].modifiable = false
 
   vim.api.nvim_buf_clear_namespace(p.buf, ns_id, 0, -1)
 
@@ -87,6 +86,16 @@ local function insert_sorted_available(col)
     end
   end
   table.insert(p.available, col)
+end
+
+local function reorder(delta)
+  if p.side ~= "right" then return end
+  local target = p.cursor + delta
+  if target < 1 or target > #p.selected then return end
+  p.selected[p.cursor], p.selected[target] = p.selected[target], p.selected[p.cursor]
+  p.cursor = target
+  render()
+  if p.on_change then p.on_change(vim.list_extend({}, p.selected)) end
 end
 
 local function move_item()
@@ -213,6 +222,8 @@ function M.open(all_cols, vis_cols, on_change)
   map("<Tab>",   move_item)
   map("<CR>",    move_item)
   map("<Space>", move_item)
+  map("K",       function() reorder(-1) end)
+  map("J",       function() reorder(1)  end)
 
   vim.api.nvim_create_autocmd("WinClosed", {
     pattern  = tostring(win),
