@@ -1,5 +1,5 @@
 -- Panel listing all saved connections, grouped by driver.
--- Keymaps: <CR> expand/collapse group or connect, d delete, n new, R refresh, q close.
+-- Keymaps: <CR> expand/collapse group or connect, x explore, e edit, d disconnect, r remove, n new, R refresh, q close.
 local M = {}
 
 local Buffer      = require("dbelveder.buffer")
@@ -308,10 +308,10 @@ function M.open()
     state.buffer = Buffer:new(BUFNAME, "dbelveder_connections", false, "nofile")
     local hover_key = config.options.keymaps.hover_key
     state.buffer:set_keymap("n", "<CR>",     on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect" })
-    state.buffer:set_keymap("n", "e",        on_explore,    { nowait = true, silent = true, desc = "Open explorer" })
-    state.buffer:set_keymap("n", "x",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
-    state.buffer:set_keymap("n", "d",        on_delete,     { nowait = true, silent = true, desc = "Delete connection" })
-    state.buffer:set_keymap("n", "r",        on_edit,       { nowait = true, silent = true, desc = "Edit connection" })
+    state.buffer:set_keymap("n", "x",        on_explore,    { nowait = true, silent = true, desc = "Open explorer" })
+    state.buffer:set_keymap("n", "e",        on_edit,       { nowait = true, silent = true, desc = "Edit connection" })
+    state.buffer:set_keymap("n", "d",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
+    state.buffer:set_keymap("n", "r",        on_delete,     { nowait = true, silent = true, desc = "Remove connection" })
     state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection" })
     state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh" })
     state.buffer:set_keymap("n", hover_key,  on_hover,      { nowait = true, silent = true, desc = "Show error details" })
