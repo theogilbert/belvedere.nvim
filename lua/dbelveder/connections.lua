@@ -170,25 +170,36 @@ function M.create(caps, callback)
             local params = vim.tbl_extend("force",
               { driver = driver, driver_label = d.label, server = server }, values)
 
-            local function finish(pw)
-              params.requires_password = pw ~= nil and pw ~= ""
+            local function finish(pw, remember)
+              if remember then
+                params.password          = pw
+                params.requires_password = false
+              else
+                params.requires_password = pw ~= nil and pw ~= ""
+              end
               local conns = M.load()
-              conns[name] = params  -- saved without password
+              conns[name] = params
               M.save(conns)
               vim.notify(("dbelveder: saved %q"):format(name), vim.log.levels.INFO)
-              local params_with_pw = params.requires_password
+              local params_out = (pw ~= nil and pw ~= "")
                 and vim.tbl_extend("force", params, { password = pw })
                 or params
-              callback(name, params_with_pw)
+              callback(name, params_out)
             end
 
             if pw_param then
               vim.ui.input({ prompt = pw_param.label .. ": ", secret = true }, function(pw)
                 if pw == nil then callback(nil) return end
-                finish(pw)
+                if pw == "" then finish(pw, false); return end
+                vim.schedule(function()
+                  vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(choice)
+                    if choice == nil then callback(nil) return end
+                    finish(pw, choice == "Yes")
+                  end)
+                end)
               end)
             else
-              finish(nil)
+              finish(nil, false)
             end
           end)
         end)
@@ -247,14 +258,30 @@ function M.edit(name, caps, callback)
       local params = vim.tbl_extend("force",
         { driver = driver, driver_label = driver_label, server = current.server }, values)
 
-      local function finish(pw, requires_pw)
-        params.requires_password = requires_pw
+      local function finish(pw, remember)
+        if pw ~= nil and pw ~= "" then
+          if remember then
+            params.password          = pw
+            params.requires_password = false
+          else
+            params.requires_password = true
+          end
+        else
+          -- Keep current password settings (pw left empty by user).
+          if current.password then
+            params.password          = current.password
+            params.requires_password = false
+          else
+            params.requires_password = current.requires_password
+          end
+          pw = current.password
+        end
         local conns2 = M.load()
         if new_name ~= name then conns2[name] = nil end
         conns2[new_name] = params
         M.save(conns2)
         vim.notify(("dbelveder: saved %q"):format(new_name), vim.log.levels.INFO)
-        local final = (requires_pw and pw ~= nil and pw ~= "")
+        local final = (pw ~= nil and pw ~= "")
           and vim.tbl_extend("force", params, { password = pw })
           or params
         callback(new_name, final)
@@ -263,8 +290,13 @@ function M.edit(name, caps, callback)
       if pw_param then
         vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
           if pw == nil then callback(nil) return end
-          if pw == "" then finish(nil, current.requires_password)
-          else finish(pw, true) end
+          if pw == "" then finish(nil, false); return end
+          vim.schedule(function()
+            vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(choice)
+              if choice == nil then callback(nil) return end
+              finish(pw, choice == "Yes")
+            end)
+          end)
         end)
       else
         finish(nil, false)
