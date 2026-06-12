@@ -4,6 +4,15 @@ local M = {}
 
 M.COL_SEPARATOR = "│"
 
+-- Display string for JSON null values (vim.NIL sentinel).
+local NULL_TEXT = "NULL"
+
+local function cell_display(cell)
+  if cell == vim.NIL then return NULL_TEXT end
+  if cell == nil     then return "" end
+  return tostring(cell)
+end
+
 local function center(text, width)
   local space = (width - vim.api.nvim_strwidth(text)) / 2
   return string.rep(" ", math.floor(space)) .. text .. string.rep(" ", math.ceil(space))
@@ -11,7 +20,7 @@ end
 
 local function update_col_widths(cols, widths)
   for i, cell in ipairs(cols) do
-    widths[i] = math.max(widths[i] or 2, vim.api.nvim_strwidth(tostring(cell or "")) + 2)
+    widths[i] = math.max(widths[i] or 2, vim.api.nvim_strwidth(cell_display(cell)) + 2)
   end
 end
 
@@ -34,7 +43,7 @@ function M.from_structured_data(lines, header_lines)
   for _, row in ipairs(lines) do
     local cells = {}
     for i, cell in ipairs(row) do
-      cells[i] = center(tostring(cell or ""), widths[i])
+      cells[i] = center(cell_display(cell), widths[i])
     end
     table.insert(formatted, M.COL_SEPARATOR .. table.concat(cells, M.COL_SEPARATOR) .. M.COL_SEPARATOR)
   end
@@ -86,11 +95,11 @@ function M.column_byte_positions(row, cols_width)
   local byte_pos  = SEP_BYTES  -- skip leading │
   for i, width in ipairs(cols_width) do
     local cell_bytes
-    if row and row[i] then
-      local s      = tostring(row[i])
-      cell_bytes   = width - vim.api.nvim_strwidth(s) + #s
+    if row then
+      local s    = cell_display(row[i])
+      cell_bytes = width - vim.api.nvim_strwidth(s) + #s
     else
-      cell_bytes   = width
+      cell_bytes = width
     end
     positions[i] = { byte_pos, byte_pos + cell_bytes }
     byte_pos     = byte_pos + cell_bytes + SEP_BYTES
@@ -115,6 +124,31 @@ function M.col_hl_rules(higroup, buf_line, data_line, tbl)
   end
   return rules
 end
+
+--- Return highlight rules for all NULL (vim.NIL) cells in the data rows.
+--- @param tbl table  FormattedTable from from_structured_data (header_lines = 1)
+--- @return table   list of { higroup, start, finish } rules
+function M.null_hl_rules(tbl)
+  local rules = {}
+  -- tbl.lines[1] = header; data rows start at tbl.lines[2].
+  -- With one separator after the header, data row i maps to 0-indexed buffer line i.
+  for i = 2, #tbl.lines do
+    local row      = tbl.lines[i]
+    local buf_line = i
+    local positions = M.column_byte_positions(row, tbl.columns_width)
+    for j, cell in ipairs(row) do
+      if cell == vim.NIL then
+        rules[#rules + 1] = {
+          higroup = "DbelvederNull",
+          start   = { buf_line, positions[j][1] },
+          finish  = { buf_line, positions[j][2] },
+        }
+      end
+    end
+  end
+  return rules
+end
+
 
 --- Set up box-drawing character highlighting for a buffer that shows a table.
 --- Call once after creating the buffer.

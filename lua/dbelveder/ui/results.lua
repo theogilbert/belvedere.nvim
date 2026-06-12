@@ -240,6 +240,7 @@ local function apply_highlights(bs, tbl)
     start   = { rowcount_buf_line, 0 },
     finish  = { rowcount_buf_line, -1 },
   })
+  vim.list_extend(rules, table_fmt.null_hl_rules(tbl))
   bs.buffer:apply_highlight(rules)
 end
 
