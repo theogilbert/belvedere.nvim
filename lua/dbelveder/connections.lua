@@ -159,6 +159,13 @@ function M.create(caps, callback)
         if not d then callback(nil) return end
         local driver = d.driver
 
+        local existing = M.load()[name]
+        if existing and existing.driver == driver then
+          vim.notify(("dbelveder: connection %q already exists for this driver"):format(name), vim.log.levels.ERROR)
+          callback(nil)
+          return
+        end
+
         vim.schedule(function()
           local fields, pw_param = driver_fields(caps, driver)
 
