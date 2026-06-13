@@ -46,13 +46,6 @@ function M.setup(opts)
     return name and conn_display_label(name)
   end)
 
-  local key = config.options.keymaps.execute
-  if key and key ~= "" then
-    vim.keymap.set("n", key, function() M.execute() end,
-      { desc = "Execute current line", silent = true })
-    vim.keymap.set("x", key, function() M.execute() end,
-      { desc = "Execute selection", silent = true })
-  end
 end
 
 

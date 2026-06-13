@@ -14,9 +14,7 @@ M.defaults = {
   -- (~/.config/dbelveder/connections.json on most systems).
   connections_file = nil,  -- populated in setup() so the function runs at call time
 
-  -- Keymap inside the query buffer to execute the selection (or whole buffer).
   keymaps = {
-    execute   = "<CR>",
     hover_key = "K",
   },
 
