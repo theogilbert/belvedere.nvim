@@ -56,7 +56,7 @@ Long-running methods may send one or more progress messages before the final res
 ### Example
 
 ```
-client → {"id":2,"method":"execute","params":{"connection_id":"0","sql":"SELECT ..."}}
+client → {"id":2,"method":"execute","params":{"connection_id":"0","query":"SELECT ..."}}
 server → {"id":2,"progress":{"status":"reconnecting","message":"Connection lost, reconnecting…"}}
 server → {"id":2,"progress":{"status":"executing","message":"Retrying query…"}}
 server → {"id":2,"result":{"columns":[…],"rows":[…]},"error":null}
@@ -174,7 +174,7 @@ The query language and bind parameter syntax depend on the driver — see [Drive
 | Field           | Type             | Description                        |
 |-----------------|------------------|------------------------------------|
 | `connection_id` | string           | Connection to execute on           |
-| `sql`           | string           | Query to execute                   |
+| `query`         | string           | Query to execute                   |
 | `params`        | array (optional) | Positional bind parameters         |
 
 **result — SELECT / RETURN**
@@ -193,12 +193,12 @@ The query language and bind parameter syntax depend on the driver — see [Drive
 **examples**
 
 ```json
-{"id":2,"method":"execute","params":{"connection_id":"0","sql":"SELECT id, name FROM users WHERE active = ?","params":[1]}}
+{"id":2,"method":"execute","params":{"connection_id":"0","query":"SELECT id, name FROM users WHERE active = ?","params":[1]}}
 {"id":2,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]]},"error":null}
 ```
 
 ```json
-{"id":3,"method":"execute","params":{"connection_id":"0","sql":"DELETE FROM users WHERE active = 0"}}
+{"id":3,"method":"execute","params":{"connection_id":"0","query":"DELETE FROM users WHERE active = 0"}}
 {"id":3,"result":{"rows_affected":4},"error":null}
 ```
 

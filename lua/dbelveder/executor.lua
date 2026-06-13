@@ -57,7 +57,7 @@ end
 local function execute(conn, sql, on_done, on_progress)
   client.request(
     "execute",
-    { connection_id = conn.conn_id, sql = sql, params = {} },
+    { connection_id = conn.conn_id, query = sql, params = {} },
     on_done,
     on_progress)
 end
