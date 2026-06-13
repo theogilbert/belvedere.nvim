@@ -69,25 +69,25 @@ function M.ensure_backend_with_caps(callback)
   return true
 end
 
-function M.connect()
-  M.ensure_backend_with_caps(function(caps)
-    connections.pick(caps, function(name, params)
-      if not name then return end
-      M._do_connect(name, params)
+function M.connect(name)
+  if name and name ~= "" then
+    local params = connections.get(name)
+    if not params then
+      vim.notify(("dbelveder: connection %q not found"):format(name), vim.log.levels.ERROR)
+      return
+    end
+    connections.prompt_password(params, function(params_with_pw)
+      if not params_with_pw then return end
+      M._do_connect(name, params_with_pw)
     end)
-  end)
-end
-
-function M.connect_by_name(name)
-  local params = connections.get(name)
-  if not params then
-    vim.notify(("dbelveder: connection %q not found"):format(name), vim.log.levels.ERROR)
-    return
+  else
+    M.ensure_backend_with_caps(function(caps)
+      connections.pick(caps, function(picked_name, params)
+        if not picked_name then return end
+        M._do_connect(picked_name, params)
+      end)
+    end)
   end
-  connections.prompt_password(params, function(params_with_pw)
-    if not params_with_pw then return end
-    M._do_connect(name, params_with_pw)
-  end)
 end
 
 function M._do_connect(name, params)
@@ -190,11 +190,6 @@ local function execute_sql(sql)
   executor.run(conn, sql)
 end
 
-function M.execute_range(line1, line2)
-  local lines = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
-  execute_sql(table.concat(lines, "\n"))
-end
-
 function M.execute()
   local sql
   if selection.is_in_visual_mode() then
@@ -211,6 +206,11 @@ function M.execute()
     end
   end
   execute_sql(sql)
+end
+
+function M.execute_range(line1, line2)
+  local lines = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
+  execute_sql(table.concat(lines, "\n"))
 end
 
 function M.open_connections()

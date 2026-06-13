@@ -151,6 +151,12 @@ function M.create(caps, callback)
   vim.ui.input({ prompt = "Connection name: " }, function(name)
     if not name or name == "" then callback(nil) return end
 
+    if M.load()[name] then
+      vim.notify(("dbelveder: connection %q already exists"):format(name), vim.log.levels.ERROR)
+      callback(nil)
+      return
+    end
+
     vim.schedule(function()
       vim.ui.select(caps.drivers, {
         prompt      = "Driver:",
@@ -158,13 +164,6 @@ function M.create(caps, callback)
       }, function(d)
         if not d then callback(nil) return end
         local driver = d.driver
-
-        local existing = M.load()[name]
-        if existing and existing.driver == driver then
-          vim.notify(("dbelveder: connection %q already exists for this driver"):format(name), vim.log.levels.ERROR)
-          callback(nil)
-          return
-        end
 
         vim.schedule(function()
           local fields, pw_param = driver_fields(caps, driver)

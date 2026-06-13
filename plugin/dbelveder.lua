@@ -15,12 +15,7 @@ end
 -- :DbConnect          — open the connection picker
 -- :DbConnect <name>   — connect directly by name
 vim.api.nvim_create_user_command("DbConnect", function(opts)
-  local arg = vim.trim(opts.args)
-  if arg == "" then
-    db.connect()
-  else
-    db.connect_by_name(arg)
-  end
+  db.connect(vim.trim(opts.args))
 end, {
   nargs = "?",
   complete = saved_connection_names,
@@ -31,7 +26,7 @@ vim.api.nvim_create_user_command("DbAssociate", function(_)
   db.associate()
 end, {})
 
--- :DbNewConnection    — jump straight to the new-connection wizard
+-- :DbNewConnection  — open the new-connection wizard
 vim.api.nvim_create_user_command("DbNewConnection", function(_)
   db.ensure_backend_with_caps(function(caps)
     require("dbelveder.connections").create(caps, function(name, params)
@@ -61,12 +56,7 @@ end, {
   complete = function() return db.active_names() end,
 })
 
--- :DbRun   — visual selection or current line (mode-aware)
-vim.api.nvim_create_user_command("DbRun", function(_)
-  db.execute()
-end, {})
-
--- :[range]DbExecute  — explicit line range
+-- :[range]DbExecute  — current line, or explicit range / visual selection
 vim.api.nvim_create_user_command("DbExecute", function(opts)
   db.execute_range(opts.line1, opts.line2)
 end, { range = true })

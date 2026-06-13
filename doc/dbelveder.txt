@@ -123,11 +123,6 @@ COMMANDS                                                    *dbelveder-commands*
     Disconnect the named connection. If {name} is omitted, disconnects
     the connection associated with the current buffer.
 
-                                                                 *:DbRun*
-:DbRun
-    Execute the visual selection (when called from visual mode) or the
-    current line (normal mode) against the current buffer's connection.
-
                                                              *:DbExecute*
 :[range]DbExecute
     Execute lines in {range} (joined with newlines) against the current
@@ -202,12 +197,9 @@ require("dbelveder").open_connections()
     Toggle the connections panel. Equivalent to |:DbConnections|.
 
                                                     *dbelveder.connect()*
-require("dbelveder").connect()
-    Open the connection picker. Equivalent to |:DbConnect| with no args.
-
-                                               *dbelveder.connect_by_name()*
-require("dbelveder").connect_by_name({name})
-    Connect directly to {name} from the connections file.
+require("dbelveder").connect([{name}])
+    Open the connection picker, or connect directly to {name} if given.
+    Equivalent to |:DbConnect|.
 
                                                   *dbelveder.associate()*
 require("dbelveder").associate()
@@ -221,15 +213,9 @@ require("dbelveder").disconnect({name})
 
                                                     *dbelveder.execute()*
 require("dbelveder").execute()
-    Execute the visual selection or the current line against the current
-    buffer's connection. This is what |:DbRun| and the configured
-    `keymaps.execute` key call.
-
-    When invoked via the `keymaps.execute` binding:
-    - If the key is `"<CR>"` (the default), silently does nothing when the
-      buffer has no associated connection — use |:DbRun| for an explicit
-      warning.
-    - For any other configured key, the warning is shown.
+    Execute the visual selection (when called from a visual-mode Lua
+    keymap) or the current line (normal mode) against the current
+    buffer's connection.
 
                                               *dbelveder.execute_range()*
 require("dbelveder").execute_range({line1}, {line2})
@@ -294,7 +280,6 @@ All keys are optional.
     python_cmd       = "dbelveder",
     connections_file = nil,   -- auto-detected from $XDG_CONFIG_HOME
     keymaps = {
-      execute   = "<CR>",
       hover_key = "K",
     },
     results = { split = "below", height = 15, max_rows = 500 },
@@ -313,16 +298,6 @@ connections_file ~
 
   Path to the JSON file where connections are stored. The directory is
   created automatically on first save.
-
-                                                     *dbelveder-execute-key*
-keymaps.execute ~
-  Type: `string`   Default: `"<CR>"`
-
-  Global key bound in `n` and `x` modes to execute the current line or
-  visual selection. When set to `"<CR>"`, the key silently does nothing in
-  buffers with no associated connection (to avoid spurious warnings on
-  every Enter press). For any other key, the "no active connection" warning
-  is shown. Set to `""` to disable the global keymap.
 
                                                     *dbelveder-hover-key*
 keymaps.hover_key ~

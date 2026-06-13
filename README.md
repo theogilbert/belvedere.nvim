@@ -45,8 +45,6 @@ require("dbelveder").setup({
   -- connections_file = vim.fn.expand("~/.config/dbelveder/connections.json"),
 
   keymaps = {
-    -- Keymap inside query buffers to execute.
-    execute   = "<CR>",
     -- Key in the connections panel to show the error details float.
     hover_key = "K",
   },
@@ -70,10 +68,11 @@ Open the connections panel with `:DbConnections`. Connections are grouped by dri
 |-----|--------|
 | `<CR>` | Expand/collapse a driver group, or connect to the database under the cursor |
 | `n` | Create a new connection (guided wizard) |
-| `r` | Edit the saved connection under the cursor |
-| `d` | Delete the saved connection under the cursor |
-| `x` | Disconnect from the database under the cursor |
-| `e` | Open the explorer for the connected database under the cursor |
+| `e` | Edit the connection under the cursor |
+| `c` | Clone the connection under the cursor |
+| `d` | Disconnect from the database under the cursor |
+| `r` | Remove the saved connection under the cursor |
+| `x` | Open the explorer for the connected database under the cursor |
 | `K` | Show the connection error message in a float (press `K` again to enter it) |
 | `R` | Refresh the panel |
 | `q` | Close the panel |
@@ -100,14 +99,19 @@ A picker lists all currently open connections. Select one — the buffer is now 
 
 Write SQL in the associated buffer and run:
 
-| Command / key | What it executes |
-|---------------|-----------------|
-| `:DbRun` (or configured key in normal mode) | Current line |
-| `:DbRun` (or configured key in visual mode) | Visual selection |
-| `:'<,'>DbExecute` | Explicit line range |
+| Command | What it executes |
+|---------|-----------------|
+| `:DbExecute` | Current line |
+| `:'<,'>DbExecute` | Visual selection |
 | `:%DbExecute` | Whole buffer |
 
-The `keymaps.execute` option (default `<CR>`) is automatically bound in both `n` and `x` modes. In buffers that have no associated connection the key does nothing (no warning); use `:DbRun` or `:DbExecute` directly for an explicit error.
+The plugin sets no keymaps on your buffers — add your own as needed, e.g.:
+
+```lua
+vim.keymap.set("n", "<leader>e", ":DbExecute<CR>")
+vim.keymap.set("x", "<leader>e", ":'<,'>DbExecute<CR>")
+```
+
 
 Results appear in a split window with aligned columns and a row count. For DML queries (`INSERT`, `UPDATE`, `DELETE`) the affected row count is shown instead of a table.
 
@@ -137,7 +141,6 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 | `:DbDeleteConnection <name>` | Remove a saved connection |
 | `:DbDisconnect [name]` | Disconnect a named connection, or the current buffer's connection |
 | `:[range]DbExecute` | Execute SQL (range, selection, or current line) |
-| `:DbRun` | Execute the visual selection or the current line |
 | `:DbExplore` | Open the schema explorer |
 | `:DbStop` | Kill the Python backend process |
 | `:DbRestart` | Restart the Python backend process (clears all state) |
@@ -217,8 +220,9 @@ db.setup(opts)
 -- Open the connections panel.
 db.open_connections()
 
--- Connect to a saved connection by name.
-db.connect_by_name("prod-mssql")
+-- Connect via picker, or directly by name.
+db.connect()
+db.connect("prod-mssql")
 
 -- Associate the current buffer with an open connection (shows a picker).
 db.associate()
@@ -226,12 +230,11 @@ db.associate()
 -- Disconnect from a named connection.
 db.disconnect("prod-mssql")
 
+-- Execute: mode-aware (visual selection or current line). For Lua keymaps.
+db.execute()
+
 -- Execute lines line1..line2 from the current buffer (1-based).
 db.execute_range(line1, line2)
-
--- Execute the visual selection (x mode) or the current line (n mode).
--- This is what :DbRun and the configured keymaps.execute key call.
-db.execute()
 
 -- Open the explorer for a specific connection by name.
 db.open_explorer_for("prod-mssql")

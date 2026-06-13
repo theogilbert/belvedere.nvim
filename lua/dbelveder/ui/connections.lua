@@ -140,7 +140,7 @@ local function on_enter()
   else
     state.conn_errors[entry.name] = nil
     local db = require("dbelveder")
-    db.connect_by_name(entry.name)
+    db.connect(entry.name)
   end
 end
 
