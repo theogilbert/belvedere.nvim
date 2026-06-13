@@ -21,12 +21,15 @@ local function same_columns(a, b)
   return true
 end
 
-local function rows_label(total, max_rows)
-  local s = total .. " row" .. (total == 1 and "" or "s")
-  if total > max_rows then
-    return max_rows .. " of " .. total .. " rows (truncated)"
+local function rows_label(total, page, page_size)
+  if total <= page_size then
+    return total .. " row" .. (total == 1 and "" or "s")
   end
-  return s
+  local total_pages = math.ceil(total / page_size)
+  local first = (page - 1) * page_size + 1
+  local last  = math.min(total, page * page_size)
+  return ("page %d/%d  ·  rows %d–%d of %d  (] next  [ prev)"):format(
+    page, total_pages, first, last, total)
 end
 
 local function rows_affected_msg(n, verb)
@@ -206,6 +209,7 @@ local function get_or_create_buf_state(conn_name, buf_title)
     raw_columns = nil,
     raw_rows    = nil,
     vis_columns = nil,
+    page        = 1,
   }
   state.buffers[conn_name] = bs
 
@@ -227,27 +231,52 @@ local function get_or_create_buf_state(conn_name, buf_title)
       render_table(bs)
     end)
   end, { desc = "Select displayed columns", silent = true })
+  buf:set_keymap("n", "]", function()
+    if not bs.raw_rows then return end
+    local page_size   = config.options.results.page_size
+    local total_pages = math.max(1, math.ceil(#bs.raw_rows / page_size))
+    if bs.page < total_pages then
+      bs.page = bs.page + 1
+      render_table(bs)
+    end
+  end, { desc = "Next page", silent = true })
+  buf:set_keymap("n", "[", function()
+    if not bs.raw_rows or bs.page <= 1 then return end
+    bs.page = bs.page - 1
+    render_table(bs)
+  end, { desc = "Previous page", silent = true })
 
   return bs
 end
 
 
-local function apply_highlights(bs, tbl)
-  local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 0, 1, tbl)
-  local rowcount_buf_line = #tbl.text + 1
+-- label_line: 0-indexed buf line for the DbelvederRowCount highlight
+-- tbl_offset: 0-indexed buf line where the table starts
+local function apply_highlights(bs, tbl, label_line, tbl_offset)
+  local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", tbl_offset, 1, tbl)
   table.insert(rules, {
     higroup = "DbelvederRowCount",
-    start   = { rowcount_buf_line, 0 },
-    finish  = { rowcount_buf_line, -1 },
+    start   = { label_line, 0 },
+    finish  = { label_line, -1 },
   })
-  vim.list_extend(rules, table_fmt.null_hl_rules(tbl))
+  local null_rules = table_fmt.null_hl_rules(tbl)
+  for _, r in ipairs(null_rules) do
+    r.start[1]  = r.start[1]  + tbl_offset
+    r.finish[1] = r.finish[1] + tbl_offset
+  end
+  vim.list_extend(rules, null_rules)
   bs.buffer:apply_highlight(rules)
 end
 
 
 render_table = function(bs)
-  local max_rows   = config.options.results.max_rows
-  local total_rows = #bs.raw_rows
+  local page_size   = config.options.results.page_size
+  local total_rows  = #bs.raw_rows
+  local total_pages = math.max(1, math.ceil(total_rows / page_size))
+  bs.page = math.max(1, math.min(bs.page, total_pages))
+
+  local first = (bs.page - 1) * page_size + 1
+  local last  = math.min(total_rows, bs.page * page_size)
 
   -- Build index map: vis column name → position in raw_columns
   local col_indices = {}
@@ -258,7 +287,7 @@ render_table = function(bs)
   end
 
   local display = { bs.vis_columns }
-  for i = 1, math.min(total_rows, max_rows) do
+  for i = first, last do
     local row = {}
     for _, idx in ipairs(col_indices) do table.insert(row, bs.raw_rows[i][idx]) end
     table.insert(display, row)
@@ -267,11 +296,10 @@ render_table = function(bs)
   local tbl = table_fmt.from_structured_data(display, 1)
   bs.table_data = tbl
 
-  local content = vim.list_extend({}, tbl.text)
-  table.insert(content, "")
-  table.insert(content, rows_label(total_rows, max_rows))
+  local content = { rows_label(total_rows, bs.page, page_size), "" }
+  vim.list_extend(content, tbl.text)
   bs.buffer:set_content(content)
-  apply_highlights(bs, tbl)
+  apply_highlights(bs, tbl, 0, 2)
   update_truncation_indicators()
 end
 
@@ -324,17 +352,16 @@ end
 
 function M.append_batch_result(idx, total, columns, rows)
   local bs         = active_bs()
-  local max_rows   = config.options.results.max_rows
+  local page_size  = config.options.results.page_size
   local total_rows = #rows
   local display    = { columns }
-  for i = 1, math.min(total_rows, max_rows) do table.insert(display, rows[i]) end
+  for i = 1, math.min(total_rows, page_size) do table.insert(display, rows[i]) end
   local tbl     = table_fmt.from_structured_data(display, 1)
-  local content = vim.list_extend({}, tbl.text)
-  table.insert(content, "")
-  table.insert(content, rows_label(total_rows, max_rows))
-  local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 0, 1, tbl)
+  local content = { rows_label(total_rows, 1, page_size), "" }
+  vim.list_extend(content, tbl.text)
+  local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 2, 1, tbl)
   table.insert(rules, { higroup = "DbelvederRowCount",
-    start = { #tbl.text + 1, 0 }, finish = { #tbl.text + 1, -1 } })
+    start = { 0, 0 }, finish = { 0, -1 } })
   table.insert(bs.segments, { header = make_separator(idx, total), lines = content, hl_rules = rules })
   render_segments(bs)
 end
@@ -357,6 +384,7 @@ function M.show_results(columns, rows)
   end
   bs.raw_columns = columns
   bs.raw_rows    = rows
+  bs.page        = 1
   ensure_win(bs.buffer.buf_id)
   render_table(bs)
 end

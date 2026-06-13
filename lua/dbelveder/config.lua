@@ -20,9 +20,9 @@ M.defaults = {
 
   -- Results window options.
   results = {
-    split    = "below",  -- "below" | "right"
-    height   = 15,
-    max_rows = 500,
+    split     = "below",  -- "below" | "right"
+    height    = 15,
+    page_size = 500,
   },
 }
 
