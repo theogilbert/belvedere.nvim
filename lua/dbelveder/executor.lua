@@ -3,6 +3,7 @@
 local M = {}
 
 local client  = require("dbelveder.client")
+local config  = require("dbelveder.config")
 local results = require("dbelveder.ui.results")
 
 -- Past-tense verb shown for DML statements, keyed by leading keyword.

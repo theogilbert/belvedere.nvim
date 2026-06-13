@@ -10,14 +10,20 @@ local state = {
   job_id   = nil,
   next_id  = 1,
   pending  = {},  -- id → callback(err, result)
+  line_buf = "",  -- accumulates partial lines across on_stdout calls
 }
 
 local caps_cache   = nil  -- cached capabilities result
 local caps_pending = {}   -- callbacks waiting for the first fetch
 
 
-local function on_stdout(_, lines, _)
-  for _, line in ipairs(lines) do
+-- Neovim jobstart line convention: data[1] continues the previous partial
+-- line; data[#data] is always the (possibly empty) start of the next line.
+local function on_stdout(_, data, _)
+  state.line_buf = state.line_buf .. data[1]
+  for i = 2, #data do
+    local line = state.line_buf
+    state.line_buf = data[i]
     if line ~= "" then
       local ok, msg = pcall(vim.json.decode, line)
       if ok then
@@ -70,7 +76,8 @@ function M.start(cmd)
   local job_id = vim.fn.jobstart(cmd, {
     on_stdout = on_stdout,
     on_exit   = function(_, code, _)
-      state.job_id = nil
+      state.job_id  = nil
+      state.line_buf = ""
       if code ~= 0 then
         vim.notify(("dbelveder: backend exited with code %d"):format(code), vim.log.levels.ERROR)
       end
