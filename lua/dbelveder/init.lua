@@ -70,6 +70,15 @@ function M.ensure_backend_with_caps(callback)
 end
 
 function M.connect(name)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local auto_assign = vim.bo[bufnr].buftype == ""
+
+  local function after_connect(conn_name)
+    if auto_assign and vim.api.nvim_buf_is_valid(bufnr) then
+      set_buf_conn(bufnr, conn_name)
+    end
+  end
+
   if name and name ~= "" then
     local params = connections.get(name)
     if not params then
@@ -78,22 +87,22 @@ function M.connect(name)
     end
     connections.prompt_password(params, function(params_with_pw)
       if not params_with_pw then return end
-      M._do_connect(name, params_with_pw)
+      M._do_connect(name, params_with_pw, after_connect)
     end)
   else
     M.ensure_backend_with_caps(function(caps)
       connections.pick(caps, function(picked_name, params)
         if not picked_name then return end
-        M._do_connect(picked_name, params)
+        M._do_connect(picked_name, params, after_connect)
       end)
     end)
   end
 end
 
-function M._do_connect(name, params)
+function M._do_connect(name, params, after_connect)
   connections_panel.set_conn_loading(name)
   local ok = M.ensure_backend_with_caps(function()
-    M._send_connect(name, params)
+    M._send_connect(name, params, after_connect)
   end)
   if not ok then connections_panel.clear_conn_loading(name) end
 end
@@ -101,7 +110,7 @@ end
 -- Fields stored in the connections file that must not be forwarded to the server.
 local CLIENT_ONLY_FIELDS = { server = true, requires_password = true, driver_label = true }
 
-function M._send_connect(name, params)
+function M._send_connect(name, params, after_connect)
   local server_params = {}
   for k, v in pairs(params) do
     if not CLIENT_ONLY_FIELDS[k] then server_params[k] = v end
@@ -116,6 +125,7 @@ function M._send_connect(name, params)
     state.conns[name] = { conn_id = result.connection_id, driver = params.driver, name = name, driver_label = params.driver_label }
     vim.notify(("dbelveder: connected to %q (%s)"):format(name, params.driver), vim.log.levels.INFO)
     connections_panel.refresh()
+    if after_connect then after_connect(name) end
   end)
 end
 

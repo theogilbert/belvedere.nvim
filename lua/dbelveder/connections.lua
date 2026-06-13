@@ -129,7 +129,15 @@ function M.pick(caps, callback)
   table.sort(names)
   local items = vim.list_extend(names, { "[+ New connection]" })
 
-  vim.ui.select(items, { prompt = "dbelveder — select connection:" }, function(choice)
+  vim.ui.select(items, {
+    prompt      = "dbelveder — select connection:",
+    format_item = function(item)
+      if item == "[+ New connection]" then return item end
+      local p = conns[item]
+      local label = p and (p.driver_label or p.driver)
+      return label and (item .. " (" .. label .. ")") or item
+    end,
+  }, function(choice)
     if not choice then callback(nil) return end
     if choice == "[+ New connection]" then
       M.create(caps, callback)
