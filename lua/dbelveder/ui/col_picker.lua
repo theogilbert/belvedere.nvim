@@ -5,6 +5,8 @@
 -- j/k navigate within the focused panel; h/l switch panels.
 -- Tab/Enter/Space move the item under the cursor to the other panel.
 -- K/J (right panel only) move the item under the cursor up/down.
+-- >   move all available columns to selected.
+-- <   move all selected columns back to available.
 -- q/Esc close (changes are already applied live via the on_change callback).
 local hl        = require("dbelveder.hl")
 local table_fmt = require("dbelveder.table")
@@ -98,6 +100,28 @@ local function reorder(delta)
   if p.on_change then p.on_change(vim.list_extend({}, p.selected)) end
 end
 
+local function select_all()
+  for _, col in ipairs(p.available) do
+    table.insert(p.selected, col)
+  end
+  p.available = {}
+  p.side      = "right"
+  p.cursor    = math.min(p.cursor, math.max(#p.selected, 1))
+  render()
+  if p.on_change then p.on_change(vim.list_extend({}, p.selected)) end
+end
+
+local function deselect_all()
+  for _, col in ipairs(p.selected) do
+    insert_sorted_available(col)
+  end
+  p.selected = {}
+  p.side     = "left"
+  p.cursor   = math.min(p.cursor, math.max(#p.available, 1))
+  render()
+  if p.on_change then p.on_change({}) end
+end
+
 local function move_item()
   if p.side == "left" then
     local col = table.remove(p.available, p.cursor)
@@ -106,7 +130,6 @@ local function move_item()
     p.cursor = math.min(p.cursor, math.max(#p.available, 1))
     if #p.available == 0 then p.side = "right"; p.cursor = #p.selected end
   else
-    if #p.selected <= 1 then return end  -- always keep at least one column
     local col = table.remove(p.selected, p.cursor)
     insert_sorted_available(col)
     p.cursor = math.min(p.cursor, math.max(#p.selected, 1))
@@ -224,6 +247,8 @@ function M.open(all_cols, vis_cols, on_change)
   map("<Space>", move_item)
   map("K",       function() reorder(-1) end)
   map("J",       function() reorder(1)  end)
+  map(">",       select_all)
+  map("<",       deselect_all)
 
   vim.api.nvim_create_autocmd("WinClosed", {
     pattern  = tostring(win),
