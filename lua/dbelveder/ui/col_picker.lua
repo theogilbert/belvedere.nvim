@@ -216,52 +216,80 @@ function M.open(all_cols, vis_cols, on_change)
 
   render()  -- second call positions the Neovim cursor now that p.win is set
 
-  local function map(key, fn)
-    vim.keymap.set("n", key, fn, { buffer = buf, silent = true, nowait = true })
+  local function map(key, fn, desc)
+    vim.keymap.set("n", key, fn, { buffer = buf, silent = true, nowait = true, desc = desc })
   end
 
-  map("q",       close)
-  map("<Esc>",   close)
-  map("j",       function()
+  local function show_help()
+    local keymaps = vim.api.nvim_buf_get_keymap(buf, "n")
+    local lines   = {}
+    for _, km in ipairs(keymaps) do
+      if km.desc and km.desc ~= "" then
+        local lhs = km.lhs:gsub("^<lt>$", "<")
+      table.insert(lines, string.format("  %-10s  %s", lhs, km.desc))
+      end
+    end
+    table.sort(lines)
+    if #lines == 0 then return end
+    local width = 0
+    for _, l in ipairs(lines) do width = math.max(width, #l) end
+    local hbuf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(hbuf, 0, -1, false, lines)
+    vim.bo[hbuf].modifiable = false
+    vim.bo[hbuf].bufhidden  = "wipe"
+    local hwin = vim.api.nvim_open_win(hbuf, true, {
+      relative  = "cursor",
+      row       = 1,
+      col       = 0,
+      width     = width,
+      height    = #lines,
+      style     = "minimal",
+      border    = "rounded",
+      title     = " keymaps ",
+      title_pos = "center",
+    })
+    for _, key in ipairs({ "q", "<Esc>", "g?" }) do
+      vim.keymap.set("n", key, function() pcall(vim.api.nvim_win_close, hwin, true) end,
+        { buffer = hbuf, silent = true })
+    end
+  end
+
+  local nav_down = function()
     local list = p.side == "left" and p.available or p.selected
     p.cursor   = math.min(p.cursor + 1, math.max(#list, 1))
     render()
-  end)
-  map("<Down>",  function()
-    local list = p.side == "left" and p.available or p.selected
-    p.cursor   = math.min(p.cursor + 1, math.max(#list, 1))
-    render()
-  end)
-  map("k",       function() p.cursor = math.max(1, p.cursor - 1); render() end)
-  map("<Up>",    function() p.cursor = math.max(1, p.cursor - 1); render() end)
-  map("h",       function()
+  end
+  local nav_up   = function() p.cursor = math.max(1, p.cursor - 1); render() end
+  local nav_left = function()
     p.side   = "left"
     p.cursor = math.min(p.cursor, math.max(#p.available, 1))
     render()
-  end)
-  map("<Left>",  function()
-    p.side   = "left"
-    p.cursor = math.min(p.cursor, math.max(#p.available, 1))
-    render()
-  end)
-  map("l",       function()
+  end
+  local nav_right = function()
     p.side   = "right"
     p.cursor = math.min(p.cursor, math.max(#p.selected, 1))
     render()
-  end)
-  map("<Right>", function()
-    p.side   = "right"
-    p.cursor = math.min(p.cursor, math.max(#p.selected, 1))
-    render()
-  end)
-  map("<Tab>",   move_item)
-  map("<CR>",    move_item)
-  map("<Space>", move_item)
-  map("K",       function() reorder(-1) end)
-  map("J",       function() reorder(1)  end)
-  map(">",       select_all)
-  map("<",       deselect_all)
-  map("r",       reset)
+  end
+
+  map("q",       close,      "Close")
+  map("<Esc>",   close,      "")
+  map("j",       nav_down,   "Move cursor down")
+  map("<Down>",  nav_down,   "")
+  map("k",       nav_up,     "Move cursor up")
+  map("<Up>",    nav_up,     "")
+  map("h",       nav_left,   "Focus available panel")
+  map("<Left>",  nav_left,   "")
+  map("l",       nav_right,  "Focus selected panel")
+  map("<Right>", nav_right,  "")
+  map("<Tab>",   move_item,  "Toggle column")
+  map("<CR>",    move_item,  "")
+  map("<Space>", move_item,  "")
+  map("K",       function() reorder(-1) end, "Move column up")
+  map("J",       function() reorder(1)  end, "Move column down")
+  map(">",       select_all,   "Select all")
+  map("<",       deselect_all, "Deselect all")
+  map("r",       reset,        "Reset to initial selection")
+  map("g?",      show_help,    "Show keymaps")
 
   vim.api.nvim_create_autocmd("WinClosed", {
     pattern  = tostring(win),
