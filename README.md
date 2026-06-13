@@ -171,44 +171,6 @@ Connections are stored in `~/.config/dbelveder/connections.json` (XDG-compliant)
 
 ---
 
-## Supported databases
-
-| Driver value | Database | Extra Python package |
-|---|---|---|
-| `"sqlite"` | SQLite | _(none, stdlib)_ |
-| `"sqlserver"` / `"mssql"` | SQL Server | `mssql-python>=1.8` |
-
----
-
-## Tree hierarchies
-
-**SQLite**
-```
-(root)
-└── <table|view>
-    ├── columns
-    │   └── <column>  [type]
-    ├── indices
-    │   └── <index>
-    └── foreign_keys
-        └── <fk>
-```
-
-**SQL Server**
-```
-(root)
-└── <schema>
-    └── <table|view>
-        ├── columns
-        │   └── <column>  [type]
-        ├── indices
-        │   └── <index>
-        └── constraints
-            └── <constraint>
-```
-
----
-
 ## Lua API
 
 ```lua

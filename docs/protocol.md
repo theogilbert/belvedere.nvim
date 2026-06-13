@@ -95,22 +95,12 @@ Only drivers whose Python package is installed appear in the response.
     "server": "dbelveder",
     "drivers": [
       {
-        "driver": "sqlite",
-        "label": "SQLite",
+        "driver": "mydriver",
+        "label": "My Driver",
         "params": [
-          {"key": "database", "type": "string", "label": "Database file path", "required": true}
-        ]
-      },
-      {
-        "driver": "sqlserver",
-        "label": "SQL Server",
-        "params": [
-          {"key": "host",              "type": "string",  "label": "Host",               "default": "localhost"},
-          {"key": "port",              "type": "integer", "label": "Port",               "default": 1433},
-          {"key": "database",          "type": "string",  "label": "Database"},
-          {"key": "user",              "type": "string",  "label": "User"},
-          {"key": "applicationIntent", "type": "enum",    "label": "Application Intent", "choices": ["READ_WRITE", "READ_ONLY"]},
-          {"key": "password",          "type": "string",  "label": "Password",           "secret": true}
+          {"key": "host",     "type": "string",  "label": "Host",     "required": true},
+          {"key": "port",     "type": "integer", "label": "Port",     "default": 5432},
+          {"key": "password", "type": "string",  "label": "Password", "secret": true}
         ]
       }
     ]
@@ -250,6 +240,33 @@ Returns detailed metadata about a specific node.
 | Field     | Type                | Description                    |
 |-----------|---------------------|--------------------------------|
 | `details` | object or null      | Driver-specific metadata object (see [Tree hierarchies](#tree-hierarchies)), or null if the path does not resolve to a describable node |
+
+---
+
+### `driver.help`
+
+Returns documentation for a specific driver as a markdown string. Clients should display this in a help buffer when the user requests driver-specific documentation.
+
+**params**
+
+| Field    | Type   | Description                                          |
+|----------|--------|------------------------------------------------------|
+| `driver` | string | Driver identifier (as returned by `capabilities`)    |
+
+**result**
+
+| Field     | Type   | Description                        |
+|-----------|--------|------------------------------------|
+| `content` | string | Driver documentation in Markdown   |
+
+**example**
+
+```json
+{"id":5,"method":"driver.help","params":{"driver":"mydriver"}}
+```
+```json
+{"id":5,"result":{"content":"# My Driver\n\nQuery language: ..."},"error":null}
+```
 
 ---
 

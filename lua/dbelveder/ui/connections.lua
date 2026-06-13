@@ -209,6 +209,21 @@ local function on_explore()
   db.open_explorer_for(entry.name)
 end
 
+local function on_help()
+  local entry = entry_at_cursor()
+  if not entry then return end
+  local driver
+  if entry.type == "header" then
+    local sep = entry.gkey:find("\0")
+    driver = sep and entry.gkey:sub(1, sep - 1) or entry.gkey
+  else
+    local params = connections.get(entry.name)
+    driver = params and params.driver
+  end
+  if not driver then return end
+  require("dbelveder").open_driver_help(driver)
+end
+
 -- Fields from the saved connection that are client-only and not displayed.
 local HIDDEN_CONN_FIELDS = { password = true, requires_password = true, server = true, driver_label = true }
 
@@ -355,6 +370,7 @@ function M.open()
     state.buffer:set_keymap("n", "d",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
     state.buffer:set_keymap("n", "r",        on_delete,     { nowait = true, silent = true, desc = "Remove connection" })
     state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection" })
+    state.buffer:set_keymap("n", "?",        on_help,       { nowait = true, silent = true, desc = "Driver help" })
     state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh" })
     state.buffer:set_keymap("n", hover_key,  on_hover,      { nowait = true, silent = true, desc = "Show error details" })
     state.buffer:set_keymap("n", "q", function()

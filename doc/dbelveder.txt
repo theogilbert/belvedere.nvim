@@ -74,6 +74,9 @@ PANEL KEYMAPS ~
           confirmation).
   d       Disconnect from the database under the cursor.
   x       Open the explorer for the connected database under the cursor.
+  ?       Open driver documentation in a floating window. Works on both a
+          driver header and an individual connection entry. Press q or
+          <Esc> to close.
   K       Show connection details in a hover float. If an error occurred,
           shows the error message. Press K again to enter the float
           (then q or <Esc> to close it).
@@ -238,6 +241,12 @@ require("dbelveder").stop()
                                                    *dbelveder.restart()*
 require("dbelveder").restart()
     Restart the server process. Equivalent to |:DbRestart|.
+
+                                              *dbelveder.open_driver_help()*
+require("dbelveder").open_driver_help({driver})
+    Fetch documentation for {driver} from the server and display it in a
+    centered floating window with markdown highlighting. Press q or <Esc>
+    to close. Equivalent to pressing `?` in the connections panel.
 
 CONNECTIONS MODULE ~
                                                   *dbelveder-connections-api*
