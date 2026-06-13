@@ -209,6 +209,49 @@ local function on_explore()
   db.open_explorer_for(entry.name)
 end
 
+local function on_jump()
+  local entry = entry_at_cursor()
+  if not entry or entry.type ~= "conn" then return end
+  local db   = require("dbelveder")
+  local bufs = db.buffers_for(entry.name)
+  if #bufs == 0 then
+    vim.notify("dbelveder: no buffers associated with " .. entry.name, vim.log.levels.WARN)
+    return
+  end
+  local panel_win = vim.fn.bufwinid(state.buffer.buf_id)
+  local function jump_to(bufnr)
+    -- Prefer a window already showing this buffer.
+    for _, w in ipairs(vim.fn.win_findbuf(bufnr)) do
+      if w ~= panel_win then
+        vim.api.nvim_set_current_win(w)
+        return
+      end
+    end
+    -- Reuse any normal editing window.
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      if w ~= panel_win and vim.bo[vim.api.nvim_win_get_buf(w)].buftype == "" then
+        vim.api.nvim_set_current_win(w)
+        vim.api.nvim_set_current_buf(bufnr)
+        return
+      end
+    end
+    -- No suitable window — open one to the left of the panel.
+    vim.cmd("leftabove vsplit")
+    vim.api.nvim_set_current_buf(bufnr)
+  end
+  if #bufs == 1 then
+    jump_to(bufs[1])
+  else
+    local names = vim.tbl_map(function(b)
+      local name = vim.api.nvim_buf_get_name(b)
+      return name ~= "" and name or ("[No Name] #" .. b)
+    end, bufs)
+    vim.ui.select(names, { prompt = "Open buffer:" }, function(_, idx)
+      if idx then jump_to(bufs[idx]) end
+    end)
+  end
+end
+
 local function on_help()
   local entry = entry_at_cursor()
   if not entry then return end
@@ -370,6 +413,7 @@ function M.open()
     state.buffer:set_keymap("n", "d",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
     state.buffer:set_keymap("n", "r",        on_delete,     { nowait = true, silent = true, desc = "Remove connection" })
     state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection" })
+    state.buffer:set_keymap("n", "b",        on_jump,       { nowait = true, silent = true, desc = "Open associated buffer(s)" })
     state.buffer:set_keymap("n", "?",        on_help,       { nowait = true, silent = true, desc = "Driver help" })
     state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh" })
     state.buffer:set_keymap("n", hover_key,  on_hover,      { nowait = true, silent = true, desc = "Show error details" })

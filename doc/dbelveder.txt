@@ -74,6 +74,10 @@ PANEL KEYMAPS ~
           confirmation).
   d       Disconnect from the database under the cursor.
   x       Open the explorer for the connected database under the cursor.
+  b       Jump to the buffer associated with this connection. If multiple
+          buffers are associated, shows a picker. Focuses an existing
+          window already showing that buffer; otherwise reuses any normal
+          editing window, or opens a new one to the left of the panel.
   ?       Open driver documentation in a floating window. Works on both a
           driver header and an individual connection entry. Press q or
           <Esc> to close.
@@ -219,6 +223,11 @@ require("dbelveder").execute()
     Execute the visual selection (when called from a visual-mode Lua
     keymap) or the current line (normal mode) against the current
     buffer's connection.
+
+                                                *dbelveder.buffers_for()*
+require("dbelveder").buffers_for({name})
+    Return a list of buffer numbers whose associated connection is {name}.
+    Only valid buffers are included.
 
                                               *dbelveder.execute_range()*
 require("dbelveder").execute_range({line1}, {line2})

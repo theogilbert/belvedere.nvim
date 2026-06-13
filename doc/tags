@@ -27,6 +27,7 @@ dbelveder-results-height	dbelveder.txt	/*dbelveder-results-height*
 dbelveder-results-split	dbelveder.txt	/*dbelveder-results-split*
 dbelveder-setup	dbelveder.txt	/*dbelveder-setup*
 dbelveder.associate()	dbelveder.txt	/*dbelveder.associate()*
+dbelveder.buffers_for()	dbelveder.txt	/*dbelveder.buffers_for()*/
 dbelveder.connect()	dbelveder.txt	/*dbelveder.connect()*
 dbelveder.disconnect()	dbelveder.txt	/*dbelveder.disconnect()*
 dbelveder.execute()	dbelveder.txt	/*dbelveder.execute()*

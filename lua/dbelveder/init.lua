@@ -182,6 +182,17 @@ function M.active_names()
   return names
 end
 
+-- Return valid bufnrs whose associated connection matches {name}.
+function M.buffers_for(name)
+  local result = {}
+  for bufnr, conn_name in pairs(state.buf_conns) do
+    if conn_name == name and vim.api.nvim_buf_is_valid(bufnr) then
+      table.insert(result, bufnr)
+    end
+  end
+  return result
+end
+
 
 local function execute_sql(sql)
   if not sql or sql == "" then
