@@ -7,6 +7,7 @@
 -- K/J (right panel only) move the item under the cursor up/down.
 -- >   move all available columns to selected.
 -- <   move all selected columns back to available.
+-- r   reset selection to its state when the picker was opened.
 -- q/Esc close (changes are already applied live via the on_change callback).
 local hl        = require("dbelveder.hl")
 local table_fmt = require("dbelveder.table")
@@ -100,6 +101,15 @@ local function reorder(delta)
   if p.on_change then p.on_change(vim.list_extend({}, p.selected)) end
 end
 
+local function reset()
+  p.available = vim.list_extend({}, p.init_available)
+  p.selected  = vim.list_extend({}, p.init_selected)
+  p.side      = #p.init_available > 0 and "left" or "right"
+  p.cursor    = 1
+  render()
+  if p.on_change then p.on_change(vim.list_extend({}, p.selected)) end
+end
+
 local function select_all()
   for _, col in ipairs(p.available) do
     table.insert(p.selected, col)
@@ -170,15 +180,17 @@ function M.open(all_cols, vis_cols, on_change)
   table_fmt.setup_buf_hl(buf)
 
   p = {
-    buf       = buf,
-    win       = nil,
-    available = available,
-    selected  = vim.list_extend({}, vis_cols),
-    all_cols  = all_cols,
-    side      = #available > 0 and "left" or "right",
-    cursor    = 1,
-    col_width = col_width,
-    on_change = on_change,
+    buf            = buf,
+    win            = nil,
+    available      = available,
+    selected       = vim.list_extend({}, vis_cols),
+    init_available = vim.list_extend({}, available),
+    init_selected  = vim.list_extend({}, vis_cols),
+    all_cols       = all_cols,
+    side           = #available > 0 and "left" or "right",
+    cursor         = 1,
+    col_width      = col_width,
+    on_change      = on_change,
   }
 
   render()
@@ -249,6 +261,7 @@ function M.open(all_cols, vis_cols, on_change)
   map("J",       function() reorder(1)  end)
   map(">",       select_all)
   map("<",       deselect_all)
+  map("r",       reset)
 
   vim.api.nvim_create_autocmd("WinClosed", {
     pattern  = tostring(win),
