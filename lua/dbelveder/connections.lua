@@ -122,8 +122,9 @@ end
 
 -- Show a picker with existing connections plus a "New" option.
 -- caps is the capabilities object from the server (passed to M.create if needed).
+-- active_set is a { [name] = true } table of already-connected names.
 -- callback(name, params) on selection, callback(nil) on cancel.
-function M.pick(caps, callback)
+function M.pick(caps, active_set, callback)
   local conns = M.load()
   local names = vim.tbl_keys(conns)
   table.sort(names)
@@ -135,7 +136,9 @@ function M.pick(caps, callback)
       if item == "[+ New connection]" then return item end
       local p = conns[item]
       local label = p and (p.driver_label or p.driver)
-      return label and (item .. " (" .. label .. ")") or item
+      local display = label and (item .. " (" .. label .. ")") or item
+      if active_set[item] then display = display .. "  [connected]" end
+      return display
     end,
   }, function(choice)
     if not choice then callback(nil) return end

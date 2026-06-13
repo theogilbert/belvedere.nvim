@@ -91,7 +91,9 @@ function M.connect(name)
     end)
   else
     M.ensure_backend_with_caps(function(caps)
-      connections.pick(caps, function(picked_name, params)
+      local active_set = {}
+      for _, n in ipairs(M.active_names()) do active_set[n] = true end
+      connections.pick(caps, active_set, function(picked_name, params)
         if not picked_name then return end
         M._do_connect(picked_name, params, after_connect)
       end)
