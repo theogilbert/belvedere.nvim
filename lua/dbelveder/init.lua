@@ -217,7 +217,17 @@ function M.open_connections()
   connections_panel.open()
 end
 
-function M.open_driver_help(driver)
+function M.open_current_driver_help(opts)
+  local conn = conn_for_buf(vim.api.nvim_get_current_buf())
+  if not conn then
+    vim.notify("dbelveder: no connection associated with this buffer", vim.log.levels.WARN)
+    return
+  end
+  M.open_driver_help(conn.driver, opts)
+end
+
+function M.open_driver_help(driver, opts)
+  opts = opts or {}
   if not start_backend() then return end
   client.request("driver.help", { driver = driver }, function(err, result)
     if err then
@@ -228,19 +238,27 @@ function M.open_driver_help(driver)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(result.content, "\n"))
     vim.bo[buf].filetype   = "markdown"
     vim.bo[buf].modifiable = false
-    local width  = math.floor(vim.o.columns * 0.8)
-    local height = math.floor(vim.o.lines   * 0.8)
-    local win = vim.api.nvim_open_win(buf, true, {
-      relative   = "editor",
-      width      = width,
-      height     = height,
-      row        = math.floor((vim.o.lines   - height) / 2),
-      col        = math.floor((vim.o.columns - width)  / 2),
-      style      = "minimal",
-      border     = "rounded",
-      title      = " " .. driver .. " ",
-      title_pos  = "center",
-    })
+    local win
+    if opts.position == "bottom" then
+      vim.cmd("botright split")
+      win = vim.api.nvim_get_current_win()
+      vim.api.nvim_win_set_buf(win, buf)
+      vim.api.nvim_win_set_height(win, math.floor(vim.o.lines * 0.4))
+    else
+      local width  = math.floor(vim.o.columns * 0.8)
+      local height = math.floor(vim.o.lines   * 0.8)
+      win = vim.api.nvim_open_win(buf, true, {
+        relative   = "editor",
+        width      = width,
+        height     = height,
+        row        = math.floor((vim.o.lines   - height) / 2),
+        col        = math.floor((vim.o.columns - width)  / 2),
+        style      = "minimal",
+        border     = "rounded",
+        title      = " " .. driver .. " ",
+        title_pos  = "center",
+      })
+    end
     vim.keymap.set("n", "q",     function() vim.api.nvim_win_close(win, true) end, { buffer = buf, nowait = true })
     vim.keymap.set("n", "<Esc>", function() vim.api.nvim_win_close(win, true) end, { buffer = buf, nowait = true })
   end)

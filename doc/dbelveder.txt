@@ -242,11 +242,22 @@ require("dbelveder").stop()
 require("dbelveder").restart()
     Restart the server process. Equivalent to |:DbRestart|.
 
+                                       *dbelveder.open_current_driver_help()*
+require("dbelveder").open_current_driver_help([{opts}])
+    Fetch and display documentation for the driver associated with the
+    current buffer's connection. Shows a warning if the buffer has no
+    associated connection. See |dbelveder.open_driver_help()| for {opts}.
+
                                               *dbelveder.open_driver_help()*
-require("dbelveder").open_driver_help({driver})
-    Fetch documentation for {driver} from the server and display it in a
-    centered floating window with markdown highlighting. Press q or <Esc>
-    to close. Equivalent to pressing `?` in the connections panel.
+require("dbelveder").open_driver_help({driver} [, {opts}])
+    Fetch documentation for {driver} from the server and display it with
+    markdown highlighting. Press q or <Esc> to close.
+
+    {opts} is an optional table:
+      position   "float" (default) — centered floating window.
+                 "bottom"          — horizontal split at the bottom.
+
+    Equivalent to pressing `?` in the connections panel (always float).
 
 CONNECTIONS MODULE ~
                                                   *dbelveder-connections-api*

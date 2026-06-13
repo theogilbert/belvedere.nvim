@@ -32,6 +32,7 @@ dbelveder.disconnect()	dbelveder.txt	/*dbelveder.disconnect()*
 dbelveder.execute()	dbelveder.txt	/*dbelveder.execute()*
 dbelveder.execute_range()	dbelveder.txt	/*dbelveder.execute_range()*
 dbelveder.open_connections()	dbelveder.txt	/*dbelveder.open_connections()*
+dbelveder.open_current_driver_help()	dbelveder.txt	/*dbelveder.open_current_driver_help()*/
 dbelveder.open_driver_help()	dbelveder.txt	/*dbelveder.open_driver_help()*/
 dbelveder.open_explorer()	dbelveder.txt	/*dbelveder.open_explorer()*
 dbelveder.open_explorer_for()	dbelveder.txt	/*dbelveder.open_explorer_for()*
