@@ -1,6 +1,6 @@
 # belvedere protocol
 
-Communication between **belvedere.nvim** (client) and **belvedere-py** (server) uses newline-delimited JSON over stdio. The client spawns the server as a child process and communicates through its stdin/stdout pipes.
+Communication between the **client** and the **server** uses newline-delimited JSON over stdio. The client spawns the server as a child process and communicates through its stdin/stdout pipes.
 
 Multiple connections can be open simultaneously. Each `connect` call returns a `connection_id` that must be passed to all subsequent methods operating on that connection.
 
@@ -72,7 +72,7 @@ Methods that currently support progress: `execute`.
 
 Returns the server's name and the full list of drivers it supports, including the connection parameters each driver accepts. Clients should call this once after starting the server and use the result to drive connection wizards instead of hard-coding driver lists.
 
-Only drivers whose Python package is installed appear in the response.
+Only drivers whose dependencies are installed appear in the response.
 
 **params** — none (`{}`)
 
