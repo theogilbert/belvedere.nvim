@@ -2,9 +2,9 @@
 -- dispatching each result (or batch section) to the results window.
 local M = {}
 
-local client  = require("dbelveder.client")
-local config  = require("dbelveder.config")
-local results = require("dbelveder.ui.results")
+local client  = require("belvedere.client")
+local config  = require("belvedere.config")
+local results = require("belvedere.ui.results")
 
 -- Past-tense verb shown for DML statements, keyed by leading keyword.
 local DML_VERBS = {

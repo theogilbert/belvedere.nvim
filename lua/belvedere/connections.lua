@@ -1,10 +1,10 @@
--- Manages the connections file ($XDG_CONFIG_HOME/dbelveder/connections.json).
+-- Manages the connections file ($XDG_CONFIG_HOME/belvedere/connections.json).
 --
 -- File format:
 --   { "connections": { "<name>": { "driver": "...", ... }, ... } }
 local M = {}
 
-local config = require("dbelveder.config")
+local config = require("belvedere.config")
 
 -- vim.json.decode maps JSON null to vim.NIL, a truthy userdata sentinel.
 -- Use this instead of plain `v or default` wherever a value comes from JSON.
@@ -57,12 +57,12 @@ end
 function M.delete(name)
   local conns = M.load()
   if not conns[name] then
-    vim.notify(("dbelveder: connection %q not found"):format(name), vim.log.levels.WARN)
+    vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.WARN)
     return
   end
   conns[name] = nil
   M.save(conns)
-  vim.notify(("dbelveder: deleted connection %q"):format(name), vim.log.levels.INFO)
+  vim.notify(("belvedere: deleted connection %q"):format(name), vim.log.levels.INFO)
 end
 
 
@@ -131,7 +131,7 @@ function M.pick(caps, active_set, callback)
   local items = vim.list_extend(names, { "[+ New connection]" })
 
   vim.ui.select(items, {
-    prompt      = "dbelveder — select connection:",
+    prompt      = "belvedere — select connection:",
     format_item = function(item)
       if item == "[+ New connection]" then return item end
       local p = conns[item]
@@ -163,7 +163,7 @@ function M.create(caps, callback)
     if not name or name == "" then callback(nil) return end
 
     if M.load()[name] then
-      vim.notify(("dbelveder: connection %q already exists"):format(name), vim.log.levels.ERROR)
+      vim.notify(("belvedere: connection %q already exists"):format(name), vim.log.levels.ERROR)
       callback(nil)
       return
     end
@@ -198,7 +198,7 @@ function M.create(caps, callback)
               local conns = M.load()
               conns[name] = params
               M.save(conns)
-              vim.notify(("dbelveder: saved %q"):format(name), vim.log.levels.INFO)
+              vim.notify(("belvedere: saved %q"):format(name), vim.log.levels.INFO)
               local params_out = (pw ~= nil and pw ~= "")
                 and vim.tbl_extend("force", params, { password = pw })
                 or params
@@ -234,7 +234,7 @@ function M.edit(name, caps, callback)
   local conns = M.load()
   local current = conns[name]
   if not current then
-    vim.notify(("dbelveder: connection %q not found"):format(name), vim.log.levels.ERROR)
+    vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.ERROR)
     callback(nil)
     return
   end
@@ -243,7 +243,7 @@ function M.edit(name, caps, callback)
     if not new_name or new_name == "" then callback(nil) return end
 
     if new_name ~= name and conns[new_name] then
-      vim.notify(("dbelveder: %q already exists"):format(new_name), vim.log.levels.ERROR)
+      vim.notify(("belvedere: %q already exists"):format(new_name), vim.log.levels.ERROR)
       callback(nil)
       return
     end
@@ -298,7 +298,7 @@ function M.edit(name, caps, callback)
         if new_name ~= name then conns2[name] = nil end
         conns2[new_name] = params
         M.save(conns2)
-        vim.notify(("dbelveder: saved %q"):format(new_name), vim.log.levels.INFO)
+        vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
         local final = (pw ~= nil and pw ~= "")
           and vim.tbl_extend("force", params, { password = pw })
           or params
@@ -332,7 +332,7 @@ function M.clone(source_name, new_name, caps, callback)
   local conns   = M.load()
   local current = conns[source_name]
   if not current then
-    vim.notify(("dbelveder: connection %q not found"):format(source_name), vim.log.levels.ERROR)
+    vim.notify(("belvedere: connection %q not found"):format(source_name), vim.log.levels.ERROR)
     callback(nil)
     return
   end
@@ -381,7 +381,7 @@ function M.clone(source_name, new_name, caps, callback)
         local conns2 = M.load()
         conns2[new_name] = params
         M.save(conns2)
-        vim.notify(("dbelveder: saved %q"):format(new_name), vim.log.levels.INFO)
+        vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
         local final = (pw ~= nil and pw ~= "")
           and vim.tbl_extend("force", params, { password = pw })
           or params

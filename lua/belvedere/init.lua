@@ -1,14 +1,14 @@
 local M = {}
 
-local client            = require("dbelveder.client")
-local config            = require("dbelveder.config")
-local hl                = require("dbelveder.hl")
-local connections       = require("dbelveder.connections")
-local executor          = require("dbelveder.executor")
-local explorer          = require("dbelveder.ui.explorer")
-local conn_label        = require("dbelveder.ui.conn_label")
-local connections_panel = require("dbelveder.ui.connections")
-local selection         = require("dbelveder.selection")
+local client            = require("belvedere.client")
+local config            = require("belvedere.config")
+local hl                = require("belvedere.hl")
+local connections       = require("belvedere.connections")
+local executor          = require("belvedere.executor")
+local explorer          = require("belvedere.ui.explorer")
+local conn_label        = require("belvedere.ui.conn_label")
+local connections_panel = require("belvedere.ui.connections")
+local selection         = require("belvedere.selection")
 
 -- Session state.
 --   conns:     connections opened this session  { [name]  = { conn_id, driver } }
@@ -55,7 +55,7 @@ local function start_backend()
   if client.is_running() then return true end
   local ok, err = pcall(client.start, config.options.python_cmd)
   if not ok then
-    vim.notify("dbelveder: " .. tostring(err), vim.log.levels.ERROR)
+    vim.notify("belvedere: " .. tostring(err), vim.log.levels.ERROR)
     return false
   end
   return true
@@ -82,7 +82,7 @@ function M.connect(name)
   if name and name ~= "" then
     local params = connections.get(name)
     if not params then
-      vim.notify(("dbelveder: connection %q not found"):format(name), vim.log.levels.ERROR)
+      vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.ERROR)
       return
     end
     connections.prompt_password(params, function(params_with_pw)
@@ -120,12 +120,12 @@ function M._send_connect(name, params, after_connect)
   client.request("connect", server_params, function(err, result)
     connections_panel.clear_conn_loading(name)
     if err then
-      vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
+      vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
       connections_panel.set_conn_error(name, err)
       return
     end
     state.conns[name] = { conn_id = result.connection_id, driver = params.driver, name = name, driver_label = params.driver_label }
-    vim.notify(("dbelveder: connected to %q (%s)"):format(name, params.driver), vim.log.levels.INFO)
+    vim.notify(("belvedere: connected to %q (%s)"):format(name, params.driver), vim.log.levels.INFO)
     connections_panel.refresh()
     if after_connect then after_connect(name) end
   end)
@@ -134,7 +134,7 @@ end
 function M.associate()
   local names = M.active_names()
   if #names == 0 then
-    vim.notify("dbelveder: no open connections — open the connection panel with :DbConnections", vim.log.levels.WARN)
+    vim.notify("belvedere: no open connections — open the connection panel with :DbConnections", vim.log.levels.WARN)
     return
   end
   vim.ui.select(names, {
@@ -147,24 +147,24 @@ function M.associate()
   }, function(name)
     if not name then return end
     set_buf_conn(vim.api.nvim_get_current_buf(), name)
-    vim.notify(("dbelveder: buffer associated with %q"):format(name), vim.log.levels.INFO)
+    vim.notify(("belvedere: buffer associated with %q"):format(name), vim.log.levels.INFO)
   end)
 end
 
 function M.disconnect(name)
   name = name ~= "" and name or state.buf_conns[vim.api.nvim_get_current_buf()]
   if not name then
-    vim.notify("dbelveder: no active connection", vim.log.levels.WARN)
+    vim.notify("belvedere: no active connection", vim.log.levels.WARN)
     return
   end
   local conn = state.conns[name]
   if not conn then
-    vim.notify(("dbelveder: not connected to %q"):format(name), vim.log.levels.ERROR)
+    vim.notify(("belvedere: not connected to %q"):format(name), vim.log.levels.ERROR)
     return
   end
   client.request("disconnect", { connection_id = conn.conn_id }, function(err, _)
     if err then
-      vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
+      vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
       return
     end
     state.conns[name] = nil
@@ -172,7 +172,7 @@ function M.disconnect(name)
     for bufnr, conn_name in pairs(state.buf_conns) do
       if conn_name == name then set_buf_conn(bufnr, nil) end
     end
-    vim.notify(("dbelveder: disconnected from %q"):format(name), vim.log.levels.INFO)
+    vim.notify(("belvedere: disconnected from %q"):format(name), vim.log.levels.INFO)
     connections_panel.refresh()
   end)
 end
@@ -198,15 +198,15 @@ end
 
 local function execute_sql(sql)
   if not sql or sql == "" then
-    vim.notify("dbelveder: no SQL to execute", vim.log.levels.WARN)
+    vim.notify("belvedere: no SQL to execute", vim.log.levels.WARN)
     return
   end
   local conn = conn_for_buf(vim.api.nvim_get_current_buf())
   if not conn then
     if next(state.conns) == nil then
-      vim.notify("dbelveder: no active connection — use :DbConnections to connect", vim.log.levels.WARN)
+      vim.notify("belvedere: no active connection — use :DbConnections to connect", vim.log.levels.WARN)
     else
-      vim.notify("dbelveder: no active connection — run :DbAssociate first", vim.log.levels.WARN)
+      vim.notify("belvedere: no active connection — run :DbAssociate first", vim.log.levels.WARN)
     end
     return
   end
@@ -218,13 +218,13 @@ function M.execute()
   if selection.is_in_visual_mode() then
     sql = selection.get_selection()
     if not sql or sql == "" then
-      vim.notify("dbelveder: empty selection", vim.log.levels.WARN)
+      vim.notify("belvedere: empty selection", vim.log.levels.WARN)
       return
     end
   else
     sql = vim.api.nvim_get_current_line()
     if vim.trim(sql) == "" then
-      vim.notify("dbelveder: current line is empty", vim.log.levels.WARN)
+      vim.notify("belvedere: current line is empty", vim.log.levels.WARN)
       return
     end
   end
@@ -243,7 +243,7 @@ end
 function M.open_current_driver_help(opts)
   local conn = conn_for_buf(vim.api.nvim_get_current_buf())
   if not conn then
-    vim.notify("dbelveder: no connection associated with this buffer", vim.log.levels.WARN)
+    vim.notify("belvedere: no connection associated with this buffer", vim.log.levels.WARN)
     return
   end
   M.open_driver_help(conn.driver, opts)
@@ -254,7 +254,7 @@ function M.open_driver_help(driver, opts)
   if not start_backend() then return end
   client.request("driver.help", { driver = driver }, function(err, result)
     if err then
-      vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
+      vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
       return
     end
     local buf = vim.api.nvim_create_buf(false, true)
@@ -290,7 +290,7 @@ end
 function M.open_explorer_for(name)
   local conn = state.conns[name]
   if not conn then
-    vim.notify(("dbelveder: not connected to %q — press <CR> to connect first"):format(name), vim.log.levels.ERROR)
+    vim.notify(("belvedere: not connected to %q — press <CR> to connect first"):format(name), vim.log.levels.ERROR)
     return
   end
   explorer.open(conn.conn_id, name, conn.driver)
@@ -301,7 +301,7 @@ function M.open_explorer()
   local name = state.buf_conns[vim.api.nvim_get_current_buf()] or next(state.conns)
   local conn = name and state.conns[name]
   if not conn then
-    vim.notify("dbelveder: no active connection — run :DbConnect first", vim.log.levels.WARN)
+    vim.notify("belvedere: no active connection — run :DbConnect first", vim.log.levels.WARN)
     return
   end
   explorer.open(conn.conn_id, name, conn.driver)
@@ -317,13 +317,13 @@ end
 
 function M.stop()
   teardown()
-  vim.notify("dbelveder: backend stopped", vim.log.levels.INFO)
+  vim.notify("belvedere: backend stopped", vim.log.levels.INFO)
 end
 
 function M.restart()
   teardown()
   if start_backend() then
-    vim.notify("dbelveder: backend restarted", vim.log.levels.INFO)
+    vim.notify("belvedere: backend restarted", vim.log.levels.INFO)
   end
 end
 

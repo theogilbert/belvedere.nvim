@@ -1,17 +1,17 @@
 -- Query results window.
 --
--- One buffer per connection, named "dbelveder://results [name (driver)]".
+-- One buffer per connection, named "belvedere://results [name (driver)]".
 -- Buffers are listed so the user can :b between them. A single split window
 -- is reused; switching connections swaps the buffer shown in it.
-local Buffer     = require("dbelveder.buffer")
-local table_fmt  = require("dbelveder.table")
-local hl         = require("dbelveder.hl")
-local config     = require("dbelveder.config")
-local col_picker = require("dbelveder.ui.col_picker")
+local Buffer     = require("belvedere.buffer")
+local table_fmt  = require("belvedere.table")
+local hl         = require("belvedere.hl")
+local config     = require("belvedere.config")
+local col_picker = require("belvedere.ui.col_picker")
 
 local M = {}
 
-local BUFNAME = "dbelveder://results"
+local BUFNAME = "belvedere://results"
 
 local render_table  -- forward declaration; defined after apply_highlights below
 
@@ -126,13 +126,13 @@ local function update_truncation_indicators()
   for row = 0, vim.api.nvim_buf_line_count(buf_id) - 1 do
     if trunc_right then
       vim.api.nvim_buf_set_extmark(buf_id, hl.TRUNCATION_NS_ID, row, 0, {
-        virt_text = { { "▸", "DbelvederTruncated" } },
+        virt_text = { { "▸", "BelvedereTruncated" } },
         virt_text_pos = "right_align",
       })
     end
     if trunc_left then
       vim.api.nvim_buf_set_extmark(buf_id, hl.TRUNCATION_NS_ID, row, 0, {
-        virt_text         = { { "◂", "DbelvederTruncated" } },
+        virt_text         = { { "◂", "BelvedereTruncated" } },
         virt_text_win_col = 0,
       })
     end
@@ -198,7 +198,7 @@ local function get_or_create_buf_state(conn_name, buf_title)
   local existing = state.buffers[conn_name]
   if existing and existing.buffer:is_valid() then return existing end
 
-  local buf = Buffer:new(buf_title, "dbelveder_results", false, "nofile", "hide")
+  local buf = Buffer:new(buf_title, "belvedere_results", false, "nofile", "hide")
   vim.bo[buf.buf_id].buflisted = true
   table_fmt.setup_buf_hl(buf.buf_id)
 
@@ -250,12 +250,12 @@ local function get_or_create_buf_state(conn_name, buf_title)
 end
 
 
--- label_line: 0-indexed buf line for the DbelvederRowCount highlight
+-- label_line: 0-indexed buf line for the BelvedereRowCount highlight
 -- tbl_offset: 0-indexed buf line where the table starts
 local function apply_highlights(bs, tbl, label_line, tbl_offset)
-  local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", tbl_offset, 1, tbl)
+  local rules = table_fmt.col_hl_rules("BelvedereHeaderRow", tbl_offset, 1, tbl)
   table.insert(rules, {
-    higroup = "DbelvederRowCount",
+    higroup = "BelvedereRowCount",
     start   = { label_line, 0 },
     finish  = { label_line, -1 },
   })
@@ -322,7 +322,7 @@ local function render_segments(bs)
         finish  = { r.finish[1] + offset, r.finish[2] },
       })
     end
-    table.insert(all_rules, { higroup = "DbelvederHeaderRow",
+    table.insert(all_rules, { higroup = "BelvedereHeaderRow",
       start = { hdr_lnum, 0 }, finish = { hdr_lnum, -1 } })
     table.insert(all_lines, "")
   end
@@ -359,8 +359,8 @@ function M.append_batch_result(idx, total, columns, rows)
   local tbl     = table_fmt.from_structured_data(display, 1)
   local content = { rows_label(total_rows, 1, page_size), "" }
   vim.list_extend(content, tbl.text)
-  local rules = table_fmt.col_hl_rules("DbelvederHeaderRow", 2, 1, tbl)
-  table.insert(rules, { higroup = "DbelvederRowCount",
+  local rules = table_fmt.col_hl_rules("BelvedereHeaderRow", 2, 1, tbl)
+  table.insert(rules, { higroup = "BelvedereRowCount",
     start = { 0, 0 }, finish = { 0, -1 } })
   table.insert(bs.segments, { header = make_separator(idx, total), lines = content, hl_rules = rules })
   render_segments(bs)
@@ -371,7 +371,7 @@ function M.append_batch_error(idx, total, msg)
   table.insert(bs.segments, {
     header   = make_separator(idx, total),
     lines    = { "Error: " .. msg },
-    hl_rules = { { higroup = "DbelvederError", start = { 0, 0 }, finish = { 0, -1 } } },
+    hl_rules = { { higroup = "BelvedereError", start = { 0, 0 }, finish = { 0, -1 } } },
   })
   render_segments(bs)
 end
@@ -395,7 +395,7 @@ function M.show_rows_affected(n, verb)
   ensure_win(bs.buffer.buf_id)
   bs.buffer:set_content({ rows_affected_msg(n, verb) })
   bs.buffer:apply_highlight({
-    { higroup = "DbelvederRowCount", start = { 0, 0 }, finish = { 0, -1 } },
+    { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } },
   })
 end
 
@@ -404,7 +404,7 @@ function M.append_batch_rows_affected(idx, total, n, verb)
   table.insert(bs.segments, {
     header   = make_separator(idx, total),
     lines    = { rows_affected_msg(n, verb) },
-    hl_rules = { { higroup = "DbelvederRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
+    hl_rules = { { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
   })
   render_segments(bs)
 end
@@ -415,7 +415,7 @@ function M.show_error(msg)
   ensure_win(bs.buffer.buf_id)
   bs.buffer:set_content({ "Error: " .. msg })
   bs.buffer:apply_highlight({
-    { higroup = "DbelvederError", start = { 0, 0 }, finish = { 0, -1 } },
+    { higroup = "BelvedereError", start = { 0, 0 }, finish = { 0, -1 } },
   })
 end
 

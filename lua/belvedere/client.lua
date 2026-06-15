@@ -79,14 +79,14 @@ function M.start(cmd)
       state.job_id  = nil
       state.line_buf = ""
       if code ~= 0 then
-        vim.notify(("dbelveder: backend exited with code %d"):format(code), vim.log.levels.ERROR)
+        vim.notify(("belvedere: backend exited with code %d"):format(code), vim.log.levels.ERROR)
       end
     end,
     stdin  = "pipe",
     stdout = "pipe",
   })
   if job_id <= 0 then
-    error(("dbelveder: failed to start %q — is it installed?"):format(cmd))
+    error(("belvedere: failed to start %q — is it installed?"):format(cmd))
   end
   state.job_id = job_id
 end

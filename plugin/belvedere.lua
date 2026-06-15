@@ -1,11 +1,11 @@
-if vim.g.loaded_dbelveder then return end
-vim.g.loaded_dbelveder = true
+if vim.g.loaded_belvedere then return end
+vim.g.loaded_belvedere = true
 
-local db = require("dbelveder")
+local db = require("belvedere")
 
 -- Names of all saved connections, sorted — used for command completion.
 local function saved_connection_names()
-  local ok, conns = pcall(require("dbelveder.connections").load)
+  local ok, conns = pcall(require("belvedere.connections").load)
   if not ok then return {} end
   local names = vim.tbl_keys(conns)
   table.sort(names)
@@ -29,7 +29,7 @@ end, {})
 -- :DbNewConnection  — open the new-connection wizard
 vim.api.nvim_create_user_command("DbNewConnection", function(_)
   db.ensure_backend_with_caps(function(caps)
-    require("dbelveder.connections").create(caps, function(name, params)
+    require("belvedere.connections").create(caps, function(name, params)
       if name then db._do_connect(name, params) end
     end)
   end)
@@ -42,7 +42,7 @@ vim.api.nvim_create_user_command("DbDeleteConnection", function(opts)
     vim.notify("Usage: :DbDeleteConnection <name>", vim.log.levels.WARN)
     return
   end
-  require("dbelveder.connections").delete(arg)
+  require("belvedere.connections").delete(arg)
 end, {
   nargs = 1,
   complete = saved_connection_names,

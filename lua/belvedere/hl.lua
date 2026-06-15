@@ -1,4 +1,4 @@
--- Highlight groups and namespaces for dbelveder.
+-- Highlight groups and namespaces for belvedere.
 -- Ported and adapted from nvim-dap-df/lua/nvim-dap-df-pane/hl.lua.
 local M = {}
 
@@ -13,25 +13,25 @@ local HELP_FG      = "#4B9CD3"
 
 local function build_highlights()
   return {
-    DbelvederBorder    = { fg = BORDER_FG },
-    DbelvederHeaderRow = { fg = HEADER_FG, bold = true },
-    DbelvederError     = { fg = ERROR_FG },
-    DbelvederTruncated = { fg = TRUNCATED_FG, bold = true },
-    DbelvederRowCount  = { fg = ROW_COUNT_FG },
-    DbelvederNull      = { fg = NULL_FG, italic = true },
-    DbelvederHelp      = { fg = HELP_FG, italic = true },
+    BelvedereBorder    = { fg = BORDER_FG },
+    BelvedereHeaderRow = { fg = HEADER_FG, bold = true },
+    BelvedereError     = { fg = ERROR_FG },
+    BelvedereTruncated = { fg = TRUNCATED_FG, bold = true },
+    BelvedereRowCount  = { fg = ROW_COUNT_FG },
+    BelvedereNull      = { fg = NULL_FG, italic = true },
+    BelvedereHelp      = { fg = HELP_FG, italic = true },
   }
 end
 
 local function setup_highlights()
-  M.NS_ID            = vim.api.nvim_create_namespace("DbelvederNs")
-  M.TRUNCATION_NS_ID = vim.api.nvim_create_namespace("DbelvederTruncationNs")
+  M.NS_ID            = vim.api.nvim_create_namespace("BelvedereNs")
+  M.TRUNCATION_NS_ID = vim.api.nvim_create_namespace("BelvedereTruncationNs")
   for group, opts in pairs(build_highlights()) do
     vim.api.nvim_set_hl(M.NS_ID, group, opts)
   end
   -- Defined globally so it works in any buffer's extmarks; default = true allows user override.
-  vim.api.nvim_set_hl(0, "DbelvederConnection", { fg = CONN_FG, italic = true, default = true })
-  vim.api.nvim_set_hl(0, "DbelvederConnError",  { fg = ERROR_FG, default = true })
+  vim.api.nvim_set_hl(0, "BelvedereConnection", { fg = CONN_FG, italic = true, default = true })
+  vim.api.nvim_set_hl(0, "BelvedereConnError",  { fg = ERROR_FG, default = true })
 end
 
 function M.setup()

@@ -139,7 +139,7 @@ function M.null_hl_rules(tbl)
     for j, cell in ipairs(row) do
       if cell == vim.NIL then
         rules[#rules + 1] = {
-          higroup = "DbelvederNull",
+          higroup = "BelvedereNull",
           start   = { buf_line, positions[j][1] },
           finish  = { buf_line, positions[j][2] },
         }
@@ -155,9 +155,9 @@ end
 --- @param buf_id integer
 function M.setup_buf_hl(buf_id)
   vim.api.nvim_buf_call(buf_id, function()
-    vim.cmd("syntax match DbelvederTableBorder /[│├┼─┤]/")
+    vim.cmd("syntax match BelvedereTableBorder /[│├┼─┤]/")
   end)
-  vim.cmd("highlight link DbelvederTableBorder DbelvederBorder")
+  vim.cmd("highlight link BelvedereTableBorder BelvedereBorder")
 end
 
 return M

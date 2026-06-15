@@ -1,20 +1,20 @@
-# dbelveder.nvim
+# belvedere.nvim
 
-A Neovim database client. Connects to SQLite and SQL Server through an external Python backend ([dbelveder-py](../dbelveder-py)), communicating over newline-delimited JSON on stdio.
+A Neovim database client. Connects to SQLite and SQL Server through an external Python backend ([belvedere-py](../belvedere-py)), communicating over newline-delimited JSON on stdio.
 
 ## Requirements
 
 - Neovim 0.9+
-- Python 3.12+ with [dbelveder-py](../dbelveder-py) installed
+- Python 3.12+ with [belvedere-py](../belvedere-py) installed
 
 ## Installation
 
-Install **dbelveder-py** first:
+Install **belvedere-py** first:
 
 ```sh
-pip install dbelveder-py
+pip install belvedere-py
 # or with driver-specific dependencies:
-pip install 'dbelveder-py[sqlserver]'
+pip install 'belvedere-py[sqlserver]'
 ```
 
 Then install the plugin with your plugin manager:
@@ -22,9 +22,9 @@ Then install the plugin with your plugin manager:
 **lazy.nvim**
 ```lua
 {
-  "you/dbelveder.nvim",
+  "you/belvedere.nvim",
   config = function()
-    require("dbelveder").setup()
+    require("belvedere").setup()
   end,
 }
 ```
@@ -34,15 +34,15 @@ Then install the plugin with your plugin manager:
 `setup()` is required. All options have defaults:
 
 ```lua
-require("dbelveder").setup({
+require("belvedere").setup({
   -- Command used to launch the Python backend.
-  -- Default: "dbelveder" (assumes it is on $PATH).
-  python_cmd = "dbelveder",
+  -- Default: "belvedere" (assumes it is on $PATH).
+  python_cmd = "belvedere",
 
   -- Override the path to the connections file.
-  -- Default: $XDG_CONFIG_HOME/dbelveder/connections.json
-  --          (~/.config/dbelveder/connections.json on most systems)
-  -- connections_file = vim.fn.expand("~/.config/dbelveder/connections.json"),
+  -- Default: $XDG_CONFIG_HOME/belvedere/connections.json
+  --          (~/.config/belvedere/connections.json on most systems)
+  -- connections_file = vim.fn.expand("~/.config/belvedere/connections.json"),
 
   keymaps = {
     -- Key in the connections panel to show the error details float.
@@ -62,7 +62,7 @@ require("dbelveder").setup({
 
 ### 1. Manage connections
 
-Open the connections panel with `:DbConnections`. Connections are grouped by driver and persist across sessions in `~/.config/dbelveder/connections.json`.
+Open the connections panel with `:DbConnections`. Connections are grouped by driver and persist across sessions in `~/.config/belvedere/connections.json`.
 
 | Key | Action |
 |-----|--------|
@@ -149,7 +149,7 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 
 ## Connections file
 
-Connections are stored in `~/.config/dbelveder/connections.json` (XDG-compliant). The file is created automatically on first save. Passwords are not stored — you are prompted at connect time.
+Connections are stored in `~/.config/belvedere/connections.json` (XDG-compliant). The file is created automatically on first save. Passwords are not stored — you are prompted at connect time.
 
 ```json
 {
@@ -174,7 +174,7 @@ Connections are stored in `~/.config/dbelveder/connections.json` (XDG-compliant)
 ## Lua API
 
 ```lua
-local db = require("dbelveder")
+local db = require("belvedere")
 
 -- Configure (call once at startup).
 db.setup(opts)
@@ -209,7 +209,7 @@ db.restart()
 ```
 
 ```lua
-local conns = require("dbelveder.connections")
+local conns = require("belvedere.connections")
 
 -- Load all saved connections: returns { name = params, ... }
 conns.load()

@@ -33,7 +33,7 @@ function M.show(winid, name)
   local fbuf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = fbuf })
   vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, { "Connected to " .. name })
-  vim.api.nvim_buf_add_highlight(fbuf, -1, "DbelvederConnection", 0, 0, -1)
+  vim.api.nvim_buf_add_highlight(fbuf, -1, "BelvedereConnection", 0, 0, -1)
 
   local cfg = geometry(winid)
   cfg.style, cfg.focusable, cfg.zindex = "minimal", false, 10
@@ -72,7 +72,7 @@ end
 --- @param resolve_fn fun(bufnr: integer): string|nil  buffer -> connection name
 function M.setup(resolve_fn)
   resolve = resolve_fn
-  local aug = vim.api.nvim_create_augroup("DbelvederConnLabels", { clear = true })
+  local aug = vim.api.nvim_create_augroup("BelvedereConnLabels", { clear = true })
   -- Show or hide the label whenever the buffer in the current window changes.
   vim.api.nvim_create_autocmd("BufEnter", {
     group    = aug,

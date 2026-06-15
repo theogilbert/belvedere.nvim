@@ -1,6 +1,6 @@
-# dbelveder protocol
+# belvedere protocol
 
-Communication between **dbelveder.nvim** (client) and **dbelveder-py** (server) uses newline-delimited JSON over stdio. The client spawns the server as a child process and communicates through its stdin/stdout pipes.
+Communication between **belvedere.nvim** (client) and **belvedere-py** (server) uses newline-delimited JSON over stdio. The client spawns the server as a child process and communicates through its stdin/stdout pipes.
 
 Multiple connections can be open simultaneously. Each `connect` call returns a `connection_id` that must be passed to all subsequent methods operating on that connection.
 
@@ -80,7 +80,7 @@ Only drivers whose Python package is installed appear in the response.
 
 | Field     | Type                       | Description                                     |
 |-----------|----------------------------|-------------------------------------------------|
-| `server`  | string                     | Human-readable server name (e.g. `"dbelveder"`) |
+| `server`  | string                     | Human-readable server name (e.g. `"belvedere"`) |
 | `drivers` | array of [Driver](#driver) | Supported drivers                               |
 
 **example**
@@ -92,7 +92,7 @@ Only drivers whose Python package is installed appear in the response.
 {
   "id": 1,
   "result": {
-    "server": "dbelveder",
+    "server": "belvedere",
     "drivers": [
       {
         "driver": "mydriver",

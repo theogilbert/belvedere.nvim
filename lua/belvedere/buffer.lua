@@ -1,6 +1,6 @@
 -- Generic buffer abstraction.
 -- Ported from nvim-dap-df/lua/nvim-dap-df-pane/buffer.lua.
-local hl = require("dbelveder.hl")
+local hl = require("belvedere.hl")
 
 local Buffer = {}
 Buffer.__index = Buffer

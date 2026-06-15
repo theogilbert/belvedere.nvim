@@ -2,14 +2,14 @@
 -- Keymaps: <CR> expand/collapse group or connect, x explore, e edit, c clone, d disconnect, r remove, n new, R refresh, q close.
 local M = {}
 
-local Buffer      = require("dbelveder.buffer")
-local connections = require("dbelveder.connections")
-local config      = require("dbelveder.config")
-local hl          = require("dbelveder.hl")
-local window      = require("dbelveder.ui.window")
-local Spinner     = require("dbelveder.ui.spinner")
+local Buffer      = require("belvedere.buffer")
+local connections = require("belvedere.connections")
+local config      = require("belvedere.config")
+local hl          = require("belvedere.hl")
+local window      = require("belvedere.ui.window")
+local Spinner     = require("belvedere.ui.spinner")
 
-local BUFNAME     = "dbelveder://connections"
+local BUFNAME     = "belvedere://connections"
 local ACTIVE_MARK = " ✓"
 local ERROR_MARK  = " ✗"
 
@@ -52,7 +52,7 @@ local function build(conns, active_set, driver_labels)
     local chevron  = expanded and "▾ " or "▸ "
     table.insert(lines, chevron .. g.label .. " (" .. #g.names .. ")")
     table.insert(line_map, { type = "header", gkey = gkey })
-    hl_rules[#lines] = "DbelvederHeaderRow"
+    hl_rules[#lines] = "BelvedereHeaderRow"
 
     if expanded then
       for _, name in ipairs(g.names) do
@@ -66,8 +66,8 @@ local function build(conns, active_set, driver_labels)
         else mark = "" end
         table.insert(lines, "    " .. name .. mark)
         table.insert(line_map, { type = "conn", name = name })
-        if active then hl_rules[#lines] = "DbelvederConnection"
-        elseif has_err then hl_rules[#lines] = "DbelvederConnError" end
+        if active then hl_rules[#lines] = "BelvedereConnection"
+        elseif has_err then hl_rules[#lines] = "BelvedereConnError" end
       end
     end
   end
@@ -88,12 +88,12 @@ local function append_footer(lines)
 end
 
 local function refresh()
-  local db = require("dbelveder")  -- lazy: avoids circular dependency
+  local db = require("belvedere")  -- lazy: avoids circular dependency
   local active_set = {}
   for _, n in ipairs(db.active_names()) do active_set[n] = true end
 
   local driver_labels = {}
-  local caps = require("dbelveder.client").capabilities()
+  local caps = require("belvedere.client").capabilities()
   if caps then
     for _, d in ipairs(caps.drivers or {}) do
       if d.label then driver_labels[d.driver] = d.label end
@@ -118,7 +118,7 @@ local function refresh()
     })
   end
   table.insert(rules, {
-    higroup = "DbelvederHelp",
+    higroup = "BelvedereHelp",
     start   = { #lines - 1, 0 },
     finish  = { #lines - 1, -1 },
   })
@@ -139,7 +139,7 @@ local function on_enter()
     refresh()
   else
     state.conn_errors[entry.name] = nil
-    local db = require("dbelveder")
+    local db = require("belvedere")
     db.connect(entry.name)
   end
 end
@@ -159,14 +159,14 @@ end
 local function on_disconnect()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local db = require("dbelveder")
+  local db = require("belvedere")
   db.disconnect(entry.name)
 end
 
 local function on_edit()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local caps = require("dbelveder.client").capabilities()
+  local caps = require("belvedere.client").capabilities()
   connections.edit(entry.name, caps, function(new_name, _params)
     if not new_name then return end
     refresh()
@@ -180,10 +180,10 @@ local function on_clone()
     if not new_name or new_name == "" then return end
     local conns = connections.load()
     if conns[new_name] then
-      vim.notify(("dbelveder: connection %q already exists"):format(new_name), vim.log.levels.ERROR)
+      vim.notify(("belvedere: connection %q already exists"):format(new_name), vim.log.levels.ERROR)
       return
     end
-    local caps = require("dbelveder.client").capabilities()
+    local caps = require("belvedere.client").capabilities()
     connections.clone(entry.name, new_name, caps, function(name, _)
       if not name then return end
       refresh()
@@ -192,7 +192,7 @@ local function on_clone()
 end
 
 local function on_new()
-  local db = require("dbelveder")
+  local db = require("belvedere")
   db.ensure_backend_with_caps(function(caps)
     connections.create(caps, function(name, params)
       if not name then return end
@@ -205,17 +205,17 @@ end
 local function on_explore()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local db = require("dbelveder")
+  local db = require("belvedere")
   db.open_explorer_for(entry.name)
 end
 
 local function on_jump()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local db   = require("dbelveder")
+  local db   = require("belvedere")
   local bufs = db.buffers_for(entry.name)
   if #bufs == 0 then
-    vim.notify("dbelveder: no buffers associated with " .. entry.name, vim.log.levels.WARN)
+    vim.notify("belvedere: no buffers associated with " .. entry.name, vim.log.levels.WARN)
     return
   end
   local panel_win = vim.fn.bufwinid(state.buffer.buf_id)
@@ -264,7 +264,7 @@ local function on_help()
     driver = params and params.driver
   end
   if not driver then return end
-  require("dbelveder").open_driver_help(driver)
+  require("belvedere").open_driver_help(driver)
 end
 
 -- Fields from the saved connection that are client-only and not displayed.
@@ -311,7 +311,7 @@ local function open_hover_float(lines, title, border_hl, line_hl)
   state.hover_win = fwin
 
   vim.api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
-    group    = vim.api.nvim_create_augroup("DbelvederHoverFloat", { clear = true }),
+    group    = vim.api.nvim_create_augroup("BelvedereHoverFloat", { clear = true }),
     buffer   = state.buffer.buf_id,
     once     = true,
     callback = function()
@@ -327,7 +327,7 @@ local function on_hover()
 
   -- Second K: enter the existing float so the user can read/scroll.
   if state.hover_win and vim.api.nvim_win_is_valid(state.hover_win) then
-    pcall(vim.api.nvim_del_augroup_by_name, "DbelvederHoverFloat")
+    pcall(vim.api.nvim_del_augroup_by_name, "BelvedereHoverFloat")
     local fwin = state.hover_win
     local fbuf = vim.api.nvim_win_get_buf(fwin)
     local prev = vim.api.nvim_get_current_win()
@@ -349,7 +349,7 @@ local function on_hover()
   if err_msg then
     open_hover_float(
       vim.split(err_msg, "\n", { plain = true }),
-      "error", "DbelvederConnError", "DbelvederConnError")
+      "error", "BelvedereConnError", "BelvedereConnError")
     return
   end
 
@@ -359,7 +359,7 @@ local function on_hover()
 
   -- Build a key→label map from cached capabilities for the matching driver.
   local labels = {}
-  local caps = require("dbelveder.client").capabilities()
+  local caps = require("belvedere.client").capabilities()
   if caps then
     for _, db in ipairs(caps.drivers or {}) do
       if db.driver == params.driver then
@@ -397,11 +397,11 @@ end
 
 function M.open()
   -- Warm the capabilities cache so hover labels are available immediately.
-  local db = require("dbelveder")
+  local db = require("belvedere")
   db.ensure_backend_with_caps(function() M.refresh() end)
 
   if not (state.buffer and state.buffer:is_valid()) then
-    state.buffer = Buffer:new(BUFNAME, "dbelveder_connections", false, "nofile")
+    state.buffer = Buffer:new(BUFNAME, "belvedere_connections", false, "nofile")
     vim.api.nvim_create_autocmd("WinResized", {
       callback = function() M.refresh() end,
     })

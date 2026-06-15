@@ -9,12 +9,12 @@
 -- <   move all selected columns back to available.
 -- r   reset selection to its state when the picker was opened.
 -- q/Esc close (changes are already applied live via the on_change callback).
-local hl        = require("dbelveder.hl")
-local table_fmt = require("dbelveder.table")
+local hl        = require("belvedere.hl")
+local table_fmt = require("belvedere.table")
 
 local M = {}
 
-local ns_id   = vim.api.nvim_create_namespace("dbelveder_col_picker")
+local ns_id   = vim.api.nvim_create_namespace("belvedere_col_picker")
 local SEP     = "│"
 local SEP_LEN = #SEP  -- 3 bytes for the UTF-8 box-drawing character
 
@@ -50,9 +50,9 @@ local function render()
 
   -- Header text
   vim.api.nvim_buf_set_extmark(p.buf, ns_id, 0, 0,
-    { end_col = cw, hl_group = "DbelvederHeaderRow" })
+    { end_col = cw, hl_group = "BelvedereHeaderRow" })
   vim.api.nvim_buf_set_extmark(p.buf, ns_id, 0, cw + SEP_LEN,
-    { end_col = cw + SEP_LEN + cw, hl_group = "DbelvederHeaderRow" })
+    { end_col = cw + SEP_LEN + cw, hl_group = "BelvedereHeaderRow" })
 
   -- Cursor highlight (0-indexed: header=0, sep-row=1, items start at 2)
   local item_lnum = p.cursor + 1

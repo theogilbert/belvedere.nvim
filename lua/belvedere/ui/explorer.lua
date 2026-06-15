@@ -2,12 +2,12 @@
 -- Navigation: <CR> expands/collapses, <CR> on a leaf describes the item.
 local M = {}
 
-local Buffer  = require("dbelveder.buffer")
-local client  = require("dbelveder.client")
-local window  = require("dbelveder.ui.window")
-local Spinner = require("dbelveder.ui.spinner")
+local Buffer  = require("belvedere.buffer")
+local client  = require("belvedere.client")
+local window  = require("belvedere.ui.window")
+local Spinner = require("belvedere.ui.spinner")
 
-local BUFNAME = "dbelveder://explorer"
+local BUFNAME = "belvedere://explorer"
 
 local TYPE_ICONS = {
   database       = "󰆼 ",
@@ -103,7 +103,7 @@ local function load_children(node)
     spinner:stop()
     if err then
       vim.schedule(function()
-        vim.notify("dbelveder explorer: " .. err, vim.log.levels.ERROR)
+        vim.notify("belvedere explorer: " .. err, vim.log.levels.ERROR)
         render()
       end)
       return
@@ -126,7 +126,7 @@ local function on_enter()
     client.request("explore.describe", { connection_id = state.conn_id, path = node.path }, function(err, result)
       if err then
         vim.schedule(function()
-          vim.notify("dbelveder: " .. err, vim.log.levels.ERROR)
+          vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
         end)
         return
       end
@@ -157,7 +157,7 @@ local function load_root(reset_cache)
     spinner:stop()
     if err then
       vim.schedule(function()
-        vim.notify("dbelveder explorer: " .. err, vim.log.levels.ERROR)
+        vim.notify("belvedere explorer: " .. err, vim.log.levels.ERROR)
         render()
       end)
       return
@@ -172,7 +172,7 @@ end
 
 local function get_or_create_buffer()
   if state.buffer and state.buffer:is_valid() then return end
-  state.buffer = Buffer:new(BUFNAME, "dbelveder_explorer", false, "nofile")
+  state.buffer = Buffer:new(BUFNAME, "belvedere_explorer", false, "nofile")
   state.buffer:set_keymap("n", "<CR>", on_enter,
     { nowait = true, silent = true, desc = "Expand / collapse / describe" })
   state.buffer:set_keymap("n", "R", function()
@@ -206,7 +206,7 @@ function M.open(conn_id, conn_name, driver)
     -- Escape % so statusline format doesn't misinterpret it.
     local label = state.conn_label:gsub("%%", "%%%%")
     vim.api.nvim_set_option_value("winbar",
-      "%#DbelvederHeaderRow#  " .. label, { win = win })
+      "%#BelvedereHeaderRow#  " .. label, { win = win })
   end
 
   if #state.tree == 0 then
