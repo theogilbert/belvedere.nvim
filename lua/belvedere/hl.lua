@@ -30,8 +30,11 @@ local function setup_highlights()
     vim.api.nvim_set_hl(M.NS_ID, group, opts)
   end
   -- Defined globally so it works in any buffer's extmarks; default = true allows user override.
-  vim.api.nvim_set_hl(0, "BelvedereConnection", { fg = CONN_FG, italic = true, default = true })
-  vim.api.nvim_set_hl(0, "BelvedereConnError",  { fg = ERROR_FG, default = true })
+  vim.api.nvim_set_hl(0, "BelvedereConnection",    { fg = CONN_FG,    italic = true, default = true })
+  vim.api.nvim_set_hl(0, "BelvedereConnError",     { fg = ERROR_FG,   default = true })
+  vim.api.nvim_set_hl(0, "BelvedereQueryRunning",  { fg = "#E5C07B",  default = true })
+  vim.api.nvim_set_hl(0, "BelvedereQuerySuccess",  { fg = "#98C379",  default = true })
+  vim.api.nvim_set_hl(0, "BelvedereQueryError",    { fg = "#CA2722",  default = true })
 end
 
 function M.setup()

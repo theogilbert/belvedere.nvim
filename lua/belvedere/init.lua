@@ -9,6 +9,7 @@ local explorer          = require("belvedere.ui.explorer")
 local conn_label        = require("belvedere.ui.conn_label")
 local connections_panel = require("belvedere.ui.connections")
 local selection         = require("belvedere.selection")
+local gutter            = require("belvedere.ui.gutter")
 
 -- Session state.
 --   conns:     connections opened this session  { [name]  = { conn_id, driver } }
@@ -41,11 +42,11 @@ end
 function M.setup(opts)
   config.setup(opts)
   hl.setup()
+  gutter.setup()
   conn_label.setup(function(bufnr)
     local name = state.buf_conns[bufnr]
     return name and conn_display_label(name)
   end)
-
 end
 
 
@@ -196,12 +197,12 @@ function M.buffers_for(name)
 end
 
 
-local function execute_sql(sql)
+local function execute_sql(sql, bufnr, first_line)
   if not sql or sql == "" then
     vim.notify("belvedere: no SQL to execute", vim.log.levels.WARN)
     return
   end
-  local conn = conn_for_buf(vim.api.nvim_get_current_buf())
+  local conn = conn_for_buf(bufnr)
   if not conn then
     if next(state.conns) == nil then
       vim.notify("belvedere: no active connection — use :DbConnections to connect", vim.log.levels.WARN)
@@ -210,30 +211,36 @@ local function execute_sql(sql)
     end
     return
   end
-  executor.run(conn, sql)
+  executor.run(conn, sql, bufnr, first_line)
 end
 
 function M.execute()
-  local sql
+  local bufnr = vim.api.nvim_get_current_buf()
+  local sql, first_line
   if selection.is_in_visual_mode() then
     sql = selection.get_selection()
     if not sql or sql == "" then
       vim.notify("belvedere: empty selection", vim.log.levels.WARN)
       return
     end
+    local sr = vim.fn.getpos("v")[2]
+    local er = vim.fn.getpos(".")[2]
+    first_line = math.min(sr, er) - 1
   else
     sql = vim.api.nvim_get_current_line()
     if vim.trim(sql) == "" then
       vim.notify("belvedere: current line is empty", vim.log.levels.WARN)
       return
     end
+    first_line = vim.api.nvim_win_get_cursor(0)[1] - 1
   end
-  execute_sql(sql)
+  execute_sql(sql, bufnr, first_line)
 end
 
 function M.execute_range(line1, line2)
+  local bufnr = vim.api.nvim_get_current_buf()
   local lines = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
-  execute_sql(table.concat(lines, "\n"))
+  execute_sql(table.concat(lines, "\n"), bufnr, line1 - 1)
 end
 
 function M.open_connections()

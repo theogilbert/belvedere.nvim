@@ -5,6 +5,7 @@ local M = {}
 local client  = require("belvedere.client")
 local config  = require("belvedere.config")
 local results = require("belvedere.ui.results")
+local gutter  = require("belvedere.ui.gutter")
 
 -- Past-tense verb shown for DML statements, keyed by leading keyword.
 local DML_VERBS = {
@@ -64,30 +65,35 @@ local function execute(conn, sql, on_done, on_progress)
 end
 
 -- Run statements one after another, each appended to the batch view.
-local function run_batch(queries, conn, idx)
+local function run_batch(queries, conn, idx, gh, had_error)
   execute(conn, queries[idx], function(err, result)
     vim.schedule(function()
       if err then
+        had_error = true
         results.append_batch_error(idx, #queries, err)
       else
         dispatch_batch_result(idx, #queries, result, queries[idx])
       end
       if idx < #queries then
-        run_batch(queries, conn, idx + 1)
+        run_batch(queries, conn, idx + 1, gh, had_error)
+      else
+        if had_error then gutter.show_error(gh) else gutter.show_success(gh) end
       end
     end)
   end)
 end
 
-local function run_single(conn, sql)
+local function run_single(conn, sql, gh)
   results.show_message("Executing…")
   execute(conn, sql,
     function(err, result)
       vim.schedule(function()
         if err then
           results.show_error(err)
+          gutter.show_error(gh)
         else
           dispatch_result(result, sql)
+          gutter.show_success(gh)
         end
       end)
     end,
@@ -100,18 +106,22 @@ end
 
 --- Execute `query` against `conn`.  Multiple ;-separated statements are run as
 --- a labelled batch, unless the driver is document-oriented (MongoDB).
---- @param conn table  { conn_id, driver }
+--- @param conn table   { conn_id, driver }
 --- @param query string
-function M.run(conn, query)
+--- @param bufnr integer|nil  source buffer (for gutter marks)
+--- @param first_line integer|nil  0-indexed first line of the query in bufnr
+function M.run(conn, query, bufnr, first_line)
   results.set_conn_name(conn.name, conn.driver_label)
   local queries = (not is_mongo(conn.driver) and query:find(";"))
       and split_queries(query) or { query }
 
+  local gh = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
+
   if #queries > 1 then
     results.begin_batch(#queries)
-    run_batch(queries, conn, 1)
+    run_batch(queries, conn, 1, gh, false)
   else
-    run_single(conn, queries[1])
+    run_single(conn, queries[1], gh)
   end
 end
 
