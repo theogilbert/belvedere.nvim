@@ -1,5 +1,5 @@
 -- Panel listing all saved connections, grouped by driver.
--- Keymaps: <CR> expand/collapse group or connect, x explore, e edit, c clone, d disconnect, r remove, n new, G new group, R refresh, q close.
+-- Keymaps: <CR> expand/collapse group or connect, x explore, e edit, c clone, d disconnect, D delete, n new, G new group, R refresh, q close.
 local M = {}
 
 local Buffer      = require("belvedere.buffer")
@@ -234,7 +234,7 @@ local function on_delete()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
   vim.ui.select({ "No", "Yes" }, {
-    prompt = ('Remove connection %q?'):format(entry.name),
+    prompt = ('Delete connection %q?'):format(entry.name),
   }, function(choice)
     if choice ~= "Yes" then return end
     connections.delete(entry.name)
@@ -511,22 +511,22 @@ function M.open()
       callback = function() M.refresh() end,
     })
     local hover_key = config.options.keymaps.hover_key
-    state.buffer:set_keymap("n", "<CR>",     on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect" })
-    state.buffer:set_keymap("n", "x",        on_explore,    { nowait = true, silent = true, desc = "Open explorer" })
-    state.buffer:set_keymap("n", "e",        on_edit,       { nowait = true, silent = true, desc = "Edit connection" })
-    state.buffer:set_keymap("n", "c",        on_clone,      { nowait = true, silent = true, desc = "Clone connection" })
-    state.buffer:set_keymap("n", "d",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
-    state.buffer:set_keymap("n", "r",        on_delete,     { nowait = true, silent = true, desc = "Remove connection" })
-    state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection" })
-    state.buffer:set_keymap("n", "G",        on_new_group,  { nowait = true, silent = true, desc = "New group" })
-    state.buffer:set_keymap("n", "b",        on_jump,       { nowait = true, silent = true, desc = "Open associated buffer(s)" })
-    state.buffer:set_keymap("n", "?",        on_help,       { nowait = true, silent = true, desc = "Driver help" })
-    state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh" })
-    state.buffer:set_keymap("n", hover_key,  on_hover,      { nowait = true, silent = true, desc = "Show error details" })
+    state.buffer:set_keymap("n", "<CR>",     on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect", group = "Navigate" })
+    state.buffer:set_keymap("n", "b",        on_jump,       { nowait = true, silent = true, desc = "Jump to associated buffer",  group = "Navigate" })
     state.buffer:set_keymap("n", "q", function()
       local win = vim.fn.bufwinid(state.buffer.buf_id)
       if win ~= -1 then vim.api.nvim_win_close(win, true) end
-    end, { nowait = true, silent = true, desc = "Close panel" })
+    end, { nowait = true, silent = true, desc = "Close panel", group = "Navigate" })
+    state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection",            group = "Manage" })
+    state.buffer:set_keymap("n", "G",        on_new_group,  { nowait = true, silent = true, desc = "New group",                 group = "Manage" })
+    state.buffer:set_keymap("n", "e",        on_edit,       { nowait = true, silent = true, desc = "Edit",                      group = "Manage" })
+    state.buffer:set_keymap("n", "c",        on_clone,      { nowait = true, silent = true, desc = "Clone",                     group = "Manage" })
+    state.buffer:set_keymap("n", "D",        on_delete,     { nowait = true, silent = true, desc = "Delete",                    group = "Manage" })
+    state.buffer:set_keymap("n", "d",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect",                group = "Session" })
+    state.buffer:set_keymap("n", "x",        on_explore,    { nowait = true, silent = true, desc = "Open explorer",             group = "Session" })
+    state.buffer:set_keymap("n", hover_key,  on_hover,      { nowait = true, silent = true, desc = "Hover details / error",     group = "Info" })
+    state.buffer:set_keymap("n", "?",        on_help,       { nowait = true, silent = true, desc = "Driver help",               group = "Info" })
+    state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh",                   group = "Info" })
   end
 
   local win = vim.fn.bufwinid(state.buffer.buf_id)

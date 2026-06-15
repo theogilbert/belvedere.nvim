@@ -121,7 +121,8 @@ function M._send_connect(name, params, after_connect)
   client.request("connect", server_params, function(err, result)
     connections_panel.clear_conn_loading(name)
     if err then
-      vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
+      local first_line = err:match("^([^\n]*)") or err
+      vim.notify(("belvedere: %q failed — %s"):format(name, first_line), vim.log.levels.ERROR)
       connections_panel.set_conn_error(name, err)
       return
     end

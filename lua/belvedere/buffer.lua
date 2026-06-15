@@ -57,24 +57,68 @@ function Buffer:close()
 end
 
 --- Open a floating window listing all keymaps that have a desc.
+--- Keymaps with a `group` field in their opts are rendered under section headers.
 function Buffer:show_help()
-  local lines = {}
+  local keymaps = {}
   for _, km in ipairs(self.keymaps) do
-    local lhs  = km[2]
-    local desc = (km[3] or {}).desc or ""
+    local opts = km[3] or {}
+    local desc = opts.desc or ""
     if desc ~= "" then
-      table.insert(lines, string.format("  %-6s  %s", lhs, desc))
+      table.insert(keymaps, { lhs = km[2], desc = desc, group = opts.group or "" })
     end
   end
-  if #lines == 0 then return end
+  if #keymaps == 0 then return end
 
-  local width = 0
-  for _, l in ipairs(lines) do width = math.max(width, #l) end
+  local has_groups = false
+  for _, km in ipairs(keymaps) do
+    if km.group ~= "" then has_groups = true; break end
+  end
+
+  local key_w = 0
+  for _, km in ipairs(keymaps) do
+    key_w = math.max(key_w, vim.fn.strdisplaywidth(km.lhs))
+  end
+
+  local lines, header_lnums = {}, {}
+
+  if has_groups then
+    local group_order, buckets, seen = {}, {}, {}
+    for _, km in ipairs(keymaps) do
+      local g = km.group ~= "" and km.group or "\0ungrouped"
+      if not seen[g] then seen[g] = true; table.insert(group_order, g) end
+      if not buckets[g] then buckets[g] = {} end
+      table.insert(buckets[g], km)
+    end
+
+    for i, g in ipairs(group_order) do
+      if i > 1 then table.insert(lines, "") end
+      if g ~= "\0ungrouped" then
+        table.insert(lines, g)
+        header_lnums[#lines] = true
+      end
+      for _, km in ipairs(buckets[g]) do
+        local pad = string.rep(" ", key_w - vim.fn.strdisplaywidth(km.lhs))
+        table.insert(lines, ("  %s%s  %s"):format(km.lhs, pad, km.desc))
+      end
+    end
+  else
+    for _, km in ipairs(keymaps) do
+      local pad = string.rep(" ", key_w - vim.fn.strdisplaywidth(km.lhs))
+      table.insert(lines, ("  %s%s  %s"):format(km.lhs, pad, km.desc))
+    end
+  end
+
+  local width = 1
+  for _, l in ipairs(lines) do width = math.max(width, vim.fn.strdisplaywidth(l)) end
 
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
   vim.bo[buf].bufhidden  = "wipe"
+
+  for lnum in pairs(header_lnums) do
+    vim.hl.range(buf, hl.NS_ID, "BelvedereHeaderRow", { lnum - 1, 0 }, { lnum - 1, -1 })
+  end
 
   local win = vim.api.nvim_open_win(buf, true, {
     relative  = "cursor",
@@ -87,6 +131,7 @@ function Buffer:show_help()
     title     = " keymaps ",
     title_pos = "center",
   })
+  vim.api.nvim_win_set_hl_ns(win, hl.NS_ID)
 
   for _, key in ipairs({ "q", "<Esc>", "g?" }) do
     vim.keymap.set("n", key, function() pcall(vim.api.nvim_win_close, win, true) end,
@@ -95,10 +140,12 @@ function Buffer:show_help()
 end
 
 function Buffer:set_keymap(mode, key, callback, opts)
-  opts         = opts or {}
-  opts.buffer  = self.buf_id
+  opts        = opts or {}
+  local group = opts.group
+  opts.group  = nil
+  opts.buffer = self.buf_id
   vim.keymap.set(mode, key, callback, opts)
-  table.insert(self.keymaps, { mode, key, opts })
+  table.insert(self.keymaps, { mode, key, vim.tbl_extend("force", opts, { group = group }) })
 end
 
 return Buffer
