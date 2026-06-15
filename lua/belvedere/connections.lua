@@ -192,22 +192,22 @@ end
 function M.create(caps, callback)
   caps = caps or { server = "", drivers = {} }
 
-  vim.ui.input({ prompt = "Connection name: " }, function(name)
-    if not name or name == "" then callback(nil) return end
-
-    if M.load()[name] then
-      vim.notify(("belvedere: connection %q already exists"):format(name), vim.log.levels.ERROR)
-      callback(nil)
-      return
-    end
+  vim.ui.select(caps.drivers, {
+    prompt      = "Driver:",
+    format_item = function(d) return d.label or d.driver end,
+  }, function(d)
+    if not d then callback(nil) return end
+    local driver = d.driver
 
     vim.schedule(function()
-      vim.ui.select(caps.drivers, {
-        prompt      = "Driver:",
-        format_item = function(d) return d.label or d.driver end,
-      }, function(d)
-        if not d then callback(nil) return end
-        local driver = d.driver
+      vim.ui.input({ prompt = "Connection name: " }, function(name)
+        if not name or name == "" then callback(nil) return end
+
+        if M.load()[name] then
+          vim.notify(("belvedere: connection %q already exists"):format(name), vim.log.levels.ERROR)
+          callback(nil)
+          return
+        end
 
         vim.schedule(function()
           local function proceed_with_fields(resolved_group)
@@ -257,41 +257,39 @@ function M.create(caps, callback)
             end)
           end
 
-          do
-            -- Build group picker: existing groups for this driver + New + No group.
-            local driver_groups = {}
-            for _, g in ipairs(M.load_groups()) do
-              if g.driver == driver then table.insert(driver_groups, g.name) end
-            end
-            local items = { { type = "none", name = "[No group]" } }
-            for _, gname in ipairs(driver_groups) do
-              table.insert(items, { type = "group", name = gname })
-            end
-            table.insert(items, { type = "new", name = "[+ New group]" })
-            vim.ui.select(items, {
-              prompt      = "Group:",
-              format_item = function(item) return item.name end,
-            }, function(choice)
-              if not choice then callback(nil) return end
-              if choice.type == "none" then
-                vim.schedule(function() proceed_with_fields(nil) end)
-              elseif choice.type == "group" then
-                vim.schedule(function() proceed_with_fields(choice.name) end)
-              else
-                vim.ui.input({ prompt = "Group name: " }, function(gname)
-                  if not gname or gname == "" then callback(nil) return end
-                  vim.schedule(function()
-                    M.create_group(gname, driver)
-                    proceed_with_fields(gname)
-                  end)
-                end)
-              end
-            end)
+          -- Build group picker: existing groups for this driver + No group + New group.
+          local driver_groups = {}
+          for _, g in ipairs(M.load_groups()) do
+            if g.driver == driver then table.insert(driver_groups, g.name) end
           end
+          local items = { { type = "none", name = "[No group]" } }
+          for _, gname in ipairs(driver_groups) do
+            table.insert(items, { type = "group", name = gname })
+          end
+          table.insert(items, { type = "new", name = "[+ New group]" })
+          vim.ui.select(items, {
+            prompt      = "Group:",
+            format_item = function(item) return item.name end,
+          }, function(choice)
+            if not choice then callback(nil) return end
+            if choice.type == "none" then
+              vim.schedule(function() proceed_with_fields(nil) end)
+            elseif choice.type == "group" then
+              vim.schedule(function() proceed_with_fields(choice.name) end)
+            else
+              vim.ui.input({ prompt = "Group name: " }, function(gname)
+                if not gname or gname == "" then callback(nil) return end
+                vim.schedule(function()
+                  M.create_group(gname, driver)
+                  proceed_with_fields(gname)
+                end)
+              end)
+            end
+          end)
         end)
       end)
-    end)  -- vim.schedule
-  end)  -- name input
+    end)
+  end)
 end
 
 -- Edit (rename + update fields) an existing connection.
