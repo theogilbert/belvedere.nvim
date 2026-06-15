@@ -1,9 +1,10 @@
 -- Tree-style DB explorer in a sidebar buffer.
--- Navigation: <CR> expands/collapses, <CR> on a leaf describes the item.
+-- Navigation: <CR> expands/collapses nodes; hover_key (default K) describes the item under cursor.
 local M = {}
 
 local Buffer  = require("belvedere.buffer")
 local client  = require("belvedere.client")
+local config  = require("belvedere.config")
 local window  = require("belvedere.ui.window")
 local Spinner = require("belvedere.ui.spinner")
 
@@ -121,27 +122,121 @@ end
 local function on_enter()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
-  if not node then return end
-  if not node.expandable then
-    client.request("explore.describe", { connection_id = state.conn_id, path = node.path }, function(err, result)
-      if err then
-        vim.schedule(function()
-          vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
-        end)
-        return
-      end
-      vim.schedule(function()
-        vim.notify(vim.inspect(result.details), vim.log.levels.INFO)
-      end)
-    end)
-    return
-  end
+  if not node or not node.expandable then return end
   if node.expanded then
     node.expanded = false
     render()
   else
     load_children(node)
   end
+end
+
+local function open_describe_float(details, node)
+  if not details or details == vim.NIL then
+    vim.notify("belvedere: nothing to describe for this node", vim.log.levels.WARN)
+    return
+  end
+
+  local lines    = {}
+  local hl_rules = {}
+
+  local function add_hl(group, line_idx, col_s, col_e)
+    table.insert(hl_rules, { group, line_idx, col_s, col_e })
+  end
+
+  local function is_nil_val(v) return v == nil or v == vim.NIL end
+
+  local tname  = details.table or node.name
+  local schema = not is_nil_val(details.schema) and details.schema or nil
+  local title  = node_icon(node) .. (schema and schema .. "." or "") .. tname
+
+  table.insert(lines, "  " .. title)
+  add_hl("BelvedereHeaderRow", 0, 2, 2 + #title)
+  table.insert(lines, "")
+
+  local cols = details.columns
+  if cols and #cols > 0 then
+    local w_name, w_type = #"Name", #"Type"
+    for _, col in ipairs(cols) do
+      w_name = math.max(w_name, #col.name)
+      w_type = math.max(w_type, #col.type)
+    end
+
+    local function rpad(s, n) return s .. string.rep(" ", math.max(0, n - #s)) end
+
+    local hdr = "  " .. rpad("Name", w_name) .. "  " .. rpad("Type", w_type) .. "  Null  PK  Default"
+    table.insert(lines, hdr)
+    add_hl("BelvedereHeaderRow", #lines - 1, 0, #hdr)
+
+    local sep = "  " .. string.rep("─", #hdr - 2)
+    table.insert(lines, sep)
+    add_hl("BelvedereBorder", #lines - 1, 0, #sep)
+
+    for _, col in ipairs(cols) do
+      local null_s    = col.nullable == true and "✓" or col.nullable == false and "✗" or " "
+      local pk_s      = col.pk and "✓" or " "
+      local default_s = not is_nil_val(col.default) and tostring(col.default) or "—"
+      local row = "  " .. rpad(col.name, w_name)
+               .. "  " .. rpad(col.type, w_type)
+               .. "   " .. null_s
+               .. "    " .. pk_s
+               .. "   " .. default_s
+      table.insert(lines, row)
+      if col.pk then
+        add_hl("BelvedereHeaderRow", #lines - 1, 2, 2 + #col.name)
+      end
+    end
+  end
+
+  local max_w = 0
+  for _, l in ipairs(lines) do max_w = math.max(max_w, vim.fn.strdisplaywidth(l)) end
+  local width  = math.max(max_w + 2, 30)
+  local height = math.min(#lines, math.floor(vim.o.lines * 0.7))
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  vim.bo[buf].bufhidden  = "wipe"
+
+  local ns = vim.api.nvim_create_namespace("BelvedereDescribeFloat")
+  for _, rule in ipairs(hl_rules) do
+    vim.api.nvim_buf_add_highlight(buf, ns, rule[1], rule[2], rule[3], rule[4])
+  end
+
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative  = "editor",
+    row       = math.floor((vim.o.lines - height) / 2),
+    col       = math.floor((vim.o.columns - width)  / 2),
+    width     = width,
+    height    = height,
+    style     = "minimal",
+    border    = "rounded",
+    title     = " " .. tname .. " ",
+    title_pos = "center",
+  })
+  vim.api.nvim_set_option_value("cursorline", true, { win = win })
+
+  for _, key in ipairs({ "q", "<Esc>" }) do
+    vim.keymap.set("n", key, function() pcall(vim.api.nvim_win_close, win, true) end,
+      { buffer = buf, silent = true, nowait = true })
+  end
+end
+
+local function on_describe()
+  local line = vim.api.nvim_win_get_cursor(0)[1]
+  local node = node_at_line(line)
+  if not node then return end
+  client.request("explore.describe", { connection_id = state.conn_id, path = node.path }, function(err, result)
+    if err then
+      vim.schedule(function()
+        vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
+      end)
+      return
+    end
+    vim.schedule(function()
+      open_describe_float(result.details, node)
+    end)
+  end)
 end
 
 -- Fetch the root node list from the server and repopulate state.tree.
@@ -174,7 +269,9 @@ local function get_or_create_buffer()
   if state.buffer and state.buffer:is_valid() then return end
   state.buffer = Buffer:new(BUFNAME, "belvedere_explorer", false, "nofile")
   state.buffer:set_keymap("n", "<CR>", on_enter,
-    { nowait = true, silent = true, desc = "Expand / collapse / describe" })
+    { nowait = true, silent = true, desc = "Expand / collapse node" })
+  state.buffer:set_keymap("n", config.options.keymaps.hover_key, on_describe,
+    { nowait = true, silent = true, desc = "Describe item" })
   state.buffer:set_keymap("n", "R", function()
     state.tree = {}
     load_root(true)
