@@ -36,7 +36,7 @@ REQUIREMENTS                                            *belvedere-requirements*
 
 - Neovim 0.9 or later
 - A server that implements the belvedere protocol, on $PATH or configured
-  via |belvedere-python_cmd|. See your server's documentation for
+  via |belvedere-server_cmd|. See your server's documentation for
   installation instructions and supported drivers.
 ================================================================================
 SETUP                                                         *belvedere-setup*
@@ -306,7 +306,7 @@ All keys are optional.
 
 >lua
   require("belvedere").setup({
-    python_cmd       = "belvedere",
+    server_cmd       = "belvedere",
     connections_file = nil,   -- auto-detected from $XDG_CONFIG_HOME
     keymaps = {
       hover_key = "K",
@@ -315,8 +315,8 @@ All keys are optional.
   })
 <
 
-                                                       *belvedere-python_cmd*
-python_cmd ~
+                                                       *belvedere-server_cmd*
+server_cmd ~
   Type: `string`   Default: `"belvedere"`
 
   Shell command used to launch the server process. Can include arguments.

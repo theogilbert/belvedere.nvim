@@ -53,7 +53,7 @@ end
 -- Returns false (and notifies) if the process could not be spawned.
 local function start_backend()
   if client.is_running() then return true end
-  local ok, err = pcall(client.start, config.options.python_cmd)
+  local ok, err = pcall(client.start, config.options.server_cmd)
   if not ok then
     vim.notify("belvedere: " .. tostring(err), vim.log.levels.ERROR)
     return false

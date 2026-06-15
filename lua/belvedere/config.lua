@@ -6,8 +6,8 @@ local function default_connections_file()
 end
 
 M.defaults = {
-  -- Command used to launch the Python backend.
-  python_cmd = "belvedere",  -- or "python -m belvedere"
+  -- Command used to launch the server backend.
+  server_cmd = "belvedere",  -- or "python -m belvedere"
 
   -- Path to the JSON file that stores named connections.
   -- Defaults to $XDG_CONFIG_HOME/belvedere/connections.json

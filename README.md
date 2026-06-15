@@ -35,9 +35,9 @@ Then install the plugin with your plugin manager:
 
 ```lua
 require("belvedere").setup({
-  -- Command used to launch the Python backend.
+  -- Command used to launch the server backend.
   -- Default: "belvedere" (assumes it is on $PATH).
-  python_cmd = "belvedere",
+  server_cmd = "belvedere",
 
   -- Override the path to the connections file.
   -- Default: $XDG_CONFIG_HOME/belvedere/connections.json
