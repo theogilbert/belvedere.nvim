@@ -21,15 +21,26 @@ local function same_columns(a, b)
   return true
 end
 
-local function rows_label(total, page, page_size)
-  if total <= page_size then
-    return total .. " row" .. (total == 1 and "" or "s")
+local function rows_label(rows_returned, rows_total, page, page_size)
+  local total_pages = math.max(1, math.ceil(rows_returned / page_size))
+  local first       = (page - 1) * page_size + 1
+  local last        = math.min(rows_returned, page * page_size)
+
+  local count
+  if rows_returned == rows_total then
+    count = total_pages <= 1
+        and (rows_returned .. " row" .. (rows_returned == 1 and "" or "s"))
+        or  ("rows %d–%d of %d"):format(first, last, rows_returned)
+  else
+    count = total_pages <= 1
+        and ("%d returned  ·  %d matched"):format(rows_returned, rows_total)
+        or  ("rows %d–%d of %d returned  ·  %d matched"):format(first, last, rows_returned, rows_total)
   end
-  local total_pages = math.ceil(total / page_size)
-  local first = (page - 1) * page_size + 1
-  local last  = math.min(total, page * page_size)
-  return ("page %d/%d  ·  rows %d–%d of %d  (] next  [ prev)"):format(
-    page, total_pages, first, last, total)
+
+  if total_pages > 1 then
+    return count .. ("  ·  page %d/%d  (] next  [ prev)"):format(page, total_pages)
+  end
+  return count
 end
 
 local function rows_affected_msg(n, verb)
@@ -203,13 +214,15 @@ local function get_or_create_buf_state(conn_name, buf_title)
   table_fmt.setup_buf_hl(buf.buf_id)
 
   local bs = {
-    buffer      = buf,
-    table_data  = nil,
-    segments    = {},
-    raw_columns = nil,
-    raw_rows    = nil,
-    vis_columns = nil,
-    page        = 1,
+    buffer        = buf,
+    table_data    = nil,
+    segments      = {},
+    raw_columns   = nil,
+    raw_rows      = nil,
+    vis_columns   = nil,
+    rows_returned = nil,
+    rows_total    = nil,
+    page          = 1,
   }
   state.buffers[conn_name] = bs
 
@@ -270,13 +283,14 @@ end
 
 
 render_table = function(bs)
-  local page_size   = config.options.results.page_size
-  local total_rows  = #bs.raw_rows
-  local total_pages = math.max(1, math.ceil(total_rows / page_size))
+  local page_size    = config.options.results.page_size
+  local rows_ret     = bs.rows_returned or #bs.raw_rows
+  local rows_tot     = bs.rows_total    or rows_ret
+  local total_pages  = math.max(1, math.ceil(rows_ret / page_size))
   bs.page = math.max(1, math.min(bs.page, total_pages))
 
   local first = (bs.page - 1) * page_size + 1
-  local last  = math.min(total_rows, bs.page * page_size)
+  local last  = math.min(rows_ret, bs.page * page_size)
 
   -- Build index map: vis column name → position in raw_columns
   local col_indices = {}
@@ -296,7 +310,7 @@ render_table = function(bs)
   local tbl = table_fmt.from_structured_data(display, 1)
   bs.table_data = tbl
 
-  local content = { rows_label(total_rows, bs.page, page_size), "" }
+  local content = { rows_label(rows_ret, rows_tot, bs.page, page_size), "" }
   vim.list_extend(content, tbl.text)
   bs.buffer:set_content(content)
   apply_highlights(bs, tbl, 0, 2)
@@ -350,14 +364,15 @@ function M.begin_batch(n)
   bs.buffer:apply_highlight({})
 end
 
-function M.append_batch_result(idx, total, columns, rows)
-  local bs         = active_bs()
-  local page_size  = config.options.results.page_size
-  local total_rows = #rows
-  local display    = { columns }
-  for i = 1, math.min(total_rows, page_size) do table.insert(display, rows[i]) end
+function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total)
+  local bs       = active_bs()
+  local page_size = config.options.results.page_size
+  rows_returned   = rows_returned or #rows
+  rows_total      = rows_total    or rows_returned
+  local display   = { columns }
+  for i = 1, math.min(rows_returned, page_size) do table.insert(display, rows[i]) end
   local tbl     = table_fmt.from_structured_data(display, 1)
-  local content = { rows_label(total_rows, 1, page_size), "" }
+  local content = { rows_label(rows_returned, rows_total, 1, page_size), "" }
   vim.list_extend(content, tbl.text)
   local rules = table_fmt.col_hl_rules("BelvedereHeaderRow", 2, 1, tbl)
   table.insert(rules, { higroup = "BelvedereRowCount",
@@ -376,15 +391,17 @@ function M.append_batch_error(idx, total, msg)
   render_segments(bs)
 end
 
-function M.show_results(columns, rows)
+function M.show_results(columns, rows, rows_returned, rows_total)
   local bs = active_bs()
   -- Reset vis_columns when the query returns a different schema.
   if not bs.raw_columns or not same_columns(bs.raw_columns, columns) then
     bs.vis_columns = vim.list_extend({}, columns)
   end
-  bs.raw_columns = columns
-  bs.raw_rows    = rows
-  bs.page        = 1
+  bs.raw_columns    = columns
+  bs.raw_rows       = rows
+  bs.rows_returned  = rows_returned or #rows
+  bs.rows_total     = rows_total    or bs.rows_returned
+  bs.page           = 1
   ensure_win(bs.buffer.buf_id)
   render_table(bs)
 end

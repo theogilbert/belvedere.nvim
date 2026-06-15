@@ -169,10 +169,11 @@ The query language and bind parameter syntax depend on the driver — see [Drive
 
 **result — SELECT / RETURN**
 
-| Field     | Type              | Description                       |
-|-----------|-------------------|-----------------------------------|
-| `columns` | array of strings  | Column names, in order            |
-| `rows`    | array of arrays   | Each row is an array of values    |
+| Field        | Type              | Description                                        |
+|--------------|-------------------|----------------------------------------------------|
+| `columns`    | array of strings  | Column names, in order                             |
+| `rows`       | array of arrays   | Each row is an array of values                     |
+| `rows_total` | integer           | Total number of rows matching the query            |
 
 **result — INSERT / UPDATE / DELETE / write statements**
 
@@ -184,7 +185,7 @@ The query language and bind parameter syntax depend on the driver — see [Drive
 
 ```json
 {"id":2,"method":"execute","params":{"connection_id":"0","query":"SELECT id, name FROM users WHERE active = ?","params":[1]}}
-{"id":2,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]]},"error":null}
+{"id":2,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]],"rows_total":2},"error":null}
 ```
 
 ```json
