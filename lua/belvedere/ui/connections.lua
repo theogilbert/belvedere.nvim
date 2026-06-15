@@ -1,5 +1,5 @@
 -- Panel listing all saved connections, grouped by driver.
--- Keymaps: <CR> expand/collapse group or connect, x explore, e edit, c clone, d disconnect, r remove, n new, R refresh, q close.
+-- Keymaps: <CR> expand/collapse group or connect, x explore, e edit, c clone, d disconnect, r remove, n new, G new group, R refresh, q close.
 local M = {}
 
 local Buffer      = require("belvedere.buffer")
@@ -9,9 +9,12 @@ local hl          = require("belvedere.hl")
 local window      = require("belvedere.ui.window")
 local Spinner     = require("belvedere.ui.spinner")
 
-local BUFNAME     = "belvedere://connections"
-local ACTIVE_MARK = " ✓"
-local ERROR_MARK  = " ✗"
+local BUFNAME      = "belvedere://connections"
+local ACTIVE_MARK  = " ✓"
+local ERROR_MARK   = " ✗"
+local ICON_DRIVER  = "\xEF\x87\x80"  -- U+F1C0  nf-fa-database
+local ICON_GROUP   = "\xEF\x81\xBB"  -- U+F07B  nf-fa-folder
+local ICON_CONN    = "\xEF\x83\x81"  -- U+F0C1  nf-fa-link
 
 local state = {
   buffer      = nil,
@@ -22,11 +25,8 @@ local state = {
   hover_win    = nil,
 }
 
-local function build(conns, active_set, driver_labels)
-  -- Determine whether saved connections span multiple servers.
-  local server_set = {}
-  for _, p in pairs(conns) do server_set[p.server or ""] = true end
-  local multi_server = vim.tbl_count(server_set) > 1
+local function build(conns, active_set, driver_labels, defined_groups)
+  defined_groups = defined_groups or {}
 
   -- Group by {driver, server}.  Key uses NUL as separator (never in names).
   local groups, group_order = {}, {}
@@ -34,45 +34,119 @@ local function build(conns, active_set, driver_labels)
     local driver = params.driver or "unknown"
     local server = params.server
     local gkey   = driver .. (server and ("\0" .. server) or "")
-    local label  = (params.driver_label or driver_labels[driver] or driver) .. (multi_server and server and (" (" .. server .. ")") or "")
+    local label  = params.driver_label or driver_labels[driver] or driver
     if not groups[gkey] then
-      groups[gkey] = { label = label, names = {} }
+      groups[gkey] = { label = label, server = server, names = {} }
       table.insert(group_order, gkey)
     end
     table.insert(groups[gkey].names, name)
   end
+
+  -- Track which group names already have at least one connection (any section).
+  local used_groups = {}
+  for _, params in pairs(conns) do
+    local sg = params.group ~= vim.NIL and params.group or nil
+    if sg and sg ~= "" then used_groups[sg] = true end
+  end
+
+  -- Add driver sections for defined groups that are truly empty (no connections anywhere).
+  -- Only create a new section if no existing section already covers that driver.
+  for _, dg in ipairs(defined_groups) do
+    if not used_groups[dg.name] then
+      local covered = false
+      for existing_gkey in pairs(groups) do
+        if existing_gkey == dg.driver
+        or existing_gkey:sub(1, #dg.driver + 1) == (dg.driver .. "\0") then
+          covered = true
+          break
+        end
+      end
+      if not covered then
+        local gkey = dg.driver
+        groups[gkey] = { label = driver_labels[dg.driver] or dg.driver, server = nil, names = {} }
+        table.insert(group_order, gkey)
+      end
+    end
+  end
+
   table.sort(group_order)
   for _, gkey in ipairs(group_order) do table.sort(groups[gkey].names) end
 
-  local lines, line_map, hl_rules = {}, {}, {}
+  local lines, line_map, hl_rules, hl_server = {}, {}, {}, {}
+
+  local function add_conn_row(name, indent)
+    local active  = active_set[name]
+    local loading = state.conn_loading[name]
+    local has_err = state.conn_errors[name]
+    local mark    = active  and ACTIVE_MARK
+                 or loading and (" " .. loading:glyph())
+                 or has_err and ERROR_MARK
+                 or ""
+    table.insert(lines,    string.rep(" ", indent) .. ICON_CONN .. " " .. name .. mark)
+    table.insert(line_map, { type = "conn", name = name })
+    if active      then hl_rules[#lines] = "BelvedereConnection"
+    elseif has_err then hl_rules[#lines] = "BelvedereConnError" end
+  end
 
   for _, gkey in ipairs(group_order) do
     local g        = groups[gkey]
     local expanded = state.expanded[gkey]
     local chevron  = expanded and "▾ " or "▸ "
-    table.insert(lines, chevron .. g.label .. " (" .. #g.names .. ")")
+    local server_tag = g.server and (" [" .. g.server .. "]") or ""
+    table.insert(lines,    chevron .. ICON_DRIVER .. " " .. g.label .. server_tag .. " (" .. #g.names .. ")")
     table.insert(line_map, { type = "header", gkey = gkey })
     hl_rules[#lines] = "BelvedereHeaderRow"
+    if g.server then
+      -- Byte offset: chevron(4) + icon(3) + space(1) + label + space(1) = 9 + #label
+      local col_s = 9 + #g.label
+      hl_server[#lines] = { col_s, col_s + 1 + #g.server + 1 }  -- covers "[server]"
+    end
 
     if expanded then
+      -- Extract driver from gkey (part before the first NUL byte).
+      local nul_pos = gkey:find("\0", 1, true)
+      local driver_of_group = nul_pos and gkey:sub(1, nul_pos - 1) or gkey
+
+      -- Partition into named subgroups and ungrouped connections.
+      local sg_map, sg_order, ungrouped = {}, {}, {}
       for _, name in ipairs(g.names) do
-        local active  = active_set[name]
-        local loading = state.conn_loading[name]
-        local has_err = state.conn_errors[name]
-        local mark
-        if active then mark = ACTIVE_MARK
-        elseif loading then mark = " " .. loading:glyph()
-        elseif has_err then mark = ERROR_MARK
-        else mark = "" end
-        table.insert(lines, "    " .. name .. mark)
-        table.insert(line_map, { type = "conn", name = name })
-        if active then hl_rules[#lines] = "BelvedereConnection"
-        elseif has_err then hl_rules[#lines] = "BelvedereConnError" end
+        local p  = conns[name]
+        local sg = p and p.group ~= vim.NIL and p.group or nil
+        if sg and sg ~= "" then
+          if not sg_map[sg] then sg_map[sg] = {}; table.insert(sg_order, sg) end
+          table.insert(sg_map[sg], name)
+        else
+          table.insert(ungrouped, name)
+        end
       end
+
+      -- Merge in truly empty defined groups for this driver.
+      -- Groups that have connections elsewhere show up naturally via those connections.
+      for _, dg in ipairs(defined_groups) do
+        if dg.driver == driver_of_group and not sg_map[dg.name] and not used_groups[dg.name] then
+          sg_map[dg.name] = {}
+          table.insert(sg_order, dg.name)
+        end
+      end
+      table.sort(sg_order)
+
+      for _, sg_name in ipairs(sg_order) do
+        local skey    = gkey .. "\1" .. sg_name
+        local sg_exp  = state.expanded[skey]
+        local sg_chev = sg_exp and "▾ " or "▸ "
+        table.insert(lines,    "  " .. sg_chev .. ICON_GROUP .. " " .. sg_name .. " (" .. #sg_map[sg_name] .. ")")
+        table.insert(line_map, { type = "subgroup", gkey = gkey, subgroup = sg_name })
+        hl_rules[#lines] = "BelvedereHeaderRow"
+        if sg_exp then
+          for _, name in ipairs(sg_map[sg_name]) do add_conn_row(name, 6) end
+        end
+      end
+
+      for _, name in ipairs(ungrouped) do add_conn_row(name, 4) end
     end
   end
 
-  return lines, line_map, hl_rules
+  return lines, line_map, hl_rules, hl_server
 end
 
 local FOOTER = "Press g? in any pane for help"
@@ -100,8 +174,9 @@ local function refresh()
     end
   end
 
-  local conns = connections.load()
-  local lines, line_map, hl_rules = build(conns, active_set, driver_labels)
+  local conns          = connections.load()
+  local defined_groups = connections.load_groups()
+  local lines, line_map, hl_rules, hl_server = build(conns, active_set, driver_labels, defined_groups)
   state.line_map = line_map
 
   if #lines == 0 then lines = { "(no saved connections)" } end
@@ -115,6 +190,13 @@ local function refresh()
       higroup = group,
       start   = { lnum - 1, 0 },
       finish  = { lnum - 1, -1 },
+    })
+  end
+  for lnum, cols in pairs(hl_server) do
+    table.insert(rules, {
+      higroup = "BelvedereServerLabel",
+      start   = { lnum - 1, cols[1] },
+      finish  = { lnum - 1, cols[2] },
     })
   end
   table.insert(rules, {
@@ -136,6 +218,10 @@ local function on_enter()
   if not entry then return end
   if entry.type == "header" then
     state.expanded[entry.gkey] = not state.expanded[entry.gkey]
+    refresh()
+  elseif entry.type == "subgroup" then
+    local skey = entry.gkey .. "\1" .. entry.subgroup
+    state.expanded[skey] = not state.expanded[skey]
     refresh()
   else
     state.conn_errors[entry.name] = nil
@@ -202,6 +288,25 @@ local function on_new()
   end)
 end
 
+local function on_new_group()
+  local db = require("belvedere")
+  db.ensure_backend_with_caps(function(caps)
+    vim.ui.input({ prompt = "Group name: " }, function(name)
+      if not name or name == "" then return end
+      vim.schedule(function()
+        vim.ui.select(caps.drivers, {
+          prompt      = "Driver:",
+          format_item = function(d) return d.label or d.driver end,
+        }, function(d)
+          if not d then return end
+          local ok = connections.create_group(name, d.driver)
+          if ok then refresh() end
+        end)
+      end)
+    end)
+  end)
+end
+
 local function on_explore()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
@@ -256,7 +361,7 @@ local function on_help()
   local entry = entry_at_cursor()
   if not entry then return end
   local driver
-  if entry.type == "header" then
+  if entry.type == "header" or entry.type == "subgroup" then
     local sep = entry.gkey:find("\0")
     driver = sep and entry.gkey:sub(1, sep - 1) or entry.gkey
   else
@@ -268,7 +373,7 @@ local function on_help()
 end
 
 -- Fields from the saved connection that are client-only and not displayed.
-local HIDDEN_CONN_FIELDS = { password = true, requires_password = true, server = true, driver_label = true }
+local HIDDEN_CONN_FIELDS = { password = true, requires_password = true, server = true, driver_label = true, group = true }
 
 local function open_hover_float(lines, title, border_hl, line_hl)
   local max_w = 1
@@ -413,6 +518,7 @@ function M.open()
     state.buffer:set_keymap("n", "d",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect" })
     state.buffer:set_keymap("n", "r",        on_delete,     { nowait = true, silent = true, desc = "Remove connection" })
     state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection" })
+    state.buffer:set_keymap("n", "G",        on_new_group,  { nowait = true, silent = true, desc = "New group" })
     state.buffer:set_keymap("n", "b",        on_jump,       { nowait = true, silent = true, desc = "Open associated buffer(s)" })
     state.buffer:set_keymap("n", "?",        on_help,       { nowait = true, silent = true, desc = "Driver help" })
     state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh" })

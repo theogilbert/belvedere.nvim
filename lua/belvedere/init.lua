@@ -111,7 +111,7 @@ function M._do_connect(name, params, after_connect)
 end
 
 -- Fields stored in the connections file that must not be forwarded to the server.
-local CLIENT_ONLY_FIELDS = { server = true, requires_password = true, driver_label = true }
+local CLIENT_ONLY_FIELDS = { server = true, requires_password = true, driver_label = true, group = true }
 
 function M._send_connect(name, params, after_connect)
   local server_params = {}

@@ -10,11 +10,13 @@ local ROW_COUNT_FG = "#7F8490"
 local CONN_FG      = "#7DB88A"
 local NULL_FG      = "#6B7280"
 local HELP_FG      = "#4B9CD3"
+local SERVER_FG    = "#5C6370"
 
 local function build_highlights()
   return {
-    BelvedereBorder    = { fg = BORDER_FG },
-    BelvedereHeaderRow = { fg = HEADER_FG, bold = true },
+    BelvedereBorder      = { fg = BORDER_FG },
+    BelvedereHeaderRow   = { fg = HEADER_FG, bold = true },
+    BelvedereServerLabel = { fg = SERVER_FG },
     BelvedereError     = { fg = ERROR_FG },
     BelvedereTruncated = { fg = TRUNCATED_FG, bold = true },
     BelvedereRowCount  = { fg = ROW_COUNT_FG },
