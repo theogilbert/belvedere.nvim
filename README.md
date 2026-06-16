@@ -61,15 +61,19 @@ Open the connections panel with `:DbConnections`. Connections are grouped by dri
 | Key | Action |
 |-----|--------|
 | `<CR>` | Expand/collapse a driver group, or connect to the database under the cursor |
+| `b` | Jump to the buffer associated with the connection under the cursor |
 | `n` | Create a new connection (guided wizard) |
+| `G` | Create a new group |
 | `e` | Edit the connection under the cursor |
 | `c` | Clone the connection under the cursor |
+| `D` | Delete the saved connection under the cursor |
 | `d` | Disconnect from the database under the cursor |
-| `r` | Remove the saved connection under the cursor |
 | `x` | Open the explorer for the connected database under the cursor |
 | `K` | Show the connection error message in a float (press `K` again to enter it) |
+| `?` | Show driver help |
 | `R` | Refresh the panel |
 | `q` | Close the panel |
+| `g?` | Show keymap reference |
 
 Status indicators next to each connection name:
 
@@ -109,6 +113,14 @@ vim.keymap.set("x", "<leader>e", ":'<,'>DbExecute<CR>")
 
 Results appear in a split window with aligned columns and a row count. For DML queries (`INSERT`, `UPDATE`, `DELETE`) the affected row count is shown instead of a table.
 
+| Key | Action |
+|-----|--------|
+| `H` / `L` | Scroll left / right one column |
+| `c` | Select which columns to display |
+| `[` / `]` | Previous / next page |
+| `q` | Close the results window |
+| `g?` | Show keymap reference |
+
 **Multiple queries:** if the SQL contains `;`, each statement is sent as a separate request and results are shown as labelled sections (`── Query 1 / 3 ──`, etc.). This does not apply to MongoDB-style drivers.
 
 ### 4. Explore the schema
@@ -117,8 +129,11 @@ Press `e` on a connected database in the connections panel, or run `:DbExplore`.
 
 | Key | Action |
 |-----|--------|
-| `<CR>` | Expand / collapse a node; describe a leaf |
+| `<CR>` | Expand / collapse a node |
+| `K` | Describe the item under the cursor |
 | `R` | Refresh the tree, bypassing the server-side schema cache |
+| `q` / `<Esc>` | Close the explorer |
+| `g?` | Show keymap reference |
 
 The window title bar shows the connection name and driver. A spinner is shown while a node's children are loading.
 
