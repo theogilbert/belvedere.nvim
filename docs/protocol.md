@@ -240,7 +240,7 @@ Returns detailed metadata about a specific node.
 
 | Field     | Type                | Description                    |
 |-----------|---------------------|--------------------------------|
-| `details` | object or null      | Driver-specific metadata object (see [Tree hierarchies](#tree-hierarchies)), or null if the path does not resolve to a describable node |
+| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription) |
 
 ---
 
@@ -288,7 +288,7 @@ Each entry in the `capabilities.drivers` array:
 | `key`      | string  | yes      | Parameter key sent in `connect.params`                             |
 | `type`     | string  | yes      | `"string"`, `"integer"`, or `"enum"`                               |
 | `label`    | string  | yes      | Human-readable label for UI display                                |
-| `required` | boolean | no       | Whether a non-empty value is required (default `false`)            |
+| `required` | boolean | no       | Whether a non-empty value is required (default `true`)             |
 | `default`  | string or integer | no | Default value pre-filled in the UI                       |
 | `choices`  | array of [DriverParamChoice](#driverparamchoice) | for `"enum"` | Allowed options |
 | `secret`   | boolean | no       | Mask input in the UI (e.g. for passwords); never persisted to disk |
@@ -318,7 +318,7 @@ The `"group"` type is used for intermediate organisational nodes that bundle sub
 
 ## ColumnInfo
 
-Column metadata object returned inside `explore.describe` results:
+Column metadata object used inside [TableDescription](#tabledescription):
 
 | Field      | Type             | Description                                       |
 |------------|------------------|---------------------------------------------------|
@@ -336,9 +336,35 @@ Returned as `details` by `explore.describe` for table/view nodes:
 
 | Field     | Type                    | Description                                              |
 |-----------|-------------------------|----------------------------------------------------------|
+| `type`    | string                  | Always `"table"` — use to discriminate description types |
 | `table`   | string                  | Table name                                               |
 | `schema`  | string or null          | Schema name, or null for databases without schema support |
 | `columns` | array of [ColumnInfo](#columninfo) | Ordered column metadata                     |
+
+---
+
+## IndexKeyField
+
+One field in an index key, used inside [IndexDescription](#indexdescription):
+
+| Field       | Type   | Description                                                                 |
+|-------------|--------|-----------------------------------------------------------------------------|
+| `name`      | string | Field name                                                                  |
+| `direction` | string | Sort direction or index kind (`"asc"`, `"desc"`, `"text"`, `"hashed"`, …)  |
+
+---
+
+## IndexDescription
+
+Returned as `details` by `explore.describe` for index nodes:
+
+| Field                  | Type                              | Description                                              |
+|------------------------|-----------------------------------|----------------------------------------------------------|
+| `type`      | string                                   | Always `"index"` — use to discriminate description types                          |
+| `index`     | string                                   | Index name                                                                        |
+| `fields`    | array of [IndexKeyField](#indexkeyfield) | Ordered list of key fields                                                        |
+| `unique`    | boolean                                  | Whether the index enforces uniqueness (default `false`)                           |
+| `condition` | string or null                           | Partial/filtered index predicate in the driver's native syntax; `null` if the index covers all documents |
 
 ---
 
