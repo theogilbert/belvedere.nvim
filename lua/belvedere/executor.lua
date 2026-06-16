@@ -25,13 +25,25 @@ local function is_only_comments(sql)
   return vim.trim(stripped) == ""
 end
 
+-- Returns { { sql, line }, ... } where line is the 0-indexed offset of each
+-- statement's first non-whitespace character within the original sql string.
 local function split_queries(sql)
   local stmts = {}
-  for stmt in sql:gmatch("[^;]+") do
-    local trimmed = vim.trim(stmt)
+  local line_offset = 0
+  local pos = 1
+  while pos <= #sql do
+    local semi_pos = sql:find(";", pos, true)
+    local chunk = semi_pos and sql:sub(pos, semi_pos - 1) or sql:sub(pos)
+    local before_trim = chunk:match("^(%s*)") or ""
+    local stmt_line = line_offset
+    for _ in before_trim:gmatch("\n") do stmt_line = stmt_line + 1 end
+    local trimmed = vim.trim(chunk)
     if trimmed ~= "" and not is_only_comments(trimmed) then
-      table.insert(stmts, trimmed)
+      table.insert(stmts, { sql = trimmed, line = stmt_line })
     end
+    for _ in chunk:gmatch("\n") do line_offset = line_offset + 1 end
+    if not semi_pos then break end
+    pos = semi_pos + 1
   end
   return stmts
 end
@@ -67,19 +79,23 @@ local function execute(conn, sql, on_done, on_progress)
 end
 
 -- Run statements one after another, each appended to the batch view.
-local function run_batch(queries, conn, idx, gh, had_error)
-  execute(conn, queries[idx], function(err, result)
+-- Each statement gets its own gutter mark created as it starts.
+local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
+  local q = queries[idx]
+  local gh = (bufnr and first_line ~= nil)
+      and gutter.show_running(bufnr, first_line + q.line) or nil
+  execute(conn, q.sql, function(err, result)
     vim.schedule(function()
       if err then
         had_error = true
         results.append_batch_error(idx, #queries, err)
+        gutter.show_error(gh)
       else
-        dispatch_batch_result(idx, #queries, result, queries[idx])
+        dispatch_batch_result(idx, #queries, result, q.sql)
+        gutter.show_success(gh)
       end
       if idx < #queries then
-        run_batch(queries, conn, idx + 1, gh, had_error)
-      else
-        if had_error then gutter.show_error(gh) else gutter.show_success(gh) end
+        run_batch(queries, conn, idx + 1, bufnr, first_line, had_error)
       end
     end)
   end)
@@ -114,17 +130,23 @@ end
 --- @param first_line integer|nil  0-indexed first line of the query in bufnr
 function M.run(conn, query, bufnr, first_line)
   results.set_conn_name(conn.name, conn.driver_label)
-  local queries = (not is_mongo(conn.driver) and query:find(";"))
-      and split_queries(query) or { query }
 
-  local gh = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
+  local queries
+  if not is_mongo(conn.driver) and query:find(";") then
+    queries = split_queries(query)
+  end
 
-  if #queries > 1 then
+  if queries and #queries > 1 then
     results.begin_batch(#queries)
-    run_batch(queries, conn, 1, gh, false)
+    run_batch(queries, conn, 1, bufnr, first_line, false)
   else
-    run_single(conn, queries[1], gh)
+    local sql = (queries and queries[1] and queries[1].sql) or query
+    local gh = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
+    run_single(conn, sql, gh)
   end
 end
+
+M._split_queries    = split_queries
+M._is_only_comments = is_only_comments
 
 return M
