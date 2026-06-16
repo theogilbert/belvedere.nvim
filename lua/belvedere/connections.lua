@@ -165,11 +165,12 @@ end
 
 local function prompt_sequence(fields, done)
   local results = {}
-  local function step(i)
+  local function step(i, err_prefix)
     if i > #fields then done(results) return end
     local f       = fields[i]
     local choices = type(f.choices) == "table" and f.choices or nil
-    local prompt  = jval(f.label, "")
+    local label   = jval(f.label, "")
+    local prompt  = err_prefix and (err_prefix .. label) or label
     local default = jval(f.default)
     if choices then
       vim.ui.select(choices, { prompt = prompt }, function(val)
@@ -180,6 +181,10 @@ local function prompt_sequence(fields, done)
     else
       vim.ui.input({ prompt = prompt, default = default ~= nil and tostring(default) or "" }, function(val)
         if val == nil then done(nil) return end
+        if val == "" and jval(f.required, false) then
+          vim.schedule(function() step(i, "[required] ") end)
+          return
+        end
         results[f.key] = (val ~= "" and val) or default or ""
         vim.schedule(function() step(i + 1) end)
       end)
@@ -273,7 +278,10 @@ function M.create(caps, callback)
 
     vim.schedule(function()
       vim.ui.input({ prompt = "Connection name: " }, function(name)
-        if not name or name == "" then callback(nil) return end
+        if not name or name == "" then
+          if name ~= nil then vim.notify("belvedere: connection name is required", vim.log.levels.WARN) end
+          callback(nil) return
+        end
 
         vim.schedule(function()
           pick_group(server, driver, function(group)
@@ -346,8 +354,11 @@ function M.edit(key, caps, callback)
   end
 
   vim.ui.input({ prompt = "Connection name: ", default = name }, function(new_name)
-    if not new_name or new_name == "" then callback(nil) return end
-
+    if not new_name or new_name == "" then
+      if new_name ~= nil then vim.notify("belvedere: connection name is required", vim.log.levels.WARN) end
+      callback(nil) return
+    end
+    vim.schedule(function()
     vim.ui.input({ prompt = "Group (empty = no group): ", default = group }, function(new_group)
       if new_group == nil then callback(nil) return end
       local new_key = M.conn_key(server, driver, new_group, new_name)
@@ -426,6 +437,7 @@ function M.edit(key, caps, callback)
         end)
       end)
     end)
+    end)  -- vim.schedule
   end)
 end
 
