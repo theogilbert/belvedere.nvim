@@ -1,5 +1,6 @@
--- Panel listing all saved connections, grouped by driver.
--- Keymaps: <CR> expand/collapse group or connect, x explore, e edit, c clone, d disconnect, D delete, n new, G new group, R refresh, q close.
+-- Panel listing all saved connections, grouped by driver then group.
+-- Keymaps: <CR> expand/collapse or connect, b jump to buffer, e edit, c clone, D delete,
+--          n new connection, G new group, d disconnect, x explore, K hover, ? driver help, R refresh, q close.
 local M = {}
 
 local Buffer      = require("belvedere.buffer")
@@ -9,149 +10,96 @@ local hl          = require("belvedere.hl")
 local window      = require("belvedere.ui.window")
 local Spinner     = require("belvedere.ui.spinner")
 
-local BUFNAME      = "belvedere://connections"
-local ACTIVE_MARK  = " ✓"
-local ERROR_MARK   = " ✗"
-local ICON_DRIVER  = "\xEF\x87\x80"  -- U+F1C0  nf-fa-database
-local ICON_GROUP   = "\xEF\x81\xBB"  -- U+F07B  nf-fa-folder
-local ICON_CONN    = "\xEF\x83\x81"  -- U+F0C1  nf-fa-link
+local BUFNAME     = "belvedere://connections"
+local ACTIVE_MARK = " ✓"
+local ERROR_MARK  = " ✗"
+local ICON_DRIVER = "\xEF\x87\x80"  -- U+F1C0  nf-fa-database
+local ICON_GROUP  = "\xEF\x81\xBB"  -- U+F07B  nf-fa-folder
+local ICON_CONN   = "\xEF\x83\x81"  -- U+F0C1  nf-fa-link
 
 local state = {
-  buffer      = nil,
-  line_map    = {},  -- [line_nr] -> { type="header"|"conn", driver, name? }
-  expanded    = {},  -- [driver]  -> bool (default false = folded)
-  conn_errors = {},  -- [name]    -> string (error message)
-  conn_loading = {}, -- [name]    -> Spinner (while a connect is in flight)
+  buffer       = nil,
+  line_map     = {},   -- [line_nr] -> entry
+  expanded     = {},   -- [key]     -> bool
+  conn_errors  = {},   -- [key]     -> string
+  conn_loading = {},   -- [key]     -> Spinner
   hover_win    = nil,
 }
 
-local function build(conns, active_set, driver_labels, defined_groups)
-  defined_groups = defined_groups or {}
+local function build(server, server_data, active_set)
+  local lines, line_map, hl_rules = {}, {}, {}
 
-  -- Group by {driver, server}.  Key uses NUL as separator (never in names).
-  local groups, group_order = {}, {}
-  for name, params in pairs(conns) do
-    local driver = params.driver or "unknown"
-    local server = params.server
-    local gkey   = driver .. (server and ("\0" .. server) or "")
-    local label  = params.driver_label or driver_labels[driver] or driver
-    if not groups[gkey] then
-      groups[gkey] = { label = label, server = server, names = {} }
-      table.insert(group_order, gkey)
-    end
-    table.insert(groups[gkey].names, name)
-  end
-
-  -- Track which group names already have at least one connection (any section).
-  local used_groups = {}
-  for _, params in pairs(conns) do
-    local sg = params.group ~= vim.NIL and params.group or nil
-    if sg and sg ~= "" then used_groups[sg] = true end
-  end
-
-  -- Add driver sections for defined groups that are truly empty (no connections anywhere).
-  -- Only create a new section if no existing section already covers that driver.
-  for _, dg in ipairs(defined_groups) do
-    if not used_groups[dg.name] then
-      local covered = false
-      for existing_gkey in pairs(groups) do
-        if existing_gkey == dg.driver
-        or existing_gkey:sub(1, #dg.driver + 1) == (dg.driver .. "\0") then
-          covered = true
-          break
-        end
-      end
-      if not covered then
-        local gkey = dg.driver
-        groups[gkey] = { label = driver_labels[dg.driver] or dg.driver, server = nil, names = {} }
-        table.insert(group_order, gkey)
-      end
-    end
-  end
-
-  table.sort(group_order)
-  for _, gkey in ipairs(group_order) do table.sort(groups[gkey].names) end
-
-  local lines, line_map, hl_rules, hl_server = {}, {}, {}, {}
-
-  local function add_conn_row(name, indent)
-    local active  = active_set[name]
-    local loading = state.conn_loading[name]
-    local has_err = state.conn_errors[name]
+  local function add_conn_row(key, indent)
+    local active  = active_set[key]
+    local loading = state.conn_loading[key]
+    local has_err = state.conn_errors[key]
     local mark    = active  and ACTIVE_MARK
                  or loading and (" " .. loading:glyph())
                  or has_err and ERROR_MARK
                  or ""
-    table.insert(lines,    string.rep(" ", indent) .. ICON_CONN .. " " .. name .. mark)
-    table.insert(line_map, { type = "conn", name = name })
+    table.insert(lines,    string.rep(" ", indent) .. ICON_CONN .. " " .. connections.conn_display_name(key) .. mark)
+    table.insert(line_map, { type = "conn", key = key })
     if active      then hl_rules[#lines] = "BelvedereConnection"
     elseif has_err then hl_rules[#lines] = "BelvedereConnError" end
   end
 
-  for _, gkey in ipairs(group_order) do
-    local g        = groups[gkey]
-    local expanded = state.expanded[gkey]
+  local driver_ids = vim.tbl_keys(server_data)
+  table.sort(driver_ids, function(a, b)
+    return (server_data[a].label or a):lower() < (server_data[b].label or b):lower()
+  end)
+
+  for _, driver_id in ipairs(driver_ids) do
+    local driver_data = server_data[driver_id]
+    local label  = driver_data.label or driver_id
+    local groups = driver_data.groups or {}
+
+    local total = 0
+    for _, gconns in pairs(groups) do total = total + vim.tbl_count(gconns) end
+
+    local expanded = state.expanded[driver_id]
     local chevron  = expanded and "▾ " or "▸ "
-    local server_tag = g.server and (" [" .. g.server .. "]") or ""
-    table.insert(lines,    chevron .. ICON_DRIVER .. " " .. g.label .. server_tag .. " (" .. #g.names .. ")")
-    table.insert(line_map, { type = "header", gkey = gkey })
+    table.insert(lines,    chevron .. ICON_DRIVER .. " " .. label .. " (" .. total .. ")")
+    table.insert(line_map, { type = "header", driver = driver_id })
     hl_rules[#lines] = "BelvedereHeaderRow"
-    if g.server then
-      -- Byte offset: chevron(4) + icon(3) + space(1) + label + space(1) = 9 + #label
-      local col_s = 9 + #g.label
-      hl_server[#lines] = { col_s, col_s + 1 + #g.server + 1 }  -- covers "[server]"
-    end
 
     if expanded then
-      -- Extract driver from gkey (part before the first NUL byte).
-      local nul_pos = gkey:find("\0", 1, true)
-      local driver_of_group = nul_pos and gkey:sub(1, nul_pos - 1) or gkey
+      local group_names = vim.tbl_keys(groups)
+      table.sort(group_names, function(a, b)
+        if a == "" then return true end
+        if b == "" then return false end
+        return a < b
+      end)
 
-      -- Partition into named subgroups and ungrouped connections.
-      local sg_map, sg_order, ungrouped = {}, {}, {}
-      for _, name in ipairs(g.names) do
-        local p  = conns[name]
-        local sg = p and p.group ~= vim.NIL and p.group or nil
-        if sg and sg ~= "" then
-          if not sg_map[sg] then sg_map[sg] = {}; table.insert(sg_order, sg) end
-          table.insert(sg_map[sg], name)
+      for _, group_name in ipairs(group_names) do
+        local conn_names = vim.tbl_keys(groups[group_name])
+        table.sort(conn_names)
+
+        if group_name == "" then
+          for _, conn_name in ipairs(conn_names) do
+            add_conn_row(connections.conn_key(server, driver_id, "", conn_name), 4)
+          end
         else
-          table.insert(ungrouped, name)
+          local skey    = driver_id .. "\1" .. group_name
+          local sg_exp  = state.expanded[skey]
+          local sg_chev = sg_exp and "▾ " or "▸ "
+          table.insert(lines,    "  " .. sg_chev .. ICON_GROUP .. " " .. group_name .. " (" .. #conn_names .. ")")
+          table.insert(line_map, { type = "subgroup", driver = driver_id, group = group_name })
+          hl_rules[#lines] = "BelvedereHeaderRow"
+          if sg_exp then
+            for _, conn_name in ipairs(conn_names) do
+              add_conn_row(connections.conn_key(server, driver_id, group_name, conn_name), 6)
+            end
+          end
         end
       end
-
-      -- Merge in truly empty defined groups for this driver.
-      -- Groups that have connections elsewhere show up naturally via those connections.
-      for _, dg in ipairs(defined_groups) do
-        if dg.driver == driver_of_group and not sg_map[dg.name] and not used_groups[dg.name] then
-          sg_map[dg.name] = {}
-          table.insert(sg_order, dg.name)
-        end
-      end
-      table.sort(sg_order)
-
-      for _, sg_name in ipairs(sg_order) do
-        local skey    = gkey .. "\1" .. sg_name
-        local sg_exp  = state.expanded[skey]
-        local sg_chev = sg_exp and "▾ " or "▸ "
-        table.insert(lines,    "  " .. sg_chev .. ICON_GROUP .. " " .. sg_name .. " (" .. #sg_map[sg_name] .. ")")
-        table.insert(line_map, { type = "subgroup", gkey = gkey, subgroup = sg_name })
-        hl_rules[#lines] = "BelvedereHeaderRow"
-        if sg_exp then
-          for _, name in ipairs(sg_map[sg_name]) do add_conn_row(name, 6) end
-        end
-      end
-
-      for _, name in ipairs(ungrouped) do add_conn_row(name, 4) end
     end
   end
 
-  return lines, line_map, hl_rules, hl_server
+  return lines, line_map, hl_rules
 end
 
 local FOOTER = "Press g? in any pane for help"
 
--- Pad `lines` with blank lines so the footer lands on the last visible row.
 local function append_footer(lines)
   local win        = state.buffer and vim.fn.bufwinid(state.buffer.buf_id) or -1
   local win_height = win ~= -1 and vim.api.nvim_win_get_height(win) or 0
@@ -162,71 +110,46 @@ local function append_footer(lines)
 end
 
 local function refresh()
-  local db = require("belvedere")  -- lazy: avoids circular dependency
-  local active_set = {}
-  for _, n in ipairs(db.active_names()) do active_set[n] = true end
-
-  local driver_labels = {}
+  local db   = require("belvedere")
   local caps = require("belvedere.client").capabilities()
-  if caps then
-    for _, d in ipairs(caps.drivers or {}) do
-      if d.label then driver_labels[d.driver] = d.label end
-    end
-  end
+  local server = caps and (caps.server or "") or ""
 
-  local conns          = connections.load()
-  local defined_groups = connections.load_groups()
-  local lines, line_map, hl_rules, hl_server = build(conns, active_set, driver_labels, defined_groups)
+  local active_set = {}
+  for _, k in ipairs(db.active_keys()) do active_set[k] = true end
+
+  local server_data = connections.load(server)
+  local lines, line_map, hl_rules = build(server, server_data, active_set)
   state.line_map = line_map
 
   if #lines == 0 then lines = { "(no saved connections)" } end
-
   append_footer(lines)
   state.buffer:set_content(lines)
 
   local rules = {}
   for lnum, group in pairs(hl_rules) do
-    table.insert(rules, {
-      higroup = group,
-      start   = { lnum - 1, 0 },
-      finish  = { lnum - 1, -1 },
-    })
+    table.insert(rules, { higroup = group, start = { lnum - 1, 0 }, finish = { lnum - 1, -1 } })
   end
-  for lnum, cols in pairs(hl_server) do
-    table.insert(rules, {
-      higroup = "BelvedereServerLabel",
-      start   = { lnum - 1, cols[1] },
-      finish  = { lnum - 1, cols[2] },
-    })
-  end
-  table.insert(rules, {
-    higroup = "BelvedereHelp",
-    start   = { #lines - 1, 0 },
-    finish  = { #lines - 1, -1 },
-  })
+  table.insert(rules, { higroup = "BelvedereHelp", start = { #lines - 1, 0 }, finish = { #lines - 1, -1 } })
   state.buffer:apply_highlight(rules)
 end
 
-
 local function entry_at_cursor()
-  local line = vim.api.nvim_win_get_cursor(0)[1]
-  return state.line_map[line]
+  return state.line_map[vim.api.nvim_win_get_cursor(0)[1]]
 end
 
 local function on_enter()
   local entry = entry_at_cursor()
   if not entry then return end
   if entry.type == "header" then
-    state.expanded[entry.gkey] = not state.expanded[entry.gkey]
+    state.expanded[entry.driver] = not state.expanded[entry.driver]
     refresh()
   elseif entry.type == "subgroup" then
-    local skey = entry.gkey .. "\1" .. entry.subgroup
+    local skey = entry.driver .. "\1" .. entry.group
     state.expanded[skey] = not state.expanded[skey]
     refresh()
   else
-    state.conn_errors[entry.name] = nil
-    local db = require("belvedere")
-    db.connect(entry.name)
+    state.conn_errors[entry.key] = nil
+    require("belvedere").connect(entry.key)
   end
 end
 
@@ -234,10 +157,10 @@ local function on_delete()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
   vim.ui.select({ "No", "Yes" }, {
-    prompt = ('Delete connection %q?'):format(entry.name),
+    prompt = ('Delete connection %q?'):format(connections.conn_display_name(entry.key)),
   }, function(choice)
     if choice ~= "Yes" then return end
-    connections.delete(entry.name)
+    connections.delete(entry.key)
     refresh()
   end)
 end
@@ -245,16 +168,15 @@ end
 local function on_disconnect()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local db = require("belvedere")
-  db.disconnect(entry.name)
+  require("belvedere").disconnect(entry.key)
 end
 
 local function on_edit()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
   local caps = require("belvedere.client").capabilities()
-  connections.edit(entry.name, caps, function(new_name, _params)
-    if not new_name then return end
+  connections.edit(entry.key, caps, function(new_key, _)
+    if not new_key then return end
     refresh()
   end)
 end
@@ -262,16 +184,11 @@ end
 local function on_clone()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  vim.ui.input({ prompt = "Clone as: ", default = entry.name .. "-copy" }, function(new_name)
+  vim.ui.input({ prompt = "Clone as: ", default = connections.conn_display_name(entry.key) .. "-copy" }, function(new_name)
     if not new_name or new_name == "" then return end
-    local conns = connections.load()
-    if conns[new_name] then
-      vim.notify(("belvedere: connection %q already exists"):format(new_name), vim.log.levels.ERROR)
-      return
-    end
     local caps = require("belvedere.client").capabilities()
-    connections.clone(entry.name, new_name, caps, function(name, _)
-      if not name then return end
+    connections.clone(entry.key, new_name, caps, function(new_key, _)
+      if not new_key then return end
       refresh()
     end)
   end)
@@ -280,9 +197,9 @@ end
 local function on_new()
   local db = require("belvedere")
   db.ensure_backend_with_caps(function(caps)
-    connections.create(caps, function(name, params)
-      if not name then return end
-      db._do_connect(name, params)
+    connections.create(caps, function(key, params)
+      if not key then return end
+      db._do_connect(key, params)
       refresh()
     end)
   end)
@@ -291,6 +208,7 @@ end
 local function on_new_group()
   local db = require("belvedere")
   db.ensure_backend_with_caps(function(caps)
+    local server = caps.server or ""
     vim.ui.input({ prompt = "Group name: " }, function(name)
       if not name or name == "" then return end
       vim.schedule(function()
@@ -299,7 +217,7 @@ local function on_new_group()
           format_item = function(d) return d.label or d.driver end,
         }, function(d)
           if not d then return end
-          local ok = connections.create_group(name, d.driver)
+          local ok = connections.create_group(server, d.driver, d.label or d.driver, name)
           if ok then refresh() end
         end)
       end)
@@ -310,29 +228,23 @@ end
 local function on_explore()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local db = require("belvedere")
-  db.open_explorer_for(entry.name)
+  require("belvedere").open_explorer_for(entry.key)
 end
 
 local function on_jump()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
   local db   = require("belvedere")
-  local bufs = db.buffers_for(entry.name)
+  local bufs = db.buffers_for(entry.key)
   if #bufs == 0 then
-    vim.notify("belvedere: no buffers associated with " .. entry.name, vim.log.levels.WARN)
+    vim.notify("belvedere: no buffers associated with " .. connections.conn_display_name(entry.key), vim.log.levels.WARN)
     return
   end
   local panel_win = vim.fn.bufwinid(state.buffer.buf_id)
   local function jump_to(bufnr)
-    -- Prefer a window already showing this buffer.
     for _, w in ipairs(vim.fn.win_findbuf(bufnr)) do
-      if w ~= panel_win then
-        vim.api.nvim_set_current_win(w)
-        return
-      end
+      if w ~= panel_win then vim.api.nvim_set_current_win(w) return end
     end
-    -- Reuse any normal editing window.
     for _, w in ipairs(vim.api.nvim_list_wins()) do
       if w ~= panel_win and vim.bo[vim.api.nvim_win_get_buf(w)].buftype == "" then
         vim.api.nvim_set_current_win(w)
@@ -340,7 +252,6 @@ local function on_jump()
         return
       end
     end
-    -- No suitable window — open one to the left of the panel.
     vim.cmd("leftabove vsplit")
     vim.api.nvim_set_current_buf(bufnr)
   end
@@ -348,8 +259,8 @@ local function on_jump()
     jump_to(bufs[1])
   else
     local names = vim.tbl_map(function(b)
-      local name = vim.api.nvim_buf_get_name(b)
-      return name ~= "" and name or ("[No Name] #" .. b)
+      local n = vim.api.nvim_buf_get_name(b)
+      return n ~= "" and n or ("[No Name] #" .. b)
     end, bufs)
     vim.ui.select(names, { prompt = "Open buffer:" }, function(_, idx)
       if idx then jump_to(bufs[idx]) end
@@ -362,18 +273,16 @@ local function on_help()
   if not entry then return end
   local driver
   if entry.type == "header" or entry.type == "subgroup" then
-    local sep = entry.gkey:find("\0")
-    driver = sep and entry.gkey:sub(1, sep - 1) or entry.gkey
+    driver = entry.driver
   else
-    local params = connections.get(entry.name)
-    driver = params and params.driver
+    local _, drv = connections.conn_parts(entry.key)
+    driver = drv
   end
-  if not driver then return end
+  if not driver or driver == "" then return end
   require("belvedere").open_driver_help(driver)
 end
 
--- Fields from the saved connection that are client-only and not displayed.
-local HIDDEN_CONN_FIELDS = { password = true, requires_password = true, server = true, driver_label = true, group = true }
+local HIDDEN_CONN_FIELDS = { password = true, requires_password = true }
 
 local function open_hover_float(lines, title, border_hl, line_hl)
   local max_w = 1
@@ -414,7 +323,6 @@ local function open_hover_float(lines, title, border_hl, line_hl)
   vim.api.nvim_set_option_value("wrap", true, { win = fwin })
 
   state.hover_win = fwin
-
   vim.api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
     group    = vim.api.nvim_create_augroup("BelvedereHoverFloat", { clear = true }),
     buffer   = state.buffer.buf_id,
@@ -430,7 +338,6 @@ local function on_hover()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
 
-  -- Second K: enter the existing float so the user can read/scroll.
   if state.hover_win and vim.api.nvim_win_is_valid(state.hover_win) then
     pcall(vim.api.nvim_del_augroup_by_name, "BelvedereHoverFloat")
     local fwin = state.hover_win
@@ -438,37 +345,33 @@ local function on_hover()
     local prev = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_config(fwin, { focusable = true })
     vim.api.nvim_set_current_win(fwin)
-    for _, key in ipairs({ "q", "<Esc>" }) do
-      vim.keymap.set("n", key, function()
+    for _, k in ipairs({ "q", "<Esc>" }) do
+      vim.keymap.set("n", k, function()
         pcall(vim.api.nvim_win_close, fwin, true)
         state.hover_win = nil
-        if vim.api.nvim_win_is_valid(prev) then
-          vim.api.nvim_set_current_win(prev)
-        end
+        if vim.api.nvim_win_is_valid(prev) then vim.api.nvim_set_current_win(prev) end
       end, { buffer = fbuf, silent = true, nowait = true })
     end
     return
   end
 
-  local err_msg = state.conn_errors[entry.name]
+  local err_msg = state.conn_errors[entry.key]
   if err_msg then
-    open_hover_float(
-      vim.split(err_msg, "\n", { plain = true }),
+    open_hover_float(vim.split(err_msg, "\n", { plain = true }),
       "error", "BelvedereConnError", "BelvedereConnError")
     return
   end
 
-  -- No error: show saved connection details.
-  local params = connections.load()[entry.name]
+  local params = connections.get(entry.key)
   if not params then return end
 
-  -- Build a key→label map from cached capabilities for the matching driver.
+  local _, driver = connections.conn_parts(entry.key)
   local labels = {}
   local caps = require("belvedere.client").capabilities()
   if caps then
-    for _, db in ipairs(caps.drivers or {}) do
-      if db.driver == params.driver then
-        for _, p in ipairs(db.params or {}) do
+    for _, d in ipairs(caps.drivers or {}) do
+      if d.driver == driver then
+        for _, p in ipairs(d.params or {}) do
           if p.key and p.label then labels[p.key] = p.label end
         end
         break
@@ -480,70 +383,57 @@ local function on_hover()
   for k in pairs(params) do
     if not HIDDEN_CONN_FIELDS[k] then table.insert(keys, k) end
   end
-  table.sort(keys, function(a, b)
-    if a == "driver" then return true end
-    if b == "driver" then return false end
-    return a < b
-  end)
+  table.sort(keys)
 
   local label_w = 0
-  for _, k in ipairs(keys) do
-    label_w = math.max(label_w, #(labels[k] or k))
-  end
+  for _, k in ipairs(keys) do label_w = math.max(label_w, #(labels[k] or k)) end
+
   local lines = {}
   for _, k in ipairs(keys) do
     local label = labels[k] or k
     table.insert(lines, label .. string.rep(" ", label_w - #label) .. "  " .. tostring(params[k]))
   end
 
-  open_hover_float(lines, entry.name, nil, nil)
+  open_hover_float(lines, connections.conn_display_name(entry.key), nil, nil)
 end
 
 
 function M.open()
-  -- Warm the capabilities cache so hover labels are available immediately.
   local db = require("belvedere")
   db.ensure_backend_with_caps(function() M.refresh() end)
 
   if not (state.buffer and state.buffer:is_valid()) then
     state.buffer = Buffer:new(BUFNAME, "belvedere_connections", false, "nofile")
-    vim.api.nvim_create_autocmd("WinResized", {
-      callback = function() M.refresh() end,
-    })
+    vim.api.nvim_create_autocmd("WinResized", { callback = function() M.refresh() end })
     local hover_key = config.options.keymaps.hover_key
-    state.buffer:set_keymap("n", "<CR>",     on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect", group = "Navigate" })
-    state.buffer:set_keymap("n", "b",        on_jump,       { nowait = true, silent = true, desc = "Jump to associated buffer",  group = "Navigate" })
+    state.buffer:set_keymap("n", "<CR>",    on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect", group = "Navigate" })
+    state.buffer:set_keymap("n", "b",       on_jump,       { nowait = true, silent = true, desc = "Jump to associated buffer",  group = "Navigate" })
     state.buffer:set_keymap("n", "q", function()
       local win = vim.fn.bufwinid(state.buffer.buf_id)
       if win ~= -1 then vim.api.nvim_win_close(win, true) end
     end, { nowait = true, silent = true, desc = "Close panel", group = "Navigate" })
-    state.buffer:set_keymap("n", "n",        on_new,        { nowait = true, silent = true, desc = "New connection",            group = "Manage" })
-    state.buffer:set_keymap("n", "G",        on_new_group,  { nowait = true, silent = true, desc = "New group",                 group = "Manage" })
-    state.buffer:set_keymap("n", "e",        on_edit,       { nowait = true, silent = true, desc = "Edit",                      group = "Manage" })
-    state.buffer:set_keymap("n", "c",        on_clone,      { nowait = true, silent = true, desc = "Clone",                     group = "Manage" })
-    state.buffer:set_keymap("n", "D",        on_delete,     { nowait = true, silent = true, desc = "Delete",                    group = "Manage" })
-    state.buffer:set_keymap("n", "d",        on_disconnect, { nowait = true, silent = true, desc = "Disconnect",                group = "Session" })
-    state.buffer:set_keymap("n", "x",        on_explore,    { nowait = true, silent = true, desc = "Open explorer",             group = "Session" })
-    state.buffer:set_keymap("n", hover_key,  on_hover,      { nowait = true, silent = true, desc = "Hover details / error",     group = "Info" })
-    state.buffer:set_keymap("n", "?",        on_help,       { nowait = true, silent = true, desc = "Driver help",               group = "Info" })
-    state.buffer:set_keymap("n", "R",        refresh,       { nowait = true, silent = true, desc = "Refresh",                   group = "Info" })
+    state.buffer:set_keymap("n", "n",       on_new,        { nowait = true, silent = true, desc = "New connection",            group = "Manage" })
+    state.buffer:set_keymap("n", "G",       on_new_group,  { nowait = true, silent = true, desc = "New group",                 group = "Manage" })
+    state.buffer:set_keymap("n", "e",       on_edit,       { nowait = true, silent = true, desc = "Edit",                      group = "Manage" })
+    state.buffer:set_keymap("n", "c",       on_clone,      { nowait = true, silent = true, desc = "Clone",                     group = "Manage" })
+    state.buffer:set_keymap("n", "D",       on_delete,     { nowait = true, silent = true, desc = "Delete",                    group = "Manage" })
+    state.buffer:set_keymap("n", "d",       on_disconnect, { nowait = true, silent = true, desc = "Disconnect",                group = "Session" })
+    state.buffer:set_keymap("n", "x",       on_explore,    { nowait = true, silent = true, desc = "Open explorer",             group = "Session" })
+    state.buffer:set_keymap("n", hover_key, on_hover,      { nowait = true, silent = true, desc = "Hover details / error",     group = "Info" })
+    state.buffer:set_keymap("n", "?",       on_help,       { nowait = true, silent = true, desc = "Driver help",               group = "Info" })
+    state.buffer:set_keymap("n", "R",       refresh,       { nowait = true, silent = true, desc = "Refresh",                   group = "Info" })
   end
 
   local win = vim.fn.bufwinid(state.buffer.buf_id)
-  if win ~= -1 then
-    vim.api.nvim_win_close(win, true)
-    return
-  end
+  if win ~= -1 then vim.api.nvim_win_close(win, true) return end
 
-  local win = window.open_sidebar(state.buffer.buf_id, "right")
-  vim.api.nvim_win_set_hl_ns(win, hl.NS_ID)
+  local new_win = window.open_sidebar(state.buffer.buf_id, "right")
+  vim.api.nvim_win_set_hl_ns(new_win, hl.NS_ID)
   refresh()
 end
 
 function M.refresh()
-  if state.buffer and state.buffer:is_valid() then
-    refresh()
-  end
+  if state.buffer and state.buffer:is_valid() then refresh() end
 end
 
 function M.set_conn_error(name, msg)

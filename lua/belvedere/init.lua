@@ -25,10 +25,11 @@ local function conn_for_buf(bufnr)
   return name and state.conns[name]
 end
 
--- Compute the display label for a connection: "name (driver)".
-local function conn_display_label(name)
-  local conn = state.conns[name]
-  return (conn and conn.driver) and (name .. " (" .. conn.driver .. ")") or name
+-- Compute the display label for a connection: "name (Driver Label)".
+local function conn_display_label(key)
+  local conn  = state.conns[key]
+  local label = conn and (conn.driver_label or conn.driver)
+  return label and (connections.conn_display_name(key) .. " (" .. label .. ")") or connections.conn_display_name(key)
 end
 
 -- Associate (or, with name=nil, dissociate) a buffer and update its window labels.
@@ -82,18 +83,38 @@ function M.connect(name)
 
   if name and name ~= "" then
     local params = connections.get(name)
+    local resolved_key = name
+    if not params then
+      -- Search the active server's connections by display name (:DbConnect <name>).
+      local active_caps = client.capabilities()
+      local server = active_caps and (active_caps.server or "") or ""
+      local server_data = connections.load(server)
+      for driver_id, driver_data in pairs(server_data) do
+        for group, group_conns in pairs(driver_data.groups or {}) do
+          for conn_name, conn_params in pairs(group_conns) do
+            if conn_name == name then
+              resolved_key = connections.conn_key(server, driver_id, group, conn_name)
+              params = conn_params
+              break
+            end
+          end
+          if params then break end
+        end
+        if params then break end
+      end
+    end
     if not params then
       vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.ERROR)
       return
     end
     connections.prompt_password(params, function(params_with_pw)
       if not params_with_pw then return end
-      M._do_connect(name, params_with_pw, after_connect)
+      M._do_connect(resolved_key, params_with_pw, after_connect)
     end)
   else
     M.ensure_backend_with_caps(function(caps)
       local active_set = {}
-      for _, n in ipairs(M.active_names()) do active_set[n] = true end
+      for _, k in ipairs(M.active_keys()) do active_set[k] = true end
       connections.pick(caps, active_set, function(picked_name, params)
         if not picked_name then return end
         M._do_connect(picked_name, params, after_connect)
@@ -110,56 +131,77 @@ function M._do_connect(name, params, after_connect)
   if not ok then connections_panel.clear_conn_loading(name) end
 end
 
--- Fields stored in the connections file that must not be forwarded to the server.
-local CLIENT_ONLY_FIELDS = { server = true, requires_password = true, driver_label = true, group = true }
+-- Fields in connection params that must not be forwarded to the server.
+local CLIENT_ONLY_FIELDS = { requires_password = true }
 
 function M._send_connect(name, params, after_connect)
-  local server_params = {}
+  local _, driver, _, _ = connections.conn_parts(name)
+  local server_params = { driver = driver }
   for k, v in pairs(params) do
     if not CLIENT_ONLY_FIELDS[k] then server_params[k] = v end
+  end
+  local display = connections.conn_display_name(name)
+  -- Get the human-readable driver label from capabilities.
+  local driver_label = driver
+  local caps = client.capabilities()
+  if caps then
+    for _, d in ipairs(caps.drivers or {}) do
+      if d.driver == driver then driver_label = d.label or driver; break end
+    end
   end
   client.request("connect", server_params, function(err, result)
     connections_panel.clear_conn_loading(name)
     if err then
       local first_line = err:match("^([^\n]*)") or err
-      vim.notify(("belvedere: %q failed — %s"):format(name, first_line), vim.log.levels.ERROR)
+      vim.notify(("belvedere: %q failed — %s"):format(display, first_line), vim.log.levels.ERROR)
       connections_panel.set_conn_error(name, err)
       return
     end
-    state.conns[name] = { conn_id = result.connection_id, driver = params.driver, name = name, driver_label = params.driver_label }
-    vim.notify(("belvedere: connected to %q (%s)"):format(name, params.driver), vim.log.levels.INFO)
+    state.conns[name] = { conn_id = result.connection_id, driver = driver, key = name, driver_label = driver_label }
+    vim.notify(("belvedere: connected to %q (%s)"):format(display, driver_label), vim.log.levels.INFO)
     connections_panel.refresh()
     if after_connect then after_connect(name) end
   end)
 end
 
 function M.associate()
-  local names = M.active_names()
-  if #names == 0 then
+  local keys = vim.tbl_keys(state.conns)
+  if #keys == 0 then
     vim.notify("belvedere: no open connections — open the connection panel with :DbConnections", vim.log.levels.WARN)
     return
   end
-  vim.ui.select(names, {
+  table.sort(keys)
+  vim.ui.select(keys, {
     prompt      = "Associate connection:",
-    format_item = function(name)
-      local conn  = state.conns[name]
+    format_item = function(key)
+      local conn  = state.conns[key]
       local label = conn and conn.driver_label
-      return label and (name .. " (" .. label .. ")") or name
+      return label and (connections.conn_display_name(key) .. " (" .. label .. ")") or connections.conn_display_name(key)
     end,
-  }, function(name)
-    if not name then return end
-    set_buf_conn(vim.api.nvim_get_current_buf(), name)
-    vim.notify(("belvedere: buffer associated with %q"):format(name), vim.log.levels.INFO)
+  }, function(key)
+    if not key then return end
+    set_buf_conn(vim.api.nvim_get_current_buf(), key)
+    vim.notify(("belvedere: buffer associated with %q"):format(connections.conn_display_name(key)), vim.log.levels.INFO)
   end)
 end
 
 function M.disconnect(name)
-  name = name ~= "" and name or state.buf_conns[vim.api.nvim_get_current_buf()]
-  if not name then
+  local key = name ~= "" and name or state.buf_conns[vim.api.nvim_get_current_buf()]
+  if not key then
     vim.notify("belvedere: no active connection", vim.log.levels.WARN)
     return
   end
-  local conn = state.conns[name]
+  local conn = state.conns[key]
+  if not conn then
+    -- Try matching by display name
+    for k in pairs(state.conns) do
+      if connections.conn_display_name(k) == key then
+        key = k
+        conn = state.conns[k]
+        break
+      end
+    end
+  end
   if not conn then
     vim.notify(("belvedere: not connected to %q"):format(name), vim.log.levels.ERROR)
     return
@@ -169,21 +211,33 @@ function M.disconnect(name)
       vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
       return
     end
-    state.conns[name] = nil
+    state.conns[key] = nil
     -- Clear the label from every buffer that was using this connection.
     for bufnr, conn_name in pairs(state.buf_conns) do
-      if conn_name == name then set_buf_conn(bufnr, nil) end
+      if conn_name == key then set_buf_conn(bufnr, nil) end
     end
-    vim.notify(("belvedere: disconnected from %q"):format(name), vim.log.levels.INFO)
+    vim.notify(("belvedere: disconnected from %q"):format(connections.conn_display_name(key)), vim.log.levels.INFO)
     connections_panel.refresh()
   end)
 end
 
--- Return the names of all currently-open connections (for tab completion).
+-- Return the display names of all currently-open connections (for tab completion).
 function M.active_names()
-  local names = vim.tbl_keys(state.conns)
+  local names = {}
+  local seen = {}
+  for key in pairs(state.conns) do
+    local dn = connections.conn_display_name(key)
+    if not seen[dn] then seen[dn] = true; table.insert(names, dn) end
+  end
   table.sort(names)
   return names
+end
+
+-- Return the storage keys of all currently-open connections.
+function M.active_keys()
+  local keys = vim.tbl_keys(state.conns)
+  table.sort(keys)
+  return keys
 end
 
 -- Return valid bufnrs whose associated connection matches {name}.
@@ -298,21 +352,21 @@ end
 function M.open_explorer_for(name)
   local conn = state.conns[name]
   if not conn then
-    vim.notify(("belvedere: not connected to %q — press <CR> to connect first"):format(name), vim.log.levels.ERROR)
+    vim.notify(("belvedere: not connected to %q — press <CR> to connect first"):format(connections.conn_display_name(name)), vim.log.levels.ERROR)
     return
   end
-  explorer.open(conn.conn_id, name, conn.driver)
+  explorer.open(conn.conn_id, connections.conn_display_name(name), conn.driver)
 end
 
 function M.open_explorer()
   -- The current buffer's connection, or else any open connection.
-  local name = state.buf_conns[vim.api.nvim_get_current_buf()] or next(state.conns)
-  local conn = name and state.conns[name]
+  local key = state.buf_conns[vim.api.nvim_get_current_buf()] or next(state.conns)
+  local conn = key and state.conns[key]
   if not conn then
     vim.notify("belvedere: no active connection — run :DbConnect first", vim.log.levels.WARN)
     return
   end
-  explorer.open(conn.conn_id, name, conn.driver)
+  explorer.open(conn.conn_id, connections.conn_display_name(key), conn.driver)
 end
 
 local function teardown()

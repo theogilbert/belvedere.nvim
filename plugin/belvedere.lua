@@ -5,9 +5,22 @@ local db = require("belvedere")
 
 -- Names of all saved connections, sorted — used for command completion.
 local function saved_connection_names()
-  local ok, conns = pcall(require("belvedere.connections").load)
+  local ok, data = pcall(require("belvedere.connections").load_all)
   if not ok then return {} end
-  local names = vim.tbl_keys(conns)
+  local seen, names = {}, {}
+  for _, server_data in pairs(data) do
+    if type(server_data) == "table" then
+      for _, driver_data in pairs(server_data) do
+        if type(driver_data) == "table" then
+          for _, group_conns in pairs(driver_data.groups or {}) do
+            for conn_name in pairs(group_conns) do
+              if not seen[conn_name] then seen[conn_name] = true; table.insert(names, conn_name) end
+            end
+          end
+        end
+      end
+    end
+  end
   table.sort(names)
   return names
 end
@@ -35,14 +48,36 @@ vim.api.nvim_create_user_command("DbNewConnection", function(_)
   end)
 end, {})
 
--- :DbDeleteConnection <name>  — remove a saved connection
+-- :DbDeleteConnection <name>  — remove a saved connection by display name
 vim.api.nvim_create_user_command("DbDeleteConnection", function(opts)
   local arg = vim.trim(opts.args)
   if arg == "" then
     vim.notify("Usage: :DbDeleteConnection <name>", vim.log.levels.WARN)
     return
   end
-  require("belvedere.connections").delete(arg)
+  local conns_mod = require("belvedere.connections")
+  local matches = {}
+  local data = conns_mod.load_all()
+  for server_name, server_data in pairs(data) do
+    if type(server_data) == "table" then
+      for driver_id, driver_data in pairs(server_data) do
+        if type(driver_data) == "table" then
+          for group, group_conns in pairs(driver_data.groups or {}) do
+            if group_conns[arg] then
+              table.insert(matches, conns_mod.conn_key(server_name, driver_id, group, arg))
+            end
+          end
+        end
+      end
+    end
+  end
+  if #matches == 0 then
+    vim.notify(("belvedere: connection %q not found"):format(arg), vim.log.levels.WARN)
+  elseif #matches == 1 then
+    conns_mod.delete(matches[1])
+  else
+    vim.notify(("belvedere: %q is ambiguous (%d matches) — use the connections panel to delete"):format(arg, #matches), vim.log.levels.WARN)
+  end
 end, {
   nargs = 1,
   complete = saved_connection_names,

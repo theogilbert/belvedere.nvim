@@ -2,40 +2,65 @@
 --
 -- File format:
 --   {
---     "connections": { "<name>": { "driver": "...", ... }, ... },
---     "groups": [ { "name": "...", "driver": "..." }, ... ]
+--     "<server>": {
+--       "<driver>": {
+--         "label": "...",
+--         "groups": {
+--           "":             { "<name>": { <params> }, ... },
+--           "<group_name>": { "<name>": { <params> }, ... }
+--         }
+--       }
+--     }
 --   }
+--
+-- Connection params contain only driver-specific fields plus requires_password/password.
+-- driver, group and server are encoded in the internal key, not stored in params.
 local M = {}
 
 local config = require("belvedere.config")
 
+-- Internal key: server\0driver\0group\0name  (NUL as separator, never in user strings).
+function M.conn_key(server, driver, group, name)
+  return (server or "") .. "\0" .. (driver or "") .. "\0" .. (group or "") .. "\0" .. name
+end
+
+-- Split a key into (server, driver, group, name).
+function M.conn_parts(key)
+  local parts = {}
+  local s = 1
+  for _ = 1, 3 do
+    local e = key:find("\0", s, true)
+    if not e then break end
+    table.insert(parts, key:sub(s, e - 1))
+    s = e + 1
+  end
+  table.insert(parts, key:sub(s))
+  while #parts < 4 do table.insert(parts, "") end
+  return parts[1], parts[2], parts[3], parts[4]
+end
+
+-- User-visible connection name (last segment of the key).
+function M.conn_display_name(key)
+  local _, _, _, name = M.conn_parts(key)
+  return name ~= "" and name or key
+end
+
 -- vim.json.decode maps JSON null to vim.NIL, a truthy userdata sentinel.
--- Use this instead of plain `v or default` wherever a value comes from JSON.
 local function jval(v, default)
   if v == nil or v == vim.NIL then return default end
   return v
 end
 
--- Prompts for a password if the connection was marked as requiring one, then
--- calls callback(params) with the password injected (never persisted).
--- Calls callback(nil) on cancel.
 local function prompt_password(params, callback)
-  if not params.requires_password then
-    callback(params)
-    return
-  end
+  if not params.requires_password then callback(params) return end
   vim.ui.input({ prompt = "Password: ", secret = true }, function(val)
     if val == nil then callback(nil) return end
     callback(vim.tbl_extend("force", params, { password = val }))
   end)
 end
-
 M.prompt_password = prompt_password
 
-
-local function file_path()
-  return config.options.connections_file
-end
+local function file_path() return config.options.connections_file end
 
 local function read_data()
   local path = file_path()
@@ -53,51 +78,68 @@ local function write_data(data)
   vim.uv.fs_chmod(path, tonumber("600", 8))
 end
 
-function M.load()
-  return read_data().connections or {}
+-- Return the full file data.
+function M.load_all()
+  return read_data()
 end
 
-function M.load_groups()
-  return read_data().groups or {}
+-- Return the driver map for a server: { driver -> { label, groups -> { group -> { name -> params } } } }.
+function M.load(server)
+  return (read_data()[server] or {})
 end
 
-function M.save(conns)
-  local data = read_data()
-  data.connections = conns
-  write_data(data)
+-- Return the params for a specific 4-part key, or nil.
+function M.get(key)
+  local server, driver, group, name = M.conn_parts(key)
+  local d = ((read_data()[server] or {})[driver] or {})
+  return ((d.groups or {})[group] or {})[name]
 end
 
--- Create a named subgroup for a driver.  Returns false if it already exists.
-function M.create_group(name, driver)
-  local data   = read_data()
-  local groups = data.groups or {}
-  for _, g in ipairs(groups) do
-    if g.name == name and g.driver == driver then
-      vim.notify(("belvedere: group %q already exists"):format(name), vim.log.levels.WARN)
-      return false
-    end
+-- Ensure the server → driver → group path exists in data and write the connection.
+local function upsert(data, server, driver, driver_label, group, name, params)
+  data[server] = data[server] or {}
+  if not data[server][driver] then
+    data[server][driver] = { label = driver_label, groups = {} }
+  else
+    if driver_label then data[server][driver].label = driver_label end
+    data[server][driver].groups = data[server][driver].groups or {}
   end
-  table.insert(groups, { name = name, driver = driver })
-  data.groups = groups
-  write_data(data)
-  return true
+  local d = data[server][driver]
+  d.groups[group] = d.groups[group] or {}
+  d.groups[group][name] = params
 end
 
-function M.get(name)
-  return M.load()[name]
-end
-
-function M.delete(name)
-  local conns = M.load()
-  if not conns[name] then
+function M.delete(key)
+  local server, driver, group, name = M.conn_parts(key)
+  local data = read_data()
+  local d    = (data[server] or {})[driver]
+  local g    = d and (d.groups or {})[group]
+  if not g or not g[name] then
     vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.WARN)
     return
   end
-  conns[name] = nil
-  M.save(conns)
+  g[name] = nil
+  write_data(data)
   vim.notify(("belvedere: deleted connection %q"):format(name), vim.log.levels.INFO)
 end
 
+-- Create an empty named group for a driver.  Returns false if it already exists.
+function M.create_group(server, driver, driver_label, group_name)
+  local data = read_data()
+  data[server] = data[server] or {}
+  if not data[server][driver] then
+    data[server][driver] = { label = driver_label, groups = {} }
+  end
+  local d = data[server][driver]
+  d.groups = d.groups or {}
+  if d.groups[group_name] ~= nil then
+    vim.notify(("belvedere: group %q already exists"):format(group_name), vim.log.levels.WARN)
+    return false
+  end
+  d.groups[group_name] = {}
+  write_data(data)
+  return true
+end
 
 -- Return the {fields, pw_param} for a given driver from capabilities.
 local function driver_fields(caps, driver)
@@ -113,7 +155,6 @@ local function driver_fields(caps, driver)
   return {}, nil
 end
 
--- Coerce fields declared as integers from their string input values.
 local function coerce_integer_fields(fields, values)
   for _, p in ipairs(fields) do
     if p.type == "integer" and values[p.key] then
@@ -122,16 +163,11 @@ local function coerce_integer_fields(fields, values)
   end
 end
 
--- Prompts for a sequence of fields, calling done(results) when all are filled.
--- Calls done(nil) if the user cancels any step.
 local function prompt_sequence(fields, done)
   local results = {}
   local function step(i)
-    if i > #fields then
-      done(results)
-      return
-    end
-    local f = fields[i]
+    if i > #fields then done(results) return end
+    local f       = fields[i]
     local choices = type(f.choices) == "table" and f.choices or nil
     local prompt  = jval(f.label, "")
     local default = jval(f.default)
@@ -152,45 +188,81 @@ local function prompt_sequence(fields, done)
   step(1)
 end
 
+-- Present a group picker for (server, driver).
+-- Calls callback("") for no group, callback(name) for a named group, callback(nil) on cancel.
+local function pick_group(server, driver, callback)
+  local driver_data = (M.load(server)[driver] or {})
+  local existing    = {}
+  for gname in pairs(driver_data.groups or {}) do
+    if gname ~= "" then table.insert(existing, gname) end
+  end
+  table.sort(existing)
 
--- Show a picker with existing connections plus a "New" option.
--- caps is the capabilities object from the server (passed to M.create if needed).
--- active_set is a { [name] = true } table of already-connected names.
--- callback(name, params) on selection, callback(nil) on cancel.
-function M.pick(caps, active_set, callback)
-  local conns = M.load()
-  local names = vim.tbl_keys(conns)
-  table.sort(names)
-  local items = vim.list_extend(names, { "[+ New connection]" })
+  local items = { { type = "none", label = "[No group]" } }
+  for _, gname in ipairs(existing) do
+    table.insert(items, { type = "group", label = gname })
+  end
+  table.insert(items, { type = "new", label = "[+ New group]" })
 
   vim.ui.select(items, {
-    prompt      = "belvedere — select connection:",
-    format_item = function(item)
-      if item == "[+ New connection]" then return item end
-      local p = conns[item]
-      local label = p and (p.driver_label or p.driver)
-      local display = label and (item .. " (" .. label .. ")") or item
-      if active_set[item] then display = display .. "  [connected]" end
-      return display
-    end,
+    prompt      = "Group:",
+    format_item = function(item) return item.label end,
   }, function(choice)
     if not choice then callback(nil) return end
-    if choice == "[+ New connection]" then
-      M.create(caps, callback)
+    if choice.type == "none" then
+      callback("")
+    elseif choice.type == "group" then
+      callback(choice.label)
     else
-      prompt_password(conns[choice], function(params)
-        if not params then callback(nil) return end
-        callback(choice, params)
+      vim.ui.input({ prompt = "Group name: " }, function(gname)
+        if not gname or gname == "" then callback(nil) return end
+        callback(gname)
       end)
     end
   end)
 end
 
--- Run the new-connection wizard using server-announced capabilities.
--- caps:     { server, drivers = [{driver, params=[{key,type,label,...}]}] }
--- callback(name, params) on success, callback(nil) on cancel.
+function M.pick(caps, active_set, callback)
+  local server      = caps.server or ""
+  local server_data = M.load(server)
+
+  local items = {}
+  for driver_id, driver_data in pairs(server_data) do
+    for group, group_conns in pairs(driver_data.groups or {}) do
+      for name, params in pairs(group_conns) do
+        local key = M.conn_key(server, driver_id, group, name)
+        table.insert(items, { key = key, params = params, label = driver_data.label or driver_id })
+      end
+    end
+  end
+  table.sort(items, function(a, b) return M.conn_display_name(a.key) < M.conn_display_name(b.key) end)
+  table.insert(items, { key = "[+ New connection]" })
+
+  vim.ui.select(items, {
+    prompt      = "belvedere — select connection:",
+    format_item = function(item)
+      if not item.params then return item.key end
+      local dn  = M.conn_display_name(item.key)
+      local out = item.label and (dn .. " (" .. item.label .. ")") or dn
+      if active_set[item.key] then out = out .. "  [connected]" end
+      return out
+    end,
+  }, function(choice)
+    if not choice then callback(nil) return end
+    if not choice.params then
+      M.create(caps, callback)
+    else
+      prompt_password(choice.params, function(params)
+        if not params then callback(nil) return end
+        callback(choice.key, params)
+      end)
+    end
+  end)
+end
+
 function M.create(caps, callback)
   caps = caps or { server = "", drivers = {} }
+  local server = caps.server or ""
 
   vim.ui.select(caps.drivers, {
     prompt      = "Driver:",
@@ -203,88 +275,59 @@ function M.create(caps, callback)
       vim.ui.input({ prompt = "Connection name: " }, function(name)
         if not name or name == "" then callback(nil) return end
 
-        if M.load()[name] then
-          vim.notify(("belvedere: connection %q already exists"):format(name), vim.log.levels.ERROR)
-          callback(nil)
-          return
-        end
-
         vim.schedule(function()
-          local function proceed_with_fields(resolved_group)
-            local fields, pw_param = driver_fields(caps, driver)
+          pick_group(server, driver, function(group)
+            if group == nil then callback(nil) return end
 
-            prompt_sequence(fields, function(values)
-              if not values then callback(nil) return end
+            local existing = ((M.load(server)[driver] or {}).groups or {})[group] or {}
+            if existing[name] then
+              vim.notify(("belvedere: %q already exists in this group"):format(name), vim.log.levels.ERROR)
+              callback(nil)
+              return
+            end
 
-              coerce_integer_fields(fields, values)
+            vim.schedule(function()
+              local fields, pw_param = driver_fields(caps, driver)
 
-              local server = caps.server ~= "" and caps.server or nil
-              local params = vim.tbl_extend("force",
-                { driver = driver, driver_label = d.label, server = server }, values)
-              if resolved_group and resolved_group ~= "" then params.group = resolved_group end
+              prompt_sequence(fields, function(values)
+                if not values then callback(nil) return end
+                coerce_integer_fields(fields, values)
 
-              local function finish(pw, remember)
-                if remember then
-                  params.password          = pw
-                  params.requires_password = false
-                else
-                  params.requires_password = pw ~= nil and pw ~= ""
+                local params = vim.tbl_extend("force", values, { requires_password = false })
+                local key    = M.conn_key(server, driver, group, name)
+
+                local function finish(pw, remember)
+                  if remember then
+                    params.password          = pw
+                    params.requires_password = false
+                  else
+                    params.requires_password = pw ~= nil and pw ~= ""
+                  end
+                  local data2 = read_data()
+                  upsert(data2, server, driver, d.label or driver, group, name, params)
+                  write_data(data2)
+                  vim.notify(("belvedere: saved %q"):format(name), vim.log.levels.INFO)
+                  local out = (pw ~= nil and pw ~= "")
+                    and vim.tbl_extend("force", params, { password = pw }) or params
+                  callback(key, out)
                 end
-                local conns = M.load()
-                conns[name] = params
-                M.save(conns)
-                vim.notify(("belvedere: saved %q"):format(name), vim.log.levels.INFO)
-                local params_out = (pw ~= nil and pw ~= "")
-                  and vim.tbl_extend("force", params, { password = pw })
-                  or params
-                callback(name, params_out)
-              end
 
-              if pw_param then
-                vim.ui.input({ prompt = pw_param.label .. ": ", secret = true }, function(pw)
-                  if pw == nil then callback(nil) return end
-                  if pw == "" then finish(pw, false); return end
-                  vim.schedule(function()
-                    vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(choice)
-                      if choice == nil then callback(nil) return end
-                      finish(pw, choice == "Yes")
+                if pw_param then
+                  vim.ui.input({ prompt = pw_param.label .. ": ", secret = true }, function(pw)
+                    if pw == nil then callback(nil) return end
+                    if pw == "" then finish(pw, false) return end
+                    vim.schedule(function()
+                      vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(ch)
+                        if ch == nil then callback(nil) return end
+                        finish(pw, ch == "Yes")
+                      end)
                     end)
                   end)
-                end)
-              else
-                finish(nil, false)
-              end
-            end)
-          end
-
-          -- Build group picker: existing groups for this driver + No group + New group.
-          local driver_groups = {}
-          for _, g in ipairs(M.load_groups()) do
-            if g.driver == driver then table.insert(driver_groups, g.name) end
-          end
-          local items = { { type = "none", name = "[No group]" } }
-          for _, gname in ipairs(driver_groups) do
-            table.insert(items, { type = "group", name = gname })
-          end
-          table.insert(items, { type = "new", name = "[+ New group]" })
-          vim.ui.select(items, {
-            prompt      = "Group:",
-            format_item = function(item) return item.name end,
-          }, function(choice)
-            if not choice then callback(nil) return end
-            if choice.type == "none" then
-              vim.schedule(function() proceed_with_fields(nil) end)
-            elseif choice.type == "group" then
-              vim.schedule(function() proceed_with_fields(choice.name) end)
-            else
-              vim.ui.input({ prompt = "Group name: " }, function(gname)
-                if not gname or gname == "" then callback(nil) return end
-                vim.schedule(function()
-                  M.create_group(gname, driver)
-                  proceed_with_fields(gname)
-                end)
+                else
+                  finish(nil, false)
+                end
               end)
-            end
+            end)
           end)
         end)
       end)
@@ -292,13 +335,10 @@ function M.create(caps, callback)
   end)
 end
 
--- Edit (rename + update fields) an existing connection.
--- caps: capabilities object (may be nil — field editing is skipped without it).
--- callback(new_name, params) on success, callback(nil) on cancel.
-function M.edit(name, caps, callback)
+function M.edit(key, caps, callback)
   caps = caps or { server = "", drivers = {} }
-  local conns = M.load()
-  local current = conns[name]
+  local server, driver, group, name = M.conn_parts(key)
+  local current = M.get(key)
   if not current then
     vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.ERROR)
     callback(nil)
@@ -308,172 +348,172 @@ function M.edit(name, caps, callback)
   vim.ui.input({ prompt = "Connection name: ", default = name }, function(new_name)
     if not new_name or new_name == "" then callback(nil) return end
 
-    if new_name ~= name and conns[new_name] then
-      vim.notify(("belvedere: %q already exists"):format(new_name), vim.log.levels.ERROR)
-      callback(nil)
-      return
-    end
+    vim.ui.input({ prompt = "Group (empty = no group): ", default = group }, function(new_group)
+      if new_group == nil then callback(nil) return end
+      local new_key = M.conn_key(server, driver, new_group, new_name)
 
-    vim.ui.input({ prompt = "Group (optional): ", default = jval(current.group, "") }, function(group_input)
-      if group_input == nil then callback(nil) return end
-      local group = group_input ~= "" and group_input or nil
-
-    -- Defer: suit calls stopinsert after on_confirm returns, which would kill
-    -- any new input opened synchronously here.
-    vim.schedule(function()
-    local driver = current.driver
-    local fields, pw_param = driver_fields(caps, driver)
-
-    -- Pre-fill each field with its current saved value.
-    local fields_prefilled = {}
-    for _, p in ipairs(fields) do
-      local f = vim.tbl_extend("force", {}, p)
-      local cur = current[p.key]
-      if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
-      table.insert(fields_prefilled, f)
-    end
-
-    prompt_sequence(fields_prefilled, function(values)
-      if not values then callback(nil) return end
-
-      coerce_integer_fields(fields_prefilled, values)
-
-      -- Refresh the label from caps if available; fall back to whatever was saved.
-      local driver_label = current.driver_label
-      for _, d in ipairs(caps.drivers or {}) do
-        if d.driver == driver then driver_label = d.label; break end
+      if new_key ~= key and M.get(new_key) then
+        vim.notify(("belvedere: %q already exists in this group"):format(new_name), vim.log.levels.ERROR)
+        callback(nil)
+        return
       end
-      local params = vim.tbl_extend("force",
-        { driver = driver, driver_label = driver_label, server = current.server }, values)
-      if group then params.group = group end
 
-      local function finish(pw, remember)
-        if pw ~= nil and pw ~= "" then
-          if remember then
-            params.password          = pw
-            params.requires_password = false
-          else
-            params.requires_password = true
-          end
-        else
-          -- Keep current password settings (pw left empty by user).
-          if current.password then
-            params.password          = current.password
-            params.requires_password = false
-          else
-            params.requires_password = current.requires_password
-          end
-          pw = current.password
+      vim.schedule(function()
+        local fields, pw_param = driver_fields(caps, driver)
+        local fields_pre = {}
+        for _, p in ipairs(fields) do
+          local f = vim.tbl_extend("force", {}, p)
+          local cur = current[p.key]
+          if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
+          table.insert(fields_pre, f)
         end
-        local conns2 = M.load()
-        if new_name ~= name then conns2[name] = nil end
-        conns2[new_name] = params
-        M.save(conns2)
-        vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
-        local final = (pw ~= nil and pw ~= "")
-          and vim.tbl_extend("force", params, { password = pw })
-          or params
-        callback(new_name, final)
-      end
 
-      if pw_param then
-        vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
-          if pw == nil then callback(nil) return end
-          if pw == "" then finish(nil, false); return end
-          vim.schedule(function()
-            vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(choice)
-              if choice == nil then callback(nil) return end
-              finish(pw, choice == "Yes")
+        prompt_sequence(fields_pre, function(values)
+          if not values then callback(nil) return end
+          coerce_integer_fields(fields_pre, values)
+
+          local driver_label = (M.load(server)[driver] or {}).label or driver
+          for _, d in ipairs(caps.drivers or {}) do
+            if d.driver == driver then driver_label = d.label; break end
+          end
+
+          local params = vim.tbl_extend("force", values, {
+            requires_password = current.requires_password or false,
+          })
+
+          local function finish(pw, remember)
+            if pw ~= nil and pw ~= "" then
+              if remember then
+                params.password = pw; params.requires_password = false
+              else
+                params.requires_password = true
+              end
+            else
+              if current.password then
+                params.password = current.password; params.requires_password = false
+              else
+                params.requires_password = current.requires_password
+              end
+              pw = current.password
+            end
+            local data2 = read_data()
+            if new_key ~= key then
+              local og = (((data2[server] or {})[driver] or {}).groups or {})[group]
+              if og then og[name] = nil end
+            end
+            upsert(data2, server, driver, driver_label, new_group, new_name, params)
+            write_data(data2)
+            vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
+            local final = (pw ~= nil and pw ~= "")
+              and vim.tbl_extend("force", params, { password = pw }) or params
+            callback(new_key, final)
+          end
+
+          if pw_param then
+            vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
+              if pw == nil then callback(nil) return end
+              if pw == "" then finish(nil, false) return end
+              vim.schedule(function()
+                vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(ch)
+                  if ch == nil then callback(nil) return end
+                  finish(pw, ch == "Yes")
+                end)
+              end)
             end)
-          end)
+          else
+            finish(nil, false)
+          end
         end)
-      else
-        finish(nil, false)
-      end
+      end)
     end)
-    end)  -- vim.schedule
-    end)  -- group input
-  end)  -- name input
+  end)
 end
 
--- Clone source_name as new_name, running the same field-edit wizard as M.edit
--- with all values pre-filled from the source connection.
--- callback(new_name, params) on success, callback(nil) on cancel.
-function M.clone(source_name, new_name, caps, callback)
+function M.clone(source_key, new_name, caps, callback)
   caps = caps or { server = "", drivers = {} }
-  local conns   = M.load()
-  local current = conns[source_name]
+  local server, driver = M.conn_parts(source_key)
+  local current = M.get(source_key)
   if not current then
-    vim.notify(("belvedere: connection %q not found"):format(source_name), vim.log.levels.ERROR)
+    vim.notify(("belvedere: connection %q not found"):format(M.conn_display_name(source_key)), vim.log.levels.ERROR)
     callback(nil)
     return
   end
 
   vim.schedule(function()
-    local driver = current.driver
-    local fields, pw_param = driver_fields(caps, driver)
+    pick_group(server, driver, function(group)
+      if group == nil then callback(nil) return end
 
-    local fields_prefilled = {}
-    for _, p in ipairs(fields) do
-      local f   = vim.tbl_extend("force", {}, p)
-      local cur = current[p.key]
-      if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
-      table.insert(fields_prefilled, f)
-    end
-
-    prompt_sequence(fields_prefilled, function(values)
-      if not values then callback(nil) return end
-
-      coerce_integer_fields(fields_prefilled, values)
-
-      local driver_label = current.driver_label
-      for _, d in ipairs(caps.drivers or {}) do
-        if d.driver == driver then driver_label = d.label; break end
+      local new_key  = M.conn_key(server, driver, group, new_name)
+      local existing = ((M.load(server)[driver] or {}).groups or {})[group] or {}
+      if existing[new_name] then
+        vim.notify(("belvedere: %q already exists in this group"):format(new_name), vim.log.levels.ERROR)
+        callback(nil)
+        return
       end
-      local params = vim.tbl_extend("force",
-        { driver = driver, driver_label = driver_label, server = current.server }, values)
 
-      local function finish(pw, remember)
-        if pw ~= nil and pw ~= "" then
-          if remember then
-            params.password          = pw
-            params.requires_password = false
-          else
-            params.requires_password = true
-          end
-        else
-          if current.password then
-            params.password          = current.password
-            params.requires_password = false
-          else
-            params.requires_password = current.requires_password
-          end
-          pw = current.password
+      vim.schedule(function()
+        local fields, pw_param = driver_fields(caps, driver)
+        local fields_pre = {}
+        for _, p in ipairs(fields) do
+          local f = vim.tbl_extend("force", {}, p)
+          local cur = current[p.key]
+          if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
+          table.insert(fields_pre, f)
         end
-        local conns2 = M.load()
-        conns2[new_name] = params
-        M.save(conns2)
-        vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
-        local final = (pw ~= nil and pw ~= "")
-          and vim.tbl_extend("force", params, { password = pw })
-          or params
-        callback(new_name, final)
-      end
 
-      if pw_param then
-        vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
-          if pw == nil then callback(nil) return end
-          if pw == "" then finish(nil, false); return end
-          vim.schedule(function()
-            vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(choice)
-              if choice == nil then callback(nil) return end
-              finish(pw, choice == "Yes")
+        prompt_sequence(fields_pre, function(values)
+          if not values then callback(nil) return end
+          coerce_integer_fields(fields_pre, values)
+
+          local driver_label = (M.load(server)[driver] or {}).label or driver
+          for _, d in ipairs(caps.drivers or {}) do
+            if d.driver == driver then driver_label = d.label; break end
+          end
+
+          local params = vim.tbl_extend("force", values, {
+            requires_password = current.requires_password or false,
+          })
+
+          local function finish(pw, remember)
+            if pw ~= nil and pw ~= "" then
+              if remember then
+                params.password = pw; params.requires_password = false
+              else
+                params.requires_password = true
+              end
+            else
+              if current.password then
+                params.password = current.password; params.requires_password = false
+              else
+                params.requires_password = current.requires_password
+              end
+              pw = current.password
+            end
+            local data2 = read_data()
+            upsert(data2, server, driver, driver_label, group, new_name, params)
+            write_data(data2)
+            vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
+            local final = (pw ~= nil and pw ~= "")
+              and vim.tbl_extend("force", params, { password = pw }) or params
+            callback(new_key, final)
+          end
+
+          if pw_param then
+            vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
+              if pw == nil then callback(nil) return end
+              if pw == "" then finish(nil, false) return end
+              vim.schedule(function()
+                vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(ch)
+                  if ch == nil then callback(nil) return end
+                  finish(pw, ch == "Yes")
+                end)
+              end)
             end)
-          end)
+          else
+            finish(nil, false)
+          end
         end)
-      else
-        finish(nil, false)
-      end
+      end)
     end)
   end)
 end
