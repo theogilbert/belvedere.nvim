@@ -123,6 +123,20 @@ function M.delete(key)
   vim.notify(("belvedere: deleted connection %q"):format(name), vim.log.levels.INFO)
 end
 
+function M.delete_group(server, driver, group)
+  local data = read_data()
+  local d = (data[server] or {})[driver]
+  if not d or not (d.groups or {})[group] then
+    vim.notify(("belvedere: group %q not found"):format(group), vim.log.levels.WARN)
+    return
+  end
+  local count = vim.tbl_count(d.groups[group])
+  d.groups[group] = nil
+  write_data(data)
+  local label = group ~= "" and group or "(no group)"
+  vim.notify(("belvedere: deleted group %q and %d connection(s)"):format(label, count), vim.log.levels.INFO)
+end
+
 -- Create an empty named group for a driver.  Returns false if it already exists.
 function M.create_group(server, driver, driver_label, group_name)
   local data = read_data()

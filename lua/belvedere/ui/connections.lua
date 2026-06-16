@@ -155,14 +155,30 @@ end
 
 local function on_delete()
   local entry = entry_at_cursor()
-  if not entry or entry.type ~= "conn" then return end
-  vim.ui.select({ "No", "Yes" }, {
-    prompt = ('Delete connection %q?'):format(connections.conn_display_name(entry.key)),
-  }, function(choice)
-    if choice ~= "Yes" then return end
-    connections.delete(entry.key)
-    refresh()
-  end)
+  if not entry then return end
+  if entry.type == "conn" then
+    vim.ui.select({ "No", "Yes" }, {
+      prompt = ('Delete connection %q?'):format(connections.conn_display_name(entry.key)),
+    }, function(choice)
+      if choice ~= "Yes" then return end
+      connections.delete(entry.key)
+      refresh()
+    end)
+  elseif entry.type == "subgroup" then
+    local caps   = require("belvedere.client").capabilities()
+    local server = caps and (caps.server or "") or ""
+    local label  = entry.group ~= "" and entry.group or "(no group)"
+    local count  = vim.tbl_count(
+      (((connections.load(server)[entry.driver] or {}).groups or {})[entry.group] or {})
+    )
+    vim.ui.select({ "No", "Yes" }, {
+      prompt = ('Delete group %q and its %d connection(s)?'):format(label, count),
+    }, function(choice)
+      if choice ~= "Yes" then return end
+      connections.delete_group(server, entry.driver, entry.group)
+      refresh()
+    end)
+  end
 end
 
 local function on_disconnect()
