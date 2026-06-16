@@ -160,8 +160,10 @@ local function open_describe_float(details, node)
     add_hl("BelvedereHeaderRow", 0, 2, 2 + #title)
     table.insert(lines, "")
 
+    local entity   = not is_nil_val(details.entity) and details.entity or nil
     local unique_s = details.unique and "unique" or "non-unique"
-    table.insert(lines, "  " .. unique_s)
+    local meta     = entity and (unique_s .. "  ·  on " .. entity) or unique_s
+    table.insert(lines, "  " .. meta)
     table.insert(lines, "")
 
     local fields = details.fields

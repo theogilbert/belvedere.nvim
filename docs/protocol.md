@@ -364,6 +364,7 @@ Returned as `details` by `explore.describe` for index nodes:
 | `index`     | string                                   | Index name                                                                        |
 | `fields`    | array of [IndexKeyField](#indexkeyfield) | Ordered list of key fields                                                        |
 | `unique`    | boolean                                  | Whether the index enforces uniqueness (default `false`)                           |
+| `entity`    | string or null                           | Label, table, or collection the index operates on; `null` when already implicit from the explore path |
 | `condition` | string or null                           | Partial/filtered index predicate in the driver's native syntax; `null` if the index covers all documents |
 
 ---
