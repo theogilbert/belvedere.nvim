@@ -1,23 +1,17 @@
 # belvedere.nvim
 
-A Neovim database client. Connects to SQLite and SQL Server through an external Python backend ([belvedere-py](../belvedere-py)), communicating over newline-delimited JSON on stdio.
+A Neovim database client. Communicates with an external server backend over newline-delimited JSON on stdio — see the [protocol spec](docs/protocol.md).
 
 ## Requirements
 
 - Neovim 0.9+
-- Python 3.12+ with [belvedere-py](../belvedere-py) installed
+- A server backend implementing the [belvedere protocol](docs/protocol.md)
+
+[belvedere-py](https://github.com/theogilbert/dbelveder-py) is a reference server implementation.
 
 ## Installation
 
-Install **belvedere-py** first:
-
-```sh
-pip install belvedere-py
-# or with driver-specific dependencies:
-pip install 'belvedere-py[sqlserver]'
-```
-
-Then install the plugin with your plugin manager:
+Install a server backend, then install the plugin with your plugin manager:
 
 **lazy.nvim**
 ```lua
@@ -142,8 +136,8 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 | `:DbDisconnect [name]` | Disconnect a named connection, or the current buffer's connection |
 | `:[range]DbExecute` | Execute SQL (range, selection, or current line) |
 | `:DbExplore` | Open the schema explorer |
-| `:DbStop` | Kill the Python backend process |
-| `:DbRestart` | Restart the Python backend process (clears all state) |
+| `:DbStop` | Kill the backend process |
+| `:DbRestart` | Restart the backend process (clears all state) |
 
 ---
 
@@ -153,17 +147,22 @@ Connections are stored in `~/.config/belvedere/connections.json` (XDG-compliant)
 
 ```json
 {
-  "connections": {
-    "local-sqlite": {
-      "driver": "sqlite",
-      "database": "/home/user/data.db"
+  "belvedere": {
+    "sqlite": {
+      "label": "SQLite",
+      "groups": {
+        "": {
+          "local-sqlite": { "database": "/home/user/data.db" }
+        }
+      }
     },
-    "prod-mssql": {
-      "driver": "sqlserver",
-      "host": "db.example.com",
-      "port": 1433,
-      "database": "myapp",
-      "user": "readonly"
+    "sqlserver": {
+      "label": "SQL Server",
+      "groups": {
+        "": {
+          "prod-mssql": { "host": "db.example.com", "port": 1433, "database": "myapp", "user": "readonly" }
+        }
+      }
     }
   }
 }
@@ -211,15 +210,15 @@ db.restart()
 ```lua
 local conns = require("belvedere.connections")
 
--- Load all saved connections: returns { name = params, ... }
-conns.load()
+-- Load the full connections file: returns { server -> { driver -> { label, groups -> { group -> { name -> params } } } } }
+conns.load_all()
 
--- Get a single connection by name.
-conns.get("prod-mssql")
+-- Load connections for a specific server name.
+conns.load("belvedere")
 
--- Delete a connection.
-conns.delete("old-db")
+-- Delete a connection by its internal key.
+conns.delete(key)
 
 -- Open the new-connection wizard (caps from ensure_backend_with_caps).
-conns.create(caps, function(name, params) ... end)
+conns.create(caps, function(key, params) ... end)
 ```
