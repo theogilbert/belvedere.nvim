@@ -173,9 +173,12 @@ local function prompt_sequence(fields, done)
     local prompt  = err_prefix and (err_prefix .. label) or label
     local default = jval(f.default)
     if choices then
-      vim.ui.select(choices, { prompt = prompt }, function(val)
+      vim.ui.select(choices, {
+        prompt      = prompt,
+        format_item = function(c) return type(c) == "table" and (c.label or c.value) or c end,
+      }, function(val)
         if val == nil then done(nil) return end
-        results[f.key] = val
+        results[f.key] = type(val) == "table" and val.value or val
         vim.schedule(function() step(i + 1) end)
       end)
     else

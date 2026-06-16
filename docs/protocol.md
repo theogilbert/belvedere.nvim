@@ -290,8 +290,15 @@ Each entry in the `capabilities.drivers` array:
 | `label`    | string  | yes      | Human-readable label for UI display                                |
 | `required` | boolean | no       | Whether a non-empty value is required (default `false`)            |
 | `default`  | string or integer | no | Default value pre-filled in the UI                       |
-| `choices`  | array of strings | for `"enum"` | Allowed values                                    |
+| `choices`  | array of [DriverParamChoice](#driverparamchoice) | for `"enum"` | Allowed options |
 | `secret`   | boolean | no       | Mask input in the UI (e.g. for passwords); never persisted to disk |
+
+## DriverParamChoice
+
+| Field   | Type   | Description                                    |
+|---------|--------|------------------------------------------------|
+| `value` | string | Machine-readable value sent in `connect.params` |
+| `label` | string | Human-readable display name shown in the UI    |
 
 ---
 
