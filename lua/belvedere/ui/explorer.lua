@@ -10,6 +10,20 @@ local Spinner = require("belvedere.ui.spinner")
 
 local BUFNAME = "belvedere://explorer"
 
+local EXPLORER_NS = vim.api.nvim_create_namespace("BelvedereExplorer")
+
+local EXPLORER_HL = {
+  database       = "BelvedereExplorerDatabase",
+  schema         = "BelvedereExplorerSchema",
+  table          = "BelvedereExplorerTable",
+  ["base table"] = "BelvedereExplorerTable",
+  view           = "BelvedereExplorerView",
+  collection     = "BelvedereExplorerCollection",
+  index          = "BelvedereExplorerIndex",
+  constraint     = "BelvedereExplorerConstraint",
+  group          = "BelvedereExplorerGroup",
+}
+
 local TYPE_ICONS = {
   database       = "󰆼 ",
   schema         = "󱁳 ",
@@ -43,21 +57,52 @@ local render  -- forward declaration so the spinner callback can reference it
 local spinner = Spinner.new(function() render() end)
 
 render = function()
+  local buf = state.buffer.buf_id
   if state.root_loading then
     state.buffer:set_content({ "  " .. spinner:glyph() .. " Loading…" })
+    vim.api.nvim_buf_clear_namespace(buf, EXPLORER_NS, 0, -1)
     return
   end
+
   local lines = {}
+  local hls   = {}
+
+  local function add_hl(row, col_s, col_e, group)
+    hls[#hls + 1] = { row, col_s, col_e, group }
+  end
+
   local function walk(nodes, indent)
     for _, node in ipairs(nodes) do
-      local chevron = node.expandable
-          and (node.expanded and "▾ " or "▸ ")
-          or  "  "
-      local label = ""
+      local indent_s  = string.rep("  ", indent)
+      local chevron_s = node.expandable
+          and (node.expanded and "▾ " or "▸ ") or "  "
+      local icon_s    = node_icon(node)
+      local label     = ""
       if not node.expandable and not TYPE_ICONS[node.type] and node.type ~= "group" then
         label = "  " .. node.type
       end
-      lines[#lines + 1] = string.rep("  ", indent) .. chevron .. node_icon(node) .. node.name .. label
+
+      local row = #lines  -- 0-based
+      lines[#lines + 1] = indent_s .. chevron_s .. icon_s .. node.name .. label
+
+      -- Byte column boundaries (Lua # gives byte length).
+      local c0 = #indent_s
+      local c1 = c0 + #chevron_s
+      local c2 = c1 + #icon_s
+      local c3 = c2 + #node.name
+
+      if node.expandable then
+        add_hl(row, c0, c1, "BelvedereExplorerDim")
+      end
+      local type_hl = EXPLORER_HL[node.type]
+      if type_hl then
+        add_hl(row, c1, c3, type_hl)
+      end
+      if label ~= "" then
+        -- skip the two-space separator before the type string
+        add_hl(row, c3 + 2, c3 + 2 + #node.type, "BelvedereExplorerDim")
+      end
+
       if node.loading then
         lines[#lines + 1] = string.rep("  ", indent + 1) .. "  " .. spinner:glyph() .. " Loading…"
       elseif node.expanded and node.children then
@@ -65,8 +110,13 @@ render = function()
       end
     end
   end
+
   walk(state.tree, 0)
   state.buffer:set_content(lines)
+  vim.api.nvim_buf_clear_namespace(buf, EXPLORER_NS, 0, -1)
+  for _, h in ipairs(hls) do
+    vim.api.nvim_buf_add_highlight(buf, EXPLORER_NS, h[4], h[1], h[2], h[3])
+  end
 end
 
 local function make_node(item, path)
