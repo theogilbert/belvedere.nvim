@@ -18,12 +18,13 @@ local ICON_GROUP  = "\xEF\x81\xBB"  -- U+F07B  nf-fa-folder
 local ICON_CONN   = "\xEF\x83\x81"  -- U+F0C1  nf-fa-link
 
 local state = {
-  buffer       = nil,
-  line_map     = {},   -- [line_nr] -> entry
-  expanded     = {},   -- [key]     -> bool
-  conn_errors  = {},   -- [key]     -> string
-  conn_loading = {},   -- [key]     -> Spinner
-  hover_win    = nil,
+  buffer        = nil,
+  line_map      = {},   -- [line_nr] -> entry
+  expanded      = {},   -- [key]     -> bool
+  conn_errors   = {},   -- [key]     -> string
+  conn_loading  = {},   -- [key]     -> Spinner
+  panel_loading = nil,  -- Spinner while waiting for initial capabilities
+  hover_win     = nil,
 }
 
 local function build(server, server_data, active_set)
@@ -110,6 +111,8 @@ local function append_footer(lines)
 end
 
 local function refresh()
+  if state.panel_loading then return end
+
   local db   = require("belvedere")
   local caps = require("belvedere.client").capabilities()
   local server = caps and (caps.server or "") or ""
@@ -416,7 +419,15 @@ end
 
 function M.open()
   local db = require("belvedere")
-  db.ensure_backend_with_caps(function() M.refresh() end)
+  db.ensure_backend_with_caps(function()
+    if state.panel_loading then
+      state.panel_loading:reset()
+      state.panel_loading = nil
+    end
+    M.refresh()
+  end)
+
+  local needs_loading = not require("belvedere.client").capabilities()
 
   if not (state.buffer and state.buffer:is_valid()) then
     state.buffer = Buffer:new(BUFNAME, "belvedere_connections", false, "nofile")
@@ -445,7 +456,18 @@ function M.open()
 
   local new_win = window.open_sidebar(state.buffer.buf_id, "right")
   vim.api.nvim_win_set_hl_ns(new_win, hl.NS_ID)
-  refresh()
+
+  if needs_loading then
+    state.panel_loading = Spinner.new(function()
+      if state.buffer and state.buffer:is_valid() and state.panel_loading then
+        state.buffer:set_content({ state.panel_loading:glyph() .. " Loading connections…" })
+      end
+    end)
+    state.buffer:set_content({ Spinner.FRAMES[1] .. " Loading connections…" })
+    state.panel_loading:start()
+  else
+    refresh()
+  end
 end
 
 function M.refresh()
