@@ -67,7 +67,15 @@ local function read_data()
   local ok, lines = pcall(vim.fn.readfile, path)
   if not ok or #lines == 0 then return {} end
   local ok2, parsed = pcall(vim.json.decode, table.concat(lines, "\n"))
-  if not ok2 or type(parsed) ~= "table" then return {} end
+  if not ok2 or type(parsed) ~= "table" then
+    vim.notify(
+      "belvedere: connections file is corrupted and could not be loaded.\n"
+      .. "  Path: " .. path .. "\n"
+      .. "  Fix or remove it to continue.",
+      vim.log.levels.ERROR
+    )
+    return nil
+  end
   return parsed
 end
 
@@ -80,18 +88,18 @@ end
 
 -- Return the full file data.
 function M.load_all()
-  return read_data()
+  return read_data() or {}
 end
 
 -- Return the driver map for a server: { driver -> { label, groups -> { group -> { name -> params } } } }.
 function M.load(server)
-  return (read_data()[server] or {})
+  return ((read_data() or {})[server] or {})
 end
 
 -- Return the params for a specific 4-part key, or nil.
 function M.get(key)
   local server, driver, group, name = M.conn_parts(key)
-  local d = ((read_data()[server] or {})[driver] or {})
+  local d = (((read_data() or {})[server] or {})[driver] or {})
   return ((d.groups or {})[group] or {})[name]
 end
 
@@ -112,6 +120,7 @@ end
 function M.delete(key)
   local server, driver, group, name = M.conn_parts(key)
   local data = read_data()
+  if not data then return end
   local d    = (data[server] or {})[driver]
   local g    = d and (d.groups or {})[group]
   if not g or not g[name] then
@@ -125,6 +134,7 @@ end
 
 function M.delete_group(server, driver, group)
   local data = read_data()
+  if not data then return end
   local d = (data[server] or {})[driver]
   if not d or not (d.groups or {})[group] then
     vim.notify(("belvedere: group %q not found"):format(group), vim.log.levels.WARN)
@@ -140,6 +150,7 @@ end
 -- Create an empty named group for a driver.  Returns false if it already exists.
 function M.create_group(server, driver, driver_label, group_name)
   local data = read_data()
+  if not data then return false end
   data[server] = data[server] or {}
   if not data[server][driver] then
     data[server][driver] = { label = driver_label, groups = {} }
@@ -329,6 +340,7 @@ function M.create(caps, callback)
                     params.requires_password = pw ~= nil and pw ~= ""
                   end
                   local data2 = read_data()
+                  if not data2 then return end
                   upsert(data2, server, driver, d.label or driver, group, name, params)
                   write_data(data2)
                   vim.notify(("belvedere: saved %q"):format(name), vim.log.levels.INFO)
@@ -425,6 +437,7 @@ function M.edit(key, caps, callback)
               pw = current.password
             end
             local data2 = read_data()
+            if not data2 then return end
             if new_key ~= key then
               local og = (((data2[server] or {})[driver] or {}).groups or {})[group]
               if og then og[name] = nil end
@@ -519,6 +532,7 @@ function M.clone(source_key, new_name, caps, callback)
               pw = current.password
             end
             local data2 = read_data()
+            if not data2 then return end
             upsert(data2, server, driver, driver_label, group, new_name, params)
             write_data(data2)
             vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
