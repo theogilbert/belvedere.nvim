@@ -76,8 +76,14 @@ function M.start(cmd)
   local job_id = vim.fn.jobstart(cmd, {
     on_stdout = on_stdout,
     on_exit   = function(_, code, _)
-      state.job_id  = nil
+      state.job_id   = nil
       state.line_buf = ""
+      local pending  = state.pending
+      state.pending  = {}
+      M.reset_capabilities()
+      for _, entry in pairs(pending) do
+        entry.cb("backend exited", nil)
+      end
       if code ~= 0 then
         vim.notify(("belvedere: backend exited with code %d"):format(code), vim.log.levels.ERROR)
       end

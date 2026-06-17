@@ -11,9 +11,8 @@ function M.setup()
 end
 
 local function get_mark_row(bufnr, mark_id)
-  for _, m in ipairs(vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, {})) do
-    if m[1] == mark_id then return m[2] end
-  end
+  local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, NS, mark_id, {})
+  return pos[1]
 end
 
 local function replace(handle, icon, hl)

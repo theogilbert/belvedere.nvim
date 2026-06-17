@@ -3,11 +3,12 @@
 -- One buffer per connection, named "belvedere://results [name (driver)]".
 -- Buffers are listed so the user can :b between them. A single split window
 -- is reused; switching connections swaps the buffer shown in it.
-local Buffer     = require("belvedere.buffer")
-local table_fmt  = require("belvedere.table")
-local hl         = require("belvedere.hl")
-local config     = require("belvedere.config")
-local col_picker = require("belvedere.ui.col_picker")
+local Buffer      = require("belvedere.buffer")
+local table_fmt   = require("belvedere.table")
+local hl          = require("belvedere.hl")
+local config      = require("belvedere.config")
+local col_picker  = require("belvedere.ui.col_picker")
+local connections = require("belvedere.connections")
 
 local M = {}
 
@@ -347,12 +348,14 @@ end
 
 
 -- Set the active connection for subsequent show calls. Creates the buffer if needed.
-function M.set_conn_name(name, driver_label)
-  local label     = name and (driver_label and (name .. " (" .. driver_label .. ")") or name)
+-- `key` is the full composite connection key; the display name is derived from it.
+function M.set_conn_name(key, driver_label)
+  local display   = key and connections.conn_display_name(key) or nil
+  local label     = display and (driver_label and (display .. " (" .. driver_label .. ")") or display)
   local buf_title = label and (BUFNAME .. " [" .. label .. "]") or BUFNAME
-  local key       = name or ""
-  get_or_create_buf_state(key, buf_title)
-  state.active_conn = key
+  local conn_key  = key or ""
+  get_or_create_buf_state(conn_key, buf_title)
+  state.active_conn = conn_key
 end
 
 function M.begin_batch(n)
