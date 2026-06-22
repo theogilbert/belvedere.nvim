@@ -45,9 +45,9 @@ require("belvedere").setup({
 
   -- Results window appearance.
   results = {
-    split    = "below",  -- "below" | "right"
-    height   = 15,
-    max_rows = 500,
+    split     = "below",  -- "below" | "right"
+    height    = 15,
+    page_size = 500,
   },
 })
 ```
@@ -69,7 +69,7 @@ Open the connections panel with `:DbConnections`. Connections are grouped by dri
 | `D` | Delete the saved connection under the cursor |
 | `d` | Disconnect from the database under the cursor |
 | `x` | Open the explorer for the connected database under the cursor |
-| `K` | Show the connection error message in a float (press `K` again to enter it) |
+| `K` | Show connection details or error in a float (press `K` again to enter it) |
 | `?` | Show driver help |
 | `R` | Refresh the panel |
 | `q` | Close the panel |
@@ -132,7 +132,6 @@ Press `e` on a connected database in the connections panel, or run `:DbExplore`.
 | `<CR>` | Expand / collapse a node |
 | `K` | Describe the item under the cursor |
 | `R` | Refresh the tree, bypassing the server-side schema cache |
-| `q` / `<Esc>` | Close the explorer |
 | `g?` | Show keymap reference |
 
 The window title bar shows the connection name and driver. A spinner is shown while a node's children are loading.

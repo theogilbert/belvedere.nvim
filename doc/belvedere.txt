@@ -67,11 +67,13 @@ PANEL KEYMAPS ~
   <CR>    Expand/collapse a driver group, or connect to the database under
           the cursor.
   n       Run the new-connection wizard.
+  G       Create a new named group for a driver.
   e       Edit the connection under the cursor (rename and update fields).
   c       Clone the connection under the cursor (prompts for a new name,
           pre-fills all fields from the original).
-  r       Remove the saved connection under the cursor (prompts for
-          confirmation).
+  D       Delete the saved connection under the cursor (prompts for
+          confirmation). On a group row, deletes the group and all its
+          connections.
   d       Disconnect from the database under the cursor.
   x       Open the explorer for the connected database under the cursor.
   b       Jump to the buffer associated with this connection. If multiple
@@ -81,11 +83,11 @@ PANEL KEYMAPS ~
   ?       Open driver documentation in a floating window. Works on both a
           driver header and an individual connection entry. Press q or
           <Esc> to close.
-  K       Show connection details in a hover float. If an error occurred,
-          shows the error message. Press K again to enter the float
-          (then q or <Esc> to close it).
+  K       Show connection details or error in a hover float. Press K again
+          to enter the float (then q or <Esc> to close it).
   R       Refresh the panel.
   q       Close the panel.
+  g?      Show a keymap reference float.
 
 STATUS INDICATORS ~
 
@@ -165,11 +167,16 @@ The buffer is named `belvedere://explorer [name (driver)]`.
 
 KEYMAPS ~
 
-  <CR>    Expand or collapse a node. On a leaf node, shows metadata for
-          that object (column types, etc.).
+  <CR>    Expand or collapse a node. Does nothing on non-expandable nodes.
+
+  K       Describe the item under the cursor: fetches metadata from the
+          server (column types, index fields, etc.) and displays it in a
+          floating window. Press q or <Esc> to close.
 
   R       Refresh the entire tree from the server, bypassing the
           server-side schema cache.
+
+  g?      Show a keymap reference float.
 
 TREE STRUCTURE ~
 
@@ -186,10 +193,20 @@ Query results are shown in a dedicated buffer named `belvedere://results`.
 - DML queries (INSERT, UPDATE, DELETE) show an affected-row count instead.
 - Multiple statements separated by `;` are executed sequentially; each
   result is shown under a labelled heading (`── Query 1 / 3 ──`, etc.).
-- Rows beyond |belvedere-max_rows| are dropped with a notice.
+- Results are paginated; page size is controlled by |belvedere-page_size|.
 
 The buffer is read-only and reused across queries. Its direction and size
 are controlled by |belvedere-results-split| and |belvedere-results-height|.
+
+KEYMAPS ~
+
+  H       Scroll left one column.
+  L       Scroll right one column.
+  c       Open a column picker to choose which columns to display.
+  [       Go to the previous page of results.
+  ]       Go to the next page of results.
+  q       Close the results window.
+  g?      Show a keymap reference float.
 
 ================================================================================
 LUA API                                                          *belvedere-api*
@@ -271,33 +288,45 @@ require("belvedere").open_driver_help({driver} [, {opts}])
 CONNECTIONS MODULE ~
                                                   *belvedere-connections-api*
 
-require("belvedere.connections").load()
-    Returns the full connections table: `{ name = params, ... }`.
+Connection keys are NUL-separated strings of the form
+`server\0driver\0group\0name`. Most callers receive keys from other
+module functions rather than constructing them directly.
 
-require("belvedere.connections").get({name})
-    Returns the params table for {name}, or nil.
+require("belvedere.connections").load_all()
+    Returns the full file as a nested table:
+    `{ server -> { driver -> { label, groups -> { group -> { name -> params } } } } }`
 
-require("belvedere.connections").save({conns})
-    Writes {conns} (a `{ name = params }` table) to the connections file.
+require("belvedere.connections").load({server})
+    Returns the driver map for {server}: `{ driver -> { label, groups -> ... } }`.
 
-require("belvedere.connections").delete({name})
-    Removes {name} from the connections file.
+require("belvedere.connections").get({key})
+    Returns the params table for the 4-part {key}, or nil.
 
-require("belvedere.connections").pick({caps}, {callback})
-    Opens the connection picker. {caps} is the capabilities object from
-    the server (used if the user selects "New connection"). {callback}
-    is called as `callback(name, params)` on selection, or
+require("belvedere.connections").delete({key})
+    Removes the connection identified by {key} from the connections file.
+
+require("belvedere.connections").pick({caps}, {active_set}, {callback})
+    Opens the connection picker. {active_set} is a table of currently
+    connected keys (used to annotate entries). {caps} is the server
+    capabilities object (used if the user selects "New connection").
+    {callback} is called as `callback(key, params)` on selection, or
     `callback(nil)` on cancel.
 
 require("belvedere.connections").create({caps}, {callback})
     Runs the new-connection wizard using {caps} from the server to drive
     the driver list and field prompts. {callback} is called as
-    `callback(name, params)` on completion, or `callback(nil)` on cancel.
+    `callback(key, params)` on completion, or `callback(nil)` on cancel.
 
-require("belvedere.connections").clone({source}, {new_name}, {caps}, {cb})
-    Clones the connection named {source} as {new_name}, running the same
-    field-edit wizard with all values pre-filled. {cb} is called as
-    `cb(new_name, params)` on completion, or `cb(nil)` on cancel.
+require("belvedere.connections").edit({key}, {caps}, {callback})
+    Runs the edit wizard for the connection identified by {key}, with all
+    fields pre-filled from the stored values. {callback} is called as
+    `callback(new_key, params)` on completion, or `callback(nil)` on
+    cancel.
+
+require("belvedere.connections").clone({key}, {new_name}, {caps}, {callback})
+    Clones the connection identified by {key} as {new_name}, running the
+    field-edit wizard with all values pre-filled. {callback} is called as
+    `callback(new_key, params)` on completion, or `callback(nil)` on cancel.
 
 ================================================================================
 CONFIGURATION                                                 *belvedere-config*
@@ -311,7 +340,7 @@ All keys are optional.
     keymaps = {
       hover_key = "K",
     },
-    results = { split = "below", height = 15, max_rows = 500 },
+    results = { split = "below", height = 15, page_size = 500 },
   })
 <
 
@@ -347,12 +376,12 @@ results.height ~
 
   Height in lines of the results split (only applies when `split = "below"`).
 
-                                                        *belvedere-max_rows*
-results.max_rows ~
+                                                       *belvedere-page_size*
+results.page_size ~
   Type: `integer`   Default: `500`
 
-  Maximum number of rows rendered in the results window. Truncation is
-  client-side; the server always returns the full result set.
+  Number of rows per page in the results window. Use `[` and `]` to
+  navigate between pages.
 
 ================================================================================
 SUPPORTED DATABASES                                          *belvedere-drivers*
