@@ -403,6 +403,10 @@ local function get_or_create_buffer()
     state.tree = {}
     load_root(true)
   end, { nowait = true, silent = true, desc = "Refresh explorer" })
+  state.buffer:set_keymap("n", "q", function()
+    local win = vim.fn.bufwinid(state.buffer.buf_id)
+    if win ~= -1 then vim.api.nvim_win_close(win, true) end
+  end, { nowait = true, silent = true, desc = "Close explorer" })
 end
 
 --- @param conn_id any
