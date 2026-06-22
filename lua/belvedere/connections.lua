@@ -188,6 +188,44 @@ local function coerce_integer_fields(fields, values)
   end
 end
 
+-- Copy driver fields and pre-populate .default from an existing connection's values.
+local function fields_with_defaults(fields, current)
+  local out = {}
+  for _, p in ipairs(fields) do
+    local f = vim.tbl_extend("force", {}, p)
+    local cur = current[p.key]
+    if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
+    table.insert(out, f)
+  end
+  return out
+end
+
+-- Resolve the human-readable label for `driver`, preferring capabilities over the stored file.
+local function resolve_driver_label(caps, server, driver)
+  for _, d in ipairs(caps.drivers or {}) do
+    if d.driver == driver then return d.label or driver end
+  end
+  return (M.load(server)[driver] or {}).label or driver
+end
+
+-- Prompt for a password and optionally ask whether to remember it.
+-- `prompt_suffix` is appended to pw_param.label for the input prompt.
+-- `pw_if_empty`   is passed to finish_fn when the user enters an empty string.
+-- finish_fn(pw, remember) is called on success; cancel_fn() on any cancel.
+local function prompt_password_and_remember(pw_param, prompt_suffix, pw_if_empty, finish_fn, cancel_fn)
+  if not pw_param then finish_fn(nil, false) return end
+  vim.ui.input({ prompt = pw_param.label .. prompt_suffix, secret = true }, function(pw)
+    if pw == nil then cancel_fn() return end
+    if pw == "" then finish_fn(pw_if_empty, false) return end
+    vim.schedule(function()
+      vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(ch)
+        if ch == nil then cancel_fn() return end
+        finish_fn(pw, ch == "Yes")
+      end)
+    end)
+  end)
+end
+
 local function prompt_sequence(fields, done)
   local results = {}
   local function step(i, err_prefix)
@@ -349,20 +387,7 @@ function M.create(caps, callback)
                   callback(key, out)
                 end
 
-                if pw_param then
-                  vim.ui.input({ prompt = pw_param.label .. ": ", secret = true }, function(pw)
-                    if pw == nil then callback(nil) return end
-                    if pw == "" then finish(pw, false) return end
-                    vim.schedule(function()
-                      vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(ch)
-                        if ch == nil then callback(nil) return end
-                        finish(pw, ch == "Yes")
-                      end)
-                    end)
-                  end)
-                else
-                  finish(nil, false)
-                end
+                prompt_password_and_remember(pw_param, ": ", "", finish, function() callback(nil) end)
               end)
             end)
           end)
@@ -388,86 +413,64 @@ function M.edit(key, caps, callback)
       callback(nil) return
     end
     vim.schedule(function()
-    vim.ui.input({ prompt = "Group (empty = no group): ", default = group }, function(new_group)
-      if new_group == nil then callback(nil) return end
-      local new_key = M.conn_key(server, driver, new_group, new_name)
+      vim.ui.input({ prompt = "Group (empty = no group): ", default = group }, function(new_group)
+        if new_group == nil then callback(nil) return end
+        local new_key = M.conn_key(server, driver, new_group, new_name)
 
-      if new_key ~= key and M.get(new_key) then
-        vim.notify(("belvedere: %q already exists in this group"):format(new_name), vim.log.levels.ERROR)
-        callback(nil)
-        return
-      end
-
-      vim.schedule(function()
-        local fields, pw_param = driver_fields(caps, driver)
-        local fields_pre = {}
-        for _, p in ipairs(fields) do
-          local f = vim.tbl_extend("force", {}, p)
-          local cur = current[p.key]
-          if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
-          table.insert(fields_pre, f)
+        if new_key ~= key and M.get(new_key) then
+          vim.notify(("belvedere: %q already exists in this group"):format(new_name), vim.log.levels.ERROR)
+          callback(nil)
+          return
         end
 
-        prompt_sequence(fields_pre, function(values)
-          if not values then callback(nil) return end
-          coerce_integer_fields(fields_pre, values)
+        vim.schedule(function()
+          local fields, pw_param = driver_fields(caps, driver)
+          local fields_pre       = fields_with_defaults(fields, current)
 
-          local driver_label = (M.load(server)[driver] or {}).label or driver
-          for _, d in ipairs(caps.drivers or {}) do
-            if d.driver == driver then driver_label = d.label; break end
-          end
+          prompt_sequence(fields_pre, function(values)
+            if not values then callback(nil) return end
+            coerce_integer_fields(fields_pre, values)
 
-          local params = vim.tbl_extend("force", values, {
-            requires_password = current.requires_password or false,
-          })
+            local driver_label = resolve_driver_label(caps, server, driver)
 
-          local function finish(pw, remember)
-            if pw ~= nil and pw ~= "" then
-              if remember then
-                params.password = pw; params.requires_password = false
+            local params = vim.tbl_extend("force", values, {
+              requires_password = current.requires_password or false,
+            })
+
+            local function finish(pw, remember)
+              if pw ~= nil and pw ~= "" then
+                if remember then
+                  params.password = pw; params.requires_password = false
+                else
+                  params.requires_password = true
+                end
               else
-                params.requires_password = true
+                if current.password then
+                  params.password = current.password; params.requires_password = false
+                else
+                  params.requires_password = current.requires_password
+                end
+                pw = current.password
               end
-            else
-              if current.password then
-                params.password = current.password; params.requires_password = false
-              else
-                params.requires_password = current.requires_password
+              local data2 = read_data()
+              if not data2 then return end
+              if new_key ~= key then
+                local og = (((data2[server] or {})[driver] or {}).groups or {})[group]
+                if og then og[name] = nil end
               end
-              pw = current.password
+              upsert(data2, server, driver, driver_label, new_group, new_name, params)
+              write_data(data2)
+              vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
+              local final = (pw ~= nil and pw ~= "")
+                and vim.tbl_extend("force", params, { password = pw }) or params
+              callback(new_key, final)
             end
-            local data2 = read_data()
-            if not data2 then return end
-            if new_key ~= key then
-              local og = (((data2[server] or {})[driver] or {}).groups or {})[group]
-              if og then og[name] = nil end
-            end
-            upsert(data2, server, driver, driver_label, new_group, new_name, params)
-            write_data(data2)
-            vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
-            local final = (pw ~= nil and pw ~= "")
-              and vim.tbl_extend("force", params, { password = pw }) or params
-            callback(new_key, final)
-          end
 
-          if pw_param then
-            vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
-              if pw == nil then callback(nil) return end
-              if pw == "" then finish(nil, false) return end
-              vim.schedule(function()
-                vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(ch)
-                  if ch == nil then callback(nil) return end
-                  finish(pw, ch == "Yes")
-                end)
-              end)
-            end)
-          else
-            finish(nil, false)
-          end
+            prompt_password_and_remember(pw_param, " (empty = keep current): ", nil, finish, function() callback(nil) end)
+          end)
         end)
       end)
     end)
-    end)  -- vim.schedule
   end)
 end
 
@@ -495,22 +498,13 @@ function M.clone(source_key, new_name, caps, callback)
 
       vim.schedule(function()
         local fields, pw_param = driver_fields(caps, driver)
-        local fields_pre = {}
-        for _, p in ipairs(fields) do
-          local f = vim.tbl_extend("force", {}, p)
-          local cur = current[p.key]
-          if cur ~= nil and cur ~= vim.NIL then f.default = tostring(cur) end
-          table.insert(fields_pre, f)
-        end
+        local fields_pre       = fields_with_defaults(fields, current)
 
         prompt_sequence(fields_pre, function(values)
           if not values then callback(nil) return end
           coerce_integer_fields(fields_pre, values)
 
-          local driver_label = (M.load(server)[driver] or {}).label or driver
-          for _, d in ipairs(caps.drivers or {}) do
-            if d.driver == driver then driver_label = d.label; break end
-          end
+          local driver_label = resolve_driver_label(caps, server, driver)
 
           local params = vim.tbl_extend("force", values, {
             requires_password = current.requires_password or false,
@@ -541,20 +535,7 @@ function M.clone(source_key, new_name, caps, callback)
             callback(new_key, final)
           end
 
-          if pw_param then
-            vim.ui.input({ prompt = pw_param.label .. " (empty = keep current): ", secret = true }, function(pw)
-              if pw == nil then callback(nil) return end
-              if pw == "" then finish(nil, false) return end
-              vim.schedule(function()
-                vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(ch)
-                  if ch == nil then callback(nil) return end
-                  finish(pw, ch == "Yes")
-                end)
-              end)
-            end)
-          else
-            finish(nil, false)
-          end
+          prompt_password_and_remember(pw_param, " (empty = keep current): ", nil, finish, function() callback(nil) end)
         end)
       end)
     end)
