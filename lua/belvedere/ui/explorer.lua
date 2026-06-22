@@ -130,6 +130,23 @@ local function make_node(item, path)
   }
 end
 
+local function node_at_path(path)
+  local nodes = state.tree
+  local node
+  for _, name in ipairs(path) do
+    node = nil
+    for _, n in ipairs(nodes) do
+      if n.name == name then
+        node = n
+        nodes = n.children or {}
+        break
+      end
+    end
+    if not node then return nil end
+  end
+  return node
+end
+
 local function node_at_line(line)
   local idx = 0
   local function walk(nodes)
@@ -145,11 +162,13 @@ local function node_at_line(line)
   return walk(state.tree)
 end
 
-local function load_children(node)
+local function load_children(node, reset_cache)
   node.loading = true
   spinner:start()
   render()
-  client.request("explore.list", { connection_id = state.conn_id, path = node.path }, function(err, result)
+  local params = { connection_id = state.conn_id, path = node.path }
+  if reset_cache then params.reset_cache = true end
+  client.request("explore.list", params, function(err, result)
     node.loading = false
     spinner:stop()
     if err then
@@ -365,6 +384,21 @@ local function get_or_create_buffer()
     { nowait = true, silent = true, desc = "Expand / collapse node" })
   state.buffer:set_keymap("n", config.options.keymaps.hover_key, on_describe,
     { nowait = true, silent = true, desc = "Describe item" })
+  state.buffer:set_keymap("n", "r", function()
+    local line = vim.api.nvim_win_get_cursor(0)[1]
+    local node = node_at_line(line)
+    if node and not node.expandable then
+      local parent_path = vim.list_slice(node.path, 1, #node.path - 1)
+      node = #parent_path > 0 and node_at_path(parent_path) or nil
+    end
+    if node then
+      node.children = nil
+      load_children(node, true)
+    else
+      state.tree = {}
+      load_root(true)
+    end
+  end, { nowait = true, silent = true, desc = "Refresh node" })
   state.buffer:set_keymap("n", "R", function()
     state.tree = {}
     load_root(true)

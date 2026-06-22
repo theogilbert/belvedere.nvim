@@ -205,7 +205,7 @@ Returns the children of a node in the database object tree. The tree is navigate
 |-----------------|------------------|------------------------------------------------|
 | `connection_id` | string           | Connection to explore                          |
 | `path`          | array of strings | Path to the node whose children are requested  |
-| `reset_cache`   | boolean (optional, default `false`) | Clear all cached explore data for this connection before fetching |
+| `reset_cache`   | boolean (optional, default `false`) | Evict cached explore data for `path` and all nodes below it before fetching |
 
 **result**
 
@@ -234,7 +234,7 @@ Returns detailed metadata about a specific node.
 |-----------------|------------------|------------------------|
 | `connection_id` | string           | Connection to query    |
 | `path`          | array of strings | Path to the node       |
-| `reset_cache`   | boolean (optional, default `false`) | Clear all cached explore data for this connection before fetching |
+| `reset_cache`   | boolean (optional, default `false`) | Evict cached explore data for `path` and all nodes below it before fetching |
 
 **result**
 
