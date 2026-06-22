@@ -3,26 +3,27 @@
 -- resizes and disappear when the association or the window goes away.
 local M = {}
 
-local labels  = {}                       -- [winid] -> label float winid
+local labels  = {}                       -- [winid] -> { win = fwin, width = w }
 local resolve = function() return nil end -- bufnr -> connection name | nil
 
--- Geometry shared by show() and reposition(): a one-row strip along the bottom.
-local function geometry(winid)
+-- Geometry for the label float: right-aligned, sized to the text.
+local function geometry(winid, width)
+  local win_width = vim.api.nvim_win_get_width(winid)
   return {
     relative = "win",
     win      = winid,
     row      = vim.api.nvim_win_get_height(winid) - 1,
-    col      = 0,
-    width    = vim.api.nvim_win_get_width(winid),
+    col      = win_width - width,
+    width    = width,
     height   = 1,
   }
 end
 
 --- Remove the label for `winid`, if any.
 function M.hide(winid)
-  local fwin = labels[winid]
-  if fwin and vim.api.nvim_win_is_valid(fwin) then
-    vim.api.nvim_win_close(fwin, true)
+  local entry = labels[winid]
+  if entry and vim.api.nvim_win_is_valid(entry.win) then
+    vim.api.nvim_win_close(entry.win, true)
   end
   labels[winid] = nil
 end
@@ -30,23 +31,25 @@ end
 --- Show (replacing any existing) the label for `winid`.
 function M.show(winid, name)
   M.hide(winid)
+  local text = "Connected to " .. name
+  local w    = vim.fn.strdisplaywidth(text)
   local fbuf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = fbuf })
-  vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, { "Connected to " .. name })
+  vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, { text })
   vim.api.nvim_buf_add_highlight(fbuf, -1, "BelvedereConnection", 0, 0, -1)
 
-  local cfg = geometry(winid)
+  local cfg = geometry(winid, w)
   cfg.style, cfg.focusable, cfg.zindex = "minimal", false, 10
   local fwin = vim.api.nvim_open_win(fbuf, false, cfg)
   vim.api.nvim_set_option_value("winhl", "Normal:Normal,NormalFloat:Normal", { win = fwin })
-  labels[winid] = fwin
+  labels[winid] = { win = fwin, width = w }
 end
 
 -- Reposition an existing label after its parent window was resized.
 local function reposition(winid)
-  local fwin = labels[winid]
-  if not (fwin and vim.api.nvim_win_is_valid(fwin)) then return end
-  vim.api.nvim_win_set_config(fwin, geometry(winid))
+  local entry = labels[winid]
+  if not (entry and vim.api.nvim_win_is_valid(entry.win)) then return end
+  vim.api.nvim_win_set_config(entry.win, geometry(winid, entry.width))
 end
 
 -- Show, move, or remove the label for a window based on its current buffer.
@@ -64,7 +67,12 @@ end
 
 --- Remove every label (backend teardown).
 function M.clear_all()
-  for winid in pairs(labels) do M.hide(winid) end
+  for winid in pairs(labels) do
+    local entry = labels[winid]
+    if entry and vim.api.nvim_win_is_valid(entry.win) then
+      vim.api.nvim_win_close(entry.win, true)
+    end
+  end
   labels = {}
 end
 
