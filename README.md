@@ -23,6 +23,25 @@ Install a server backend, then install the plugin with your plugin manager:
 }
 ```
 
+### Example configuration
+
+```lua
+-- plugins.lua
+require("belvedere").setup({
+  server_cmd = "belvedere --log -v"
+})
+
+-- keymaps.lua
+local db = require("belvedere")
+vim.keymap.set("n", "<leader>bc", db.connect,            { desc = "Data[b]ase - [c]onnect" })
+vim.keymap.set("n", "<leader>bC", db.open_connections,   { desc = "Data[b]ase - [c]onnections" })
+vim.keymap.set("n", "<leader>ba", db.associate,          { desc = "Data[b]ase - [a]ssociate connection" })
+vim.keymap.set({"n", "v"}, "<leader>be", db.execute,     { desc = "Data[b]ase - [e]xecute" })
+vim.keymap.set("n", "<leader>bh", function()
+  db.open_current_driver_help({ position = "bottom" })
+end, { desc = "Data[b]ase [h]elp" })
+```
+
 ## Setup
 
 `setup()` is required. All options have defaults:
