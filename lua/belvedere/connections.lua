@@ -39,10 +39,11 @@ function M.conn_parts(key)
   return parts[1], parts[2], parts[3], parts[4]
 end
 
--- User-visible connection name (last segment of the key).
+-- User-visible connection name: "group/name" when a group exists, else just "name".
 function M.conn_display_name(key)
-  local _, _, _, name = M.conn_parts(key)
-  return name ~= "" and name or key
+  local _, _, group, name = M.conn_parts(key)
+  local display = name ~= "" and name or key
+  return group ~= "" and (group .. "/" .. display) or display
 end
 
 -- vim.json.decode maps JSON null to vim.NIL, a truthy userdata sentinel.

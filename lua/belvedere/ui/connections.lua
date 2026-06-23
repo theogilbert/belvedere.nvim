@@ -205,7 +205,8 @@ end
 local function on_clone()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  vim.ui.input({ prompt = "Clone as: ", default = connections.conn_display_name(entry.key) .. "-copy" }, function(new_name)
+  local _, _, _, bare_name = connections.conn_parts(entry.key)
+  vim.ui.input({ prompt = "Clone as: ", default = (bare_name ~= "" and bare_name or connections.conn_display_name(entry.key)) .. "-copy" }, function(new_name)
     if not new_name or new_name == "" then return end
     local db = require("belvedere")
     db.ensure_backend_with_caps(function(caps)
