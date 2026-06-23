@@ -25,6 +25,28 @@ local function is_only_comments(sql)
   return vim.trim(stripped) == ""
 end
 
+-- Returns the position of the next ";" that is outside of SQL comments,
+-- or nil if none exists.
+local function next_real_semi(sql, from)
+  local pos = from
+  local n = #sql
+  while pos <= n do
+    local c = sql:sub(pos, pos)
+    if sql:sub(pos, pos + 1) == "--" then
+      local eol = sql:find("\n", pos + 2, true)
+      pos = eol and eol + 1 or n + 1
+    elseif sql:sub(pos, pos + 1) == "/*" then
+      local close = sql:find("*/", pos + 2, true)
+      pos = close and close + 2 or n + 1
+    elseif c == ";" then
+      return pos
+    else
+      pos = pos + 1
+    end
+  end
+  return nil
+end
+
 -- Returns { { sql, line }, ... } where line is the 0-indexed offset of each
 -- statement's first non-whitespace character within the original sql string.
 local function split_queries(sql)
@@ -32,8 +54,8 @@ local function split_queries(sql)
   local line_offset = 0
   local pos = 1
   while pos <= #sql do
-    local semi_pos = sql:find(";", pos, true)
-    local chunk = semi_pos and sql:sub(pos, semi_pos - 1) or sql:sub(pos)
+    local semicolon_pos = next_real_semi(sql, pos)
+    local chunk = semicolon_pos and sql:sub(pos, semicolon_pos - 1) or sql:sub(pos)
     local before_trim = chunk:match("^(%s*)") or ""
     local stmt_line = line_offset
     for _ in before_trim:gmatch("\n") do stmt_line = stmt_line + 1 end
@@ -42,8 +64,8 @@ local function split_queries(sql)
       table.insert(stmts, { sql = trimmed, line = stmt_line })
     end
     for _ in chunk:gmatch("\n") do line_offset = line_offset + 1 end
-    if not semi_pos then break end
-    pos = semi_pos + 1
+    if not semicolon_pos then break end
+    pos = semicolon_pos + 1
   end
   return stmts
 end
@@ -132,7 +154,7 @@ function M.run(conn, query, bufnr, first_line)
   results.set_conn_name(conn.key, conn.driver_label)
 
   local queries
-  if not is_mongo(conn.driver) and query:find(";") then
+  if not is_mongo(conn.driver) and next_real_semi(query, 1) then
     queries = split_queries(query)
   end
 
