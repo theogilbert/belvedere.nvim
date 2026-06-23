@@ -193,10 +193,12 @@ end
 local function on_edit()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local caps = require("belvedere.client").capabilities()
-  connections.edit(entry.key, caps, function(new_key, _)
-    if not new_key then return end
-    refresh()
+  local db = require("belvedere")
+  db.ensure_backend_with_caps(function(caps)
+    connections.edit(entry.key, caps, function(new_key, _)
+      if not new_key then return end
+      refresh()
+    end)
   end)
 end
 
@@ -205,10 +207,12 @@ local function on_clone()
   if not entry or entry.type ~= "conn" then return end
   vim.ui.input({ prompt = "Clone as: ", default = connections.conn_display_name(entry.key) .. "-copy" }, function(new_name)
     if not new_name or new_name == "" then return end
-    local caps = require("belvedere.client").capabilities()
-    connections.clone(entry.key, new_name, caps, function(new_key, _)
-      if not new_key then return end
-      refresh()
+    local db = require("belvedere")
+    db.ensure_backend_with_caps(function(caps)
+      connections.clone(entry.key, new_name, caps, function(new_key, _)
+        if not new_key then return end
+        refresh()
+      end)
     end)
   end)
 end
