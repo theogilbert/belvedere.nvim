@@ -3,7 +3,7 @@
 -- resizes and disappear when the association or the window goes away.
 local M = {}
 
-local labels  = {}                       -- [winid] -> { win = fwin, width = w }
+local labels  = {}                       -- [winid] -> { win = fwin, width = w, name = s }
 local resolve = function() return nil end -- bufnr -> connection name | nil
 
 -- Geometry for the label float: right-aligned, sized to the text.
@@ -42,7 +42,7 @@ function M.show(winid, name)
   cfg.style, cfg.focusable, cfg.zindex = "minimal", false, 10
   local fwin = vim.api.nvim_open_win(fbuf, false, cfg)
   vim.api.nvim_set_option_value("winhl", "Normal:Normal,NormalFloat:Normal", { win = fwin })
-  labels[winid] = { win = fwin, width = w }
+  labels[winid] = { win = fwin, width = w, name = name }
 end
 
 -- Reposition an existing label after its parent window was resized.
@@ -59,7 +59,8 @@ local function refresh(winid)
   if vim.api.nvim_win_get_config(winid).relative ~= "" then return end
   local name = resolve(vim.api.nvim_win_get_buf(winid))
   if name then
-    if labels[winid] then reposition(winid) else M.show(winid, name) end
+    local entry = labels[winid]
+    if entry and entry.name == name then reposition(winid) else M.show(winid, name) end
   else
     M.hide(winid)
   end
@@ -82,7 +83,7 @@ function M.setup(resolve_fn)
   resolve = resolve_fn
   local aug = vim.api.nvim_create_augroup("BelvedereConnLabels", { clear = true })
   -- Show or hide the label whenever the buffer in the current window changes.
-  vim.api.nvim_create_autocmd("BufEnter", {
+  vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     group    = aug,
     callback = function() refresh(vim.api.nvim_get_current_win()) end,
   })
