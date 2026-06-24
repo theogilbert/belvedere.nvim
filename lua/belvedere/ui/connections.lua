@@ -38,7 +38,8 @@ local function build(server, server_data, active_set)
                  or loading and (" " .. loading:glyph())
                  or has_err and ERROR_MARK
                  or ""
-    table.insert(lines,    string.rep(" ", indent) .. ICON_CONN .. " " .. connections.conn_display_name(key) .. mark)
+    local _, _, _, conn_name = connections.conn_parts(key)
+    table.insert(lines,    string.rep(" ", indent) .. ICON_CONN .. " " .. conn_name .. mark)
     table.insert(line_map, { type = "conn", key = key })
     if active      then hl_rules[#lines] = "BelvedereConnection"
     elseif has_err then hl_rules[#lines] = "BelvedereConnError" end
