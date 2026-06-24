@@ -76,19 +76,19 @@ end
 
 local function dispatch_result(result, sql)
   if result.rows_affected ~= nil then
-    results.show_rows_affected(result.rows_affected, detect_operation(sql))
+    results.show_rows_affected(result.rows_affected, detect_operation(sql), result.duration_ms)
   else
     local rows = result.rows or {}
-    results.show_results(result.columns or {}, rows, #rows, result.rows_total)
+    results.show_results(result.columns or {}, rows, #rows, result.rows_total, result.duration_ms)
   end
 end
 
 local function dispatch_batch_result(idx, total, result, sql)
   if result.rows_affected ~= nil then
-    results.append_batch_rows_affected(idx, total, result.rows_affected, detect_operation(sql))
+    results.append_batch_rows_affected(idx, total, result.rows_affected, detect_operation(sql), result.duration_ms)
   else
     local rows = result.rows or {}
-    results.append_batch_result(idx, total, result.columns or {}, rows, #rows, result.rows_total)
+    results.append_batch_result(idx, total, result.columns or {}, rows, #rows, result.rows_total, result.duration_ms)
   end
 end
 

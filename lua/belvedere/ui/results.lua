@@ -48,6 +48,10 @@ local function rows_affected_msg(n, verb)
   return n .. " row" .. (n == 1 and "" or "s") .. " " .. verb
 end
 
+local function format_duration(ms)
+  return ("%.3f"):format(ms / 1000):gsub("0+$", ""):gsub("%.$", "") .. "s"
+end
+
 
 -- Per-connection buffer state.
 -- buffers[conn_name] = { buffer=Buffer, table_data=nil|FormattedTable, segments={} }
@@ -223,6 +227,7 @@ local function get_or_create_buf_state(conn_name, buf_title)
     vis_columns   = nil,
     rows_returned = nil,
     rows_total    = nil,
+    duration_ms   = nil,
     page          = 1,
   }
   state.buffers[conn_name] = bs
@@ -311,7 +316,11 @@ render_table = function(bs)
   local tbl = table_fmt.from_structured_data(display, 1)
   bs.table_data = tbl
 
-  local content = { rows_label(rows_ret, rows_tot, bs.page, page_size), "" }
+  local label = rows_label(rows_ret, rows_tot, bs.page, page_size)
+  if bs.duration_ms then
+    label = label .. "  ·  " .. format_duration(bs.duration_ms)
+  end
+  local content = { label, "" }
   vim.list_extend(content, tbl.text)
   bs.buffer:set_content(content)
   apply_highlights(bs, tbl, 0, 2)
@@ -367,15 +376,17 @@ function M.begin_batch(n)
   bs.buffer:apply_highlight({})
 end
 
-function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total)
+function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total, duration_ms)
   local bs       = active_bs()
   local page_size = config.options.results.page_size
   rows_returned   = rows_returned or #rows
   rows_total      = rows_total    or rows_returned
   local display   = { columns }
   for i = 1, math.min(rows_returned, page_size) do table.insert(display, rows[i]) end
-  local tbl     = table_fmt.from_structured_data(display, 1)
-  local content = { rows_label(rows_returned, rows_total, 1, page_size), "" }
+  local tbl   = table_fmt.from_structured_data(display, 1)
+  local label = rows_label(rows_returned, rows_total, 1, page_size)
+  if duration_ms then label = label .. "  ·  " .. format_duration(duration_ms) end
+  local content = { label, "" }
   vim.list_extend(content, tbl.text)
   local rules = table_fmt.col_hl_rules("BelvedereHeaderRow", 2, 1, tbl)
   table.insert(rules, { higroup = "BelvedereRowCount",
@@ -394,7 +405,7 @@ function M.append_batch_error(idx, total, msg)
   render_segments(bs)
 end
 
-function M.show_results(columns, rows, rows_returned, rows_total)
+function M.show_results(columns, rows, rows_returned, rows_total, duration_ms)
   local bs = active_bs()
   -- Reset vis_columns when the query returns a different schema.
   if not bs.raw_columns or not same_columns(bs.raw_columns, columns) then
@@ -404,26 +415,31 @@ function M.show_results(columns, rows, rows_returned, rows_total)
   bs.raw_rows       = rows
   bs.rows_returned  = rows_returned or #rows
   bs.rows_total     = rows_total    or bs.rows_returned
+  bs.duration_ms    = duration_ms
   bs.page           = 1
   ensure_win(bs.buffer.buf_id)
   render_table(bs)
 end
 
-function M.show_rows_affected(n, verb)
+function M.show_rows_affected(n, verb, duration_ms)
   local bs = active_bs()
   bs.table_data = nil
   ensure_win(bs.buffer.buf_id)
-  bs.buffer:set_content({ rows_affected_msg(n, verb) })
+  local msg = rows_affected_msg(n, verb)
+  if duration_ms then msg = msg .. "  ·  " .. format_duration(duration_ms) end
+  bs.buffer:set_content({ msg })
   bs.buffer:apply_highlight({
     { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } },
   })
 end
 
-function M.append_batch_rows_affected(idx, total, n, verb)
+function M.append_batch_rows_affected(idx, total, n, verb, duration_ms)
   local bs = active_bs()
+  local msg = rows_affected_msg(n, verb)
+  if duration_ms then msg = msg .. "  ·  " .. format_duration(duration_ms) end
   table.insert(bs.segments, {
     header   = make_separator(idx, total),
-    lines    = { rows_affected_msg(n, verb) },
+    lines    = { msg },
     hl_rules = { { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
   })
   render_segments(bs)

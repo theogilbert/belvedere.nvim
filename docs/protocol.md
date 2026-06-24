@@ -169,28 +169,30 @@ The query language and bind parameter syntax depend on the driver — see [Drive
 
 **result — SELECT / RETURN**
 
-| Field        | Type              | Description                                        |
-|--------------|-------------------|----------------------------------------------------|
-| `columns`    | array of strings  | Column names, in order                             |
-| `rows`       | array of arrays   | Each row is an array of values                     |
-| `rows_total` | integer           | Total number of rows matching the query            |
+| Field         | Type              | Description                                        |
+|---------------|-------------------|----------------------------------------------------|
+| `columns`     | array of strings  | Column names, in order                             |
+| `rows`        | array of arrays   | Each row is an array of values                     |
+| `rows_total`  | integer           | Total number of rows matching the query            |
+| `duration_ms` | number            | Wall-clock execution time in milliseconds          |
 
 **result — INSERT / UPDATE / DELETE / write statements**
 
-| Field           | Type    | Description                             |
-|-----------------|---------|-----------------------------------------|
+| Field           | Type    | Description                                 |
+|-----------------|---------|---------------------------------------------|
 | `rows_affected` | integer | Number of rows/nodes/relationships affected |
+| `duration_ms`   | number  | Wall-clock execution time in milliseconds   |
 
 **examples**
 
 ```json
 {"id":2,"method":"execute","params":{"connection_id":"0","query":"SELECT id, name FROM users WHERE active = ?","params":[1]}}
-{"id":2,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]],"rows_total":2},"error":null}
+{"id":2,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]],"rows_total":2,"duration_ms":3.142},"error":null}
 ```
 
 ```json
 {"id":3,"method":"execute","params":{"connection_id":"0","query":"DELETE FROM users WHERE active = 0"}}
-{"id":3,"result":{"rows_affected":4},"error":null}
+{"id":3,"result":{"rows_affected":4,"duration_ms":1.05},"error":null}
 ```
 
 ---
