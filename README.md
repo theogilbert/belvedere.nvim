@@ -33,10 +33,13 @@ require("belvedere").setup({
 
 -- keymaps.lua
 local db = require("belvedere")
-vim.keymap.set("n", "<leader>bc", db.connect,            { desc = "Data[b]ase - [c]onnect" })
-vim.keymap.set("n", "<leader>bC", db.open_connections,   { desc = "Data[b]ase - [c]onnections" })
-vim.keymap.set("n", "<leader>ba", db.associate,          { desc = "Data[b]ase - [a]ssociate connection" })
-vim.keymap.set({"n", "v"}, "<leader>be", db.execute,     { desc = "Data[b]ase - [e]xecute" })
+local dbelveder = require("belvedere")
+vim.keymap.set("n", "<leader>bc", dbelveder.connect, { desc = "Data[b]ase - [c]onnect" })
+vim.keymap.set("n", "<leader>bC", dbelveder.open_connections, { desc = "Data[b]ase - [c]onnections" })
+vim.keymap.set("n", "<leader>ba", dbelveder.associate,        { desc = "Data[b]ase - [a]ssociate connection" })
+vim.keymap.set({"n", "v"}, "<leader>be", dbelveder.execute,        { desc = "Data[b]ase - [e]xecute" })
+vim.keymap.set("n", "<leader>bx", dbelveder.open_explorer, { desc = "Data[b]ase - open e[x]plorer" })
+vim.keymap.set({"n", "v"}, "<leader>bs", dbelveder.save_query, { desc = "Data[b]ase - [s]ave query" })
 vim.keymap.set("n", "<leader>bh", function()
   db.open_current_driver_help({ position = "bottom" })
 end, { desc = "Data[b]ase [h]elp" })
