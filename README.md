@@ -60,6 +60,11 @@ require("belvedere").setup({
   --          (~/.config/belvedere/connections.json on most systems)
   -- connections_file = vim.fn.expand("~/.config/belvedere/connections.json"),
 
+  -- Override the directory where saved queries are stored.
+  -- Default: $XDG_DATA_HOME/belvedere/queries/
+  --          (~/.local/share/belvedere/queries/ on most systems)
+  -- queries_dir = vim.fn.expand("~/.local/share/belvedere/queries"),
+
   keymaps = {
     -- Key in the connections panel to show the error details float.
     hover_key = "K",
@@ -145,7 +150,35 @@ Results appear in a split window with aligned columns and a row count. For DML q
 
 **Multiple queries:** if the SQL contains `;`, each statement is sent as a separate request and results are shown as labelled sections (`── Query 1 / 3 ──`, etc.). This does not apply to MongoDB-style drivers.
 
-### 4. Explore the schema
+### 4. Save queries
+
+Select text in visual mode (or position the cursor on a single line), then run:
+
+```
+:'<,'>DbSaveQuery
+```
+
+Or from a Lua keymap:
+
+```lua
+vim.keymap.set({"n", "v"}, "<leader>bq", db.save_query, { desc = "Data[b]ase - save [q]uery" })
+```
+
+A preview of the selected text appears in a floating window. You are then prompted for:
+
+1. **A name** — a short label for the query.
+2. **A scope** — where the query should be saved:
+   - *Driver* — available for any connection using this driver.
+   - *Group* — available for all connections in the current group.
+   - *Connection* — specific to the current connection only.
+
+If the current buffer has an associated connection the scope picker lets you choose a level of that connection's hierarchy directly. Otherwise you are walked through picking a driver, group, and connection from your saved connections.
+
+Duplicate names within the same scope are rejected with a warning and you are re-prompted for the name.
+
+Queries are stored as plain files under `~/.local/share/belvedere/queries/` and inherit the file extension of the source buffer (e.g. `.sql`, `.cypher`).
+
+### 5. Explore the schema
 
 Press `e` on a connected database in the connections panel, or run `:DbExplore`.
 
@@ -171,6 +204,7 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 | `:DbDeleteConnection <name>` | Remove a saved connection |
 | `:DbDisconnect [name]` | Disconnect a named connection, or the current buffer's connection |
 | `:[range]DbExecute` | Execute SQL (range, selection, or current line) |
+| `:[range]DbSaveQuery` | Save the selected/current-line query with a name and scope |
 | `:DbExplore` | Open the schema explorer |
 | `:DbStop` | Kill the backend process |
 | `:DbRestart` | Restart the backend process (clears all state) |
@@ -203,6 +237,24 @@ Connections are stored in `~/.config/belvedere/connections.json` (XDG-compliant)
   }
 }
 ```
+
+---
+
+## Queries directory
+
+Saved queries live under `~/.local/share/belvedere/queries/` (XDG-compliant). The directory is created automatically on first save. Each query is stored as a plain text file whose extension matches the source buffer:
+
+```
+~/.local/share/belvedere/queries/
+  driver/<server>/<driver>/
+    <name>.<ext>              ← applies to any connection using this driver
+  group/<server>/<driver>/<group>/
+    <name>.<ext>              ← applies to all connections in the group
+  connection/<server>/<driver>/<group>/<conn>/
+    <name>.<ext>              ← specific to one connection
+```
+
+Files can be edited or deleted directly from the filesystem.
 
 ---
 
@@ -241,6 +293,11 @@ db.stop()
 
 -- Restart the backend process (stop + start, clears all state).
 db.restart()
+
+-- Save a query with a name and scope picker.
+-- Reads the visual selection when in visual mode, otherwise the current line.
+-- The file extension is taken from the current buffer.
+db.save_query()
 ```
 
 ```lua
