@@ -212,12 +212,35 @@ end
 -- Prompt for a password and optionally ask whether to remember it.
 -- `prompt_suffix` is appended to pw_param.label for the input prompt.
 -- `pw_if_empty`   is passed to finish_fn when the user enters an empty string.
+--   nil  → edit/clone: empty means "keep current password", no confirmation needed.
+--   ""   → create: empty means "no password"; confirm to guard against silent paste failures.
 -- finish_fn(pw, remember) is called on success; cancel_fn() on any cancel.
 local function prompt_password_and_remember(pw_param, prompt_suffix, pw_if_empty, finish_fn, cancel_fn)
   if not pw_param then finish_fn(nil, false) return end
   vim.ui.input({ prompt = pw_param.label .. prompt_suffix, secret = true }, function(pw)
     if pw == nil then cancel_fn() return end
-    if pw == "" then finish_fn(pw_if_empty, false) return end
+    if pw == "" then
+      if pw_if_empty ~= nil then
+        -- Secret fields mask input, so a failed paste looks identical to an empty field.
+        -- Ask the user to confirm rather than silently saving without a password.
+        vim.schedule(function()
+          vim.ui.select({ "Re-enter password", "Connect without a password" }, {
+            prompt = "No password entered:",
+          }, function(ch)
+            if ch == nil or ch == "Re-enter password" then
+              vim.schedule(function()
+                prompt_password_and_remember(pw_param, prompt_suffix, pw_if_empty, finish_fn, cancel_fn)
+              end)
+            else
+              finish_fn(pw_if_empty, false)
+            end
+          end)
+        end)
+      else
+        finish_fn(pw_if_empty, false)
+      end
+      return
+    end
     vim.schedule(function()
       vim.ui.select({ "No", "Yes" }, { prompt = "Remember password?" }, function(ch)
         if ch == nil then cancel_fn() return end
