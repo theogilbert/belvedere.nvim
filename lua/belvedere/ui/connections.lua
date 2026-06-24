@@ -430,6 +430,15 @@ function M.open()
       state.panel_loading:reset()
       state.panel_loading = nil
     end
+    for _, key in ipairs(db.active_keys()) do
+      local _, driver, group = connections.conn_parts(key)
+      if driver ~= "" then
+        state.expanded[driver] = true
+        if group ~= "" then
+          state.expanded[driver .. "\1" .. group] = true
+        end
+      end
+    end
     M.refresh()
   end)
 
