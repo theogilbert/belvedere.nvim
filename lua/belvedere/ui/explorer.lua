@@ -272,13 +272,19 @@ local function open_describe_float(details, node)
 
     local cols = details.columns
     if cols and #cols > 0 then
-      local w_name, w_type = #"Name", #"Type"
+      local w_name, w_type, w_default = #"Name", #"Type", #"Default"
       for _, col in ipairs(cols) do
-        w_name = math.max(w_name, #col.name)
-        w_type = math.max(w_type, #col.type)
+        w_name    = math.max(w_name,    #col.name)
+        w_type    = math.max(w_type,    #col.type)
+        local ds  = not is_nil_val(col.default) and tostring(col.default) or "—"
+        w_default = math.max(w_default, #ds)
       end
 
-      local hdr = "  " .. rpad("Name", w_name) .. "  " .. rpad("Type", w_type) .. "  Null  PK  Default"
+      local hdr = "  " .. rpad("Name", w_name)
+               .. "  " .. rpad("Type", w_type)
+               .. "  Null  PK  "
+               .. rpad("Default", w_default)
+               .. "  Indexes"
       table.insert(lines, hdr)
       add_hl("BelvedereHeaderRow", #lines - 1, 0, #hdr)
 
@@ -290,11 +296,14 @@ local function open_describe_float(details, node)
         local null_s    = col.nullable == true and "✓" or col.nullable == false and "✗" or " "
         local pk_s      = col.pk and "✓" or " "
         local default_s = not is_nil_val(col.default) and tostring(col.default) or "—"
+        local indexes_s = (type(col.indexes) == "table" and #col.indexes > 0)
+                          and table.concat(col.indexes, ", ") or "—"
         local row = "  " .. rpad(col.name, w_name)
                  .. "  " .. rpad(col.type, w_type)
                  .. "   " .. null_s
                  .. "    " .. pk_s
-                 .. "   " .. default_s
+                 .. "   " .. rpad(default_s, w_default)
+                 .. "  " .. indexes_s
         table.insert(lines, row)
         if col.pk then
           add_hl("BelvedereHeaderRow", #lines - 1, 2, 2 + #col.name)

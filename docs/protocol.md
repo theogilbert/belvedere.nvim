@@ -358,6 +358,7 @@ Column metadata object used inside [TableDescription](#tabledescription):
 | `nullable` | boolean or null  | Whether the column allows NULL; null if unknown   |
 | `pk`       | boolean          | Whether the column is part of the primary key     |
 | `default`  | string or null   | Default expression, or null if not set            |
+| `indexes`  | array of strings | Names of indexes that include this column; empty if none |
 
 ---
 
