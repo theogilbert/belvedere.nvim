@@ -20,7 +20,6 @@
 ; Aliases (SELECT foo AS bar, FROM t AS t1, etc.)
 (select_item alias: (identifier) @variable)
 (from_clause alias: (identifier) @variable)
-(join_clause alias: (identifier) @variable)
 (update_statement alias: (identifier) @variable)
 (delete_statement alias: (identifier) @variable)
 
