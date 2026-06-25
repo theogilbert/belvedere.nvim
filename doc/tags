@@ -7,6 +7,7 @@
 :DbExplore	belvedere.txt	/*:DbExplore*
 :DbNewConnection	belvedere.txt	/*:DbNewConnection*
 :DbRestart	belvedere.txt	/*:DbRestart*
+:DbSaveQuery	belvedere.txt	/*:DbSaveQuery*
 :DbStop	belvedere.txt	/*:DbStop*
 belvedere-api	belvedere.txt	/*belvedere-api*
 belvedere-commands	belvedere.txt	/*belvedere-commands*
@@ -20,10 +21,12 @@ belvedere-explorer	belvedere.txt	/*belvedere-explorer*
 belvedere-hover-key	belvedere.txt	/*belvedere-hover-key*
 belvedere-intro	belvedere.txt	/*belvedere-intro*
 belvedere-page_size	belvedere.txt	/*belvedere-page_size*
+belvedere-queries_dir	belvedere.txt	/*belvedere-queries_dir*
 belvedere-requirements	belvedere.txt	/*belvedere-requirements*
 belvedere-results	belvedere.txt	/*belvedere-results*
 belvedere-results-height	belvedere.txt	/*belvedere-results-height*
 belvedere-results-split	belvedere.txt	/*belvedere-results-split*
+belvedere-saved-queries	belvedere.txt	/*belvedere-saved-queries*
 belvedere-server_cmd	belvedere.txt	/*belvedere-server_cmd*
 belvedere-setup	belvedere.txt	/*belvedere-setup*
 belvedere.associate()	belvedere.txt	/*belvedere.associate()*
@@ -38,6 +41,7 @@ belvedere.open_driver_help()	belvedere.txt	/*belvedere.open_driver_help()*
 belvedere.open_explorer()	belvedere.txt	/*belvedere.open_explorer()*
 belvedere.open_explorer_for()	belvedere.txt	/*belvedere.open_explorer_for()*
 belvedere.restart()	belvedere.txt	/*belvedere.restart()*
+belvedere.save_query()	belvedere.txt	/*belvedere.save_query()*
 belvedere.setup()	belvedere.txt	/*belvedere.setup()*
 belvedere.stop()	belvedere.txt	/*belvedere.stop()*
 belvedere.txt	belvedere.txt	/*belvedere.txt*

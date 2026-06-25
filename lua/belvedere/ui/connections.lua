@@ -1,6 +1,7 @@
 -- Panel listing all saved connections, grouped by driver then group.
 -- Keymaps: <CR> expand/collapse or connect, b jump to buffer, e edit, c clone, D delete,
---          n new connection, G new group, d disconnect, x explore, K hover, ? driver help, R refresh, q close.
+--          n new connection, G new group, d disconnect, x explore, l load queries,
+--          K hover, ? driver help, R refresh, q close.
 local M = {}
 
 local Buffer      = require("belvedere.buffer")
@@ -423,6 +424,18 @@ local function on_hover()
 end
 
 
+local function on_load_query()
+  local entry = entry_at_cursor()
+  if not entry then return end
+  if entry.type == "conn" then
+    require("belvedere").load_query(entry.key)
+  elseif entry.type == "subgroup" then
+    local caps   = require("belvedere.client").capabilities()
+    local server = caps and (caps.server or "") or ""
+    require("belvedere.ui.query_picker").open_for_group(server, entry.driver, entry.group)
+  end
+end
+
 function M.open()
   local db = require("belvedere")
   db.ensure_backend_with_caps(function()
@@ -459,8 +472,9 @@ function M.open()
     state.buffer:set_keymap("n", "e",       on_edit,       { nowait = true, silent = true, desc = "Edit",                      group = "Manage" })
     state.buffer:set_keymap("n", "c",       on_clone,      { nowait = true, silent = true, desc = "Clone",                     group = "Manage" })
     state.buffer:set_keymap("n", "D",       on_delete,     { nowait = true, silent = true, desc = "Delete",                    group = "Manage" })
-    state.buffer:set_keymap("n", "d",       on_disconnect, { nowait = true, silent = true, desc = "Disconnect",                group = "Session" })
-    state.buffer:set_keymap("n", "x",       on_explore,    { nowait = true, silent = true, desc = "Open explorer",             group = "Session" })
+    state.buffer:set_keymap("n", "d",       on_disconnect,  { nowait = true, silent = true, desc = "Disconnect",                group = "Session" })
+    state.buffer:set_keymap("n", "x",       on_explore,     { nowait = true, silent = true, desc = "Open explorer",             group = "Session" })
+    state.buffer:set_keymap("n", "l",       on_load_query,  { nowait = true, silent = true, desc = "Load saved queries",        group = "Session" })
     state.buffer:set_keymap("n", hover_key, on_hover,      { nowait = true, silent = true, desc = "Hover details / error",     group = "Info" })
     state.buffer:set_keymap("n", "?",       on_help,       { nowait = true, silent = true, desc = "Driver help",               group = "Info" })
     state.buffer:set_keymap("n", "R",       refresh,       { nowait = true, silent = true, desc = "Refresh",                   group = "Info" })

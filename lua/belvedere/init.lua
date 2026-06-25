@@ -32,12 +32,16 @@ local function conn_display_label(key)
   return label and (connections.conn_display_name(key) .. " (" .. label .. ")") or connections.conn_display_name(key)
 end
 
--- Associate (or, with name=nil, dissociate) a buffer and update its window labels.
+-- Associate (or, with conn_key=nil, dissociate) a buffer and update its window labels.
 local function set_buf_conn(bufnr, name)
   state.buf_conns[bufnr] = name
   for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
     if name then conn_label.show(winid, conn_display_label(name)) else conn_label.hide(winid) end
   end
+end
+
+function M.set_buf_conn(bufnr, conn_key)
+  set_buf_conn(bufnr, conn_key)
 end
 
 function M.setup(opts)
@@ -387,6 +391,55 @@ function M.restart()
   if start_backend() then
     vim.notify("belvedere: backend restarted", vim.log.levels.INFO)
   end
+end
+
+local function open_save_query(content, bufnr)
+  local ext = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":e")
+  if ext == "" then ext = vim.bo[bufnr].filetype end
+  require("belvedere.ui.save_query").open(content, state.buf_conns[bufnr], ext)
+end
+
+-- Mode-aware: reads the visual selection or the current line.
+function M.save_query()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local content
+  if selection.is_in_visual_mode() then
+    content = selection.get_selection()
+    if not content or content == "" then
+      vim.notify("belvedere: empty selection", vim.log.levels.WARN)
+      return
+    end
+  else
+    content = vim.api.nvim_get_current_line()
+    if vim.trim(content) == "" then
+      vim.notify("belvedere: current line is empty", vim.log.levels.WARN)
+      return
+    end
+  end
+  open_save_query(content, bufnr)
+end
+
+-- For :[range]DbSaveQuery — range lines are already resolved by Neovim.
+function M.save_query_range(line1, line2)
+  local bufnr   = vim.api.nvim_get_current_buf()
+  local lines   = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
+  local content = table.concat(lines, "\n")
+  if vim.trim(content) == "" then
+    vim.notify("belvedere: empty selection", vim.log.levels.WARN)
+    return
+  end
+  open_save_query(content, bufnr)
+end
+
+function M.load_query(conn_key)
+  if not conn_key then
+    conn_key = state.buf_conns[vim.api.nvim_get_current_buf()]
+  end
+  if not conn_key then
+    vim.notify("belvedere: no connection associated with current buffer", vim.log.levels.WARN)
+    return
+  end
+  require("belvedere.ui.query_picker").open(conn_key)
 end
 
 return M

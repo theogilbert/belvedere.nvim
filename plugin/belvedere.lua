@@ -106,6 +106,16 @@ vim.api.nvim_create_user_command("DbConnections", function(_)
   db.open_connections()
 end, {})
 
+-- :[range]DbSaveQuery  — save selected/current-line query
+vim.api.nvim_create_user_command("DbSaveQuery", function(opts)
+  db.save_query_range(opts.line1, opts.line2)
+end, { range = true })
+
+-- :DbLoadQueries  — list saved queries for the current buffer's connection
+vim.api.nvim_create_user_command("DbLoadQueries", function(_)
+  db.load_query()
+end, {})
+
 -- :DbStop
 vim.api.nvim_create_user_command("DbStop", function(_)
   db.stop()

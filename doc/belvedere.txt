@@ -11,11 +11,12 @@ CONTENTS                                                    *belvedere-contents*
   3. Setup .............................................. |belvedere-setup|
   4. Connections panel .................................. |belvedere-connections|
   5. Commands ........................................... |belvedere-commands|
-  6. Explorer ........................................... |belvedere-explorer|
-  7. Results window ..................................... |belvedere-results|
-  8. Lua API ............................................ |belvedere-api|
-  9. Configuration ...................................... |belvedere-config|
- 10. Supported databases ................................ |belvedere-drivers|
+  6. Saved queries ...................................... |belvedere-saved-queries|
+  7. Explorer ........................................... |belvedere-explorer|
+  8. Results window ..................................... |belvedere-results|
+  9. Lua API ............................................ |belvedere-api|
+ 10. Configuration ...................................... |belvedere-config|
+ 11. Supported databases ................................ |belvedere-drivers|
 
 ================================================================================
 INTRODUCTION                                                   *belvedere-intro*
@@ -76,6 +77,8 @@ PANEL KEYMAPS ~
           connections.
   d       Disconnect from the database under the cursor.
   x       Open the explorer for the connected database under the cursor.
+  l       Open the saved-queries picker for the connection or group under
+          the cursor. Works on both connection and subgroup entries.
   b       Jump to the buffer associated with this connection. If multiple
           buffers are associated, shows a picker. Focuses an existing
           window already showing that buffer; otherwise reuses any normal
@@ -142,6 +145,30 @@ COMMANDS                                                    *belvedere-commands*
       :'<,'>DbExecute     " visual selection
       :%DbExecute         " whole buffer
 <
+                                                           *:DbSaveQuery*
+:[range]DbSaveQuery
+    Save the text in {range} as a named query. If no range is given, the
+    current line is used; a visual selection passes `'<,'>` automatically.
+
+    A floating window shows a preview of the query text. You are then
+    prompted for:
+      - A name (short label for the query).
+      - A scope: Driver, Group, or Connection. When the current buffer has
+        an associated connection the options map to that connection's
+        hierarchy. Otherwise you are walked through picking a driver,
+        group, and connection from your saved connections.
+
+    Duplicate names within the same scope are rejected with a warning and
+    you are re-prompted. On success a notification confirms the name and
+    scope. See |belvedere-saved-queries| for storage details.
+
+                                                          *:DbLoadQueries*
+:DbLoadQueries
+    Open the saved-queries picker for the connection associated with the
+    current buffer. Requires the buffer to have an associated connection
+    (run |:DbAssociate| first if needed). Equivalent to `l` in the
+    connections panel. See |belvedere-saved-queries|.
+
                                                              *:DbExplore*
 :DbExplore
     Open the schema explorer sidebar for the connection associated with
@@ -157,6 +184,62 @@ COMMANDS                                                    *belvedere-commands*
     Restart the server process. Equivalent to |:DbStop| followed by
     starting the server again. All state (open connections, buffer
     associations) is cleared.
+
+================================================================================
+SAVED QUERIES                                          *belvedere-saved-queries*
+
+Use |:DbSaveQuery| to store a query with a name and a scope.
+
+SCOPES ~
+
+A scope determines which connections a query is visible to:
+
+  Driver      — any connection that uses the same driver (e.g. all SQLite
+                databases).
+  Group       — all connections inside a named group for that driver.
+  Connection  — a single specific connection.
+
+When listing saved queries, results from all three levels are merged with
+more-specific entries taking precedence over broader ones.
+
+LISTING SAVED QUERIES ~
+
+Run |:DbLoadQueries| from any buffer that has an associated connection, or
+press `l` on a connection or group entry in the connections panel.
+
+A picker opens (fzf-lua if installed, `vim.ui.select` otherwise) listing all
+queries in scope for that connection — connection-specific entries first, then
+group-level, then driver-level. Duplicates are removed (more-specific wins).
+In the fzf-lua picker you can search by both name and content simultaneously.
+
+  <CR>    Open the query in a new buffer (see QUERY BUFFER below).
+  <C-d>   Delete the highlighted query (prompts for confirmation).
+
+QUERY BUFFER ~
+
+A query opened from the picker gets a dedicated buffer:
+  - Name: `belvedere://queries/<scope>/<query_name>`
+  - `buftype=nofile`, `modifiable=false`
+  - `filetype` matches the extension used when the query was saved
+  - Automatically associated with the connection the picker was launched from,
+    so |:DbExecute| keymaps work immediately
+  - The buffer is re-used if already open
+
+STORAGE ~
+
+Queries are stored as plain text files under: >
+  $XDG_DATA_HOME/belvedere/queries/
+  (~/.local/share/belvedere/queries/ on most systems)
+<
+The directory tree mirrors the scope hierarchy: >
+  driver/<server>/<driver>/<name>.<ext>
+  group/<server>/<driver>/<group>/<name>.<ext>
+  connection/<server>/<driver>/<group>/<conn>/<name>.<ext>
+<
+The file extension is taken from the source buffer (e.g. `.sql`, `.cypher`).
+Files can be opened, edited, and deleted directly in the filesystem.
+The directory is created automatically on first save. Override the location
+with |belvedere-queries_dir|.
 
 ================================================================================
 EXPLORER                                                    *belvedere-explorer*
@@ -268,6 +351,21 @@ require("belvedere").stop()
 require("belvedere").restart()
     Restart the server process. Equivalent to |:DbRestart|.
 
+                                                *belvedere.save_query()*
+require("belvedere").save_query()
+    Open the save-query UI. Reads the visual selection when called from a
+    visual-mode keymap, or the current line in normal mode. The current
+    buffer's associated connection (if any) is used to pre-populate the
+    scope picker. The file extension is taken from the current buffer.
+    See |belvedere-saved-queries|.
+
+                                                *belvedere.load_query()*
+require("belvedere").load_query([{conn_key}])
+    Open the saved-queries picker for {conn_key}. If {conn_key} is omitted,
+    the connection associated with the current buffer is used. Shows a
+    warning if no connection can be resolved.
+    Equivalent to |:DbLoadQueries|. See |belvedere-saved-queries|.
+
                                        *belvedere.open_current_driver_help()*
 require("belvedere").open_current_driver_help([{opts}])
     Fetch and display documentation for the driver associated with the
@@ -337,6 +435,7 @@ All keys are optional.
   require("belvedere").setup({
     server_cmd       = "belvedere",
     connections_file = nil,   -- auto-detected from $XDG_CONFIG_HOME
+    queries_dir      = nil,   -- auto-detected from $XDG_DATA_HOME
     keymaps = {
       hover_key = "K",
     },
@@ -356,6 +455,14 @@ connections_file ~
 
   Path to the JSON file where connections are stored. The directory is
   created automatically on first save.
+
+                                                      *belvedere-queries_dir*
+queries_dir ~
+  Type: `string`   Default: `$XDG_DATA_HOME/belvedere/queries`
+
+  Root directory for saved queries. Each query is stored as a plain text
+  file in a subdirectory that encodes its scope. The directory is created
+  automatically on first save. See |belvedere-saved-queries|.
 
                                                     *belvedere-hover-key*
 keymaps.hover_key ~
