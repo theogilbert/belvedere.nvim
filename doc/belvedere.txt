@@ -77,6 +77,8 @@ PANEL KEYMAPS ~
           connections.
   d       Disconnect from the database under the cursor.
   x       Open the explorer for the connected database under the cursor.
+  l       Open the saved-queries picker for the connection or group under
+          the cursor. Works on both connection and subgroup entries.
   b       Jump to the buffer associated with this connection. If multiple
           buffers are associated, shows a picker. Focuses an existing
           window already showing that buffer; otherwise reuses any normal
@@ -160,6 +162,13 @@ COMMANDS                                                    *belvedere-commands*
     you are re-prompted. On success a notification confirms the name and
     scope. See |belvedere-saved-queries| for storage details.
 
+                                                          *:DbLoadQueries*
+:DbLoadQueries
+    Open the saved-queries picker for the connection associated with the
+    current buffer. Requires the buffer to have an associated connection
+    (run |:DbAssociate| first if needed). Equivalent to `l` in the
+    connections panel. See |belvedere-saved-queries|.
+
                                                              *:DbExplore*
 :DbExplore
     Open the schema explorer sidebar for the connection associated with
@@ -190,9 +199,31 @@ A scope determines which connections a query is visible to:
   Group       — all connections inside a named group for that driver.
   Connection  — a single specific connection.
 
-When listing saved queries (not yet implemented), results from all three
-levels are merged with more-specific entries taking precedence over
-broader ones.
+When listing saved queries, results from all three levels are merged with
+more-specific entries taking precedence over broader ones.
+
+LISTING SAVED QUERIES ~
+
+Run |:DbLoadQueries| from any buffer that has an associated connection, or
+press `l` on a connection or group entry in the connections panel.
+
+A picker opens (fzf-lua if installed, `vim.ui.select` otherwise) listing all
+queries in scope for that connection — connection-specific entries first, then
+group-level, then driver-level. Duplicates are removed (more-specific wins).
+In the fzf-lua picker you can search by both name and content simultaneously.
+
+  <CR>    Open the query in a new buffer (see QUERY BUFFER below).
+  <C-d>   Delete the highlighted query (prompts for confirmation).
+
+QUERY BUFFER ~
+
+A query opened from the picker gets a dedicated buffer:
+  - Name: `belvedere://queries/<scope>/<query_name>`
+  - `buftype=nofile`, `modifiable=false`
+  - `filetype` matches the extension used when the query was saved
+  - Automatically associated with the connection the picker was launched from,
+    so |:DbExecute| keymaps work immediately
+  - The buffer is re-used if already open
 
 STORAGE ~
 
@@ -327,6 +358,13 @@ require("belvedere").save_query()
     buffer's associated connection (if any) is used to pre-populate the
     scope picker. The file extension is taken from the current buffer.
     See |belvedere-saved-queries|.
+
+                                                *belvedere.load_query()*
+require("belvedere").load_query([{conn_key}])
+    Open the saved-queries picker for {conn_key}. If {conn_key} is omitted,
+    the connection associated with the current buffer is used. Shows a
+    warning if no connection can be resolved.
+    Equivalent to |:DbLoadQueries|. See |belvedere-saved-queries|.
 
                                        *belvedere.open_current_driver_help()*
 require("belvedere").open_current_driver_help([{opts}])

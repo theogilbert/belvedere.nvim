@@ -431,4 +431,15 @@ function M.save_query_range(line1, line2)
   open_save_query(content, bufnr)
 end
 
+function M.load_query(conn_key)
+  if not conn_key then
+    conn_key = state.buf_conns[vim.api.nvim_get_current_buf()]
+  end
+  if not conn_key then
+    vim.notify("belvedere: no connection associated with current buffer", vim.log.levels.WARN)
+    return
+  end
+  require("belvedere.ui.query_picker").open(conn_key)
+end
+
 return M

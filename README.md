@@ -96,6 +96,7 @@ Open the connections panel with `:DbConnections`. Connections are grouped by dri
 | `D` | Delete the saved connection under the cursor |
 | `d` | Disconnect from the database under the cursor |
 | `x` | Open the explorer for the connected database under the cursor |
+| `l` | List saved queries for the connection or group under the cursor |
 | `K` | Show connection details or error in a float (press `K` again to enter it) |
 | `?` | Show driver help |
 | `R` | Refresh the panel |
@@ -178,7 +179,21 @@ Duplicate names within the same scope are rejected with a warning and you are re
 
 Queries are stored as plain files under `~/.local/share/belvedere/queries/` and inherit the file extension of the source buffer (e.g. `.sql`, `.cypher`).
 
-### 5. Explore the schema
+### 5. Load saved queries
+
+From a buffer associated with a connection, run:
+
+```
+:DbLoadQueries
+```
+
+Or press `l` on a connection or group entry in the connections panel.
+
+A picker (fzf-lua if available, otherwise `vim.ui.select`) lists all queries in scope — connection-specific entries appear first, then group-level, then driver-level. Searching matches both name and content simultaneously.
+
+On `<CR>` the query opens in a read-only buffer (`belvedere://queries/…`) associated with the connection, so `:DbExecute` works immediately. On `<C-d>` the selected query is deleted (with confirmation).
+
+### 6. Explore the schema
 
 Press `e` on a connected database in the connections panel, or run `:DbExplore`.
 
@@ -205,6 +220,7 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 | `:DbDisconnect [name]` | Disconnect a named connection, or the current buffer's connection |
 | `:[range]DbExecute` | Execute SQL (range, selection, or current line) |
 | `:[range]DbSaveQuery` | Save the selected/current-line query with a name and scope |
+| `:DbLoadQueries` | Open the saved-queries picker for the current buffer's connection |
 | `:DbExplore` | Open the schema explorer |
 | `:DbStop` | Kill the backend process |
 | `:DbRestart` | Restart the backend process (clears all state) |
@@ -298,6 +314,10 @@ db.restart()
 -- Reads the visual selection when in visual mode, otherwise the current line.
 -- The file extension is taken from the current buffer.
 db.save_query()
+
+-- Open the saved-queries picker for conn_key, or the current buffer's connection if omitted.
+db.load_query()
+db.load_query("prod-mssql")
 ```
 
 ```lua
