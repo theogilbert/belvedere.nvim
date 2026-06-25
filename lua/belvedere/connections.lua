@@ -321,37 +321,99 @@ function M.pick(caps, active_set, callback)
   local server      = caps.server or ""
   local server_data = M.load(server)
 
-  local items = {}
+  -- Collect drivers that have at least one connection.
+  local driver_ids = {}
   for driver_id, driver_data in pairs(server_data) do
-    for group, group_conns in pairs(driver_data.groups or {}) do
-      for name, params in pairs(group_conns) do
-        local key = M.conn_key(server, driver_id, group, name)
-        table.insert(items, { key = key, params = params, label = driver_data.label or driver_id })
+    for _, group_conns in pairs(driver_data.groups or {}) do
+      if next(group_conns) then
+        table.insert(driver_ids, driver_id)
+        break
       end
     end
   end
-  table.sort(items, function(a, b) return M.conn_display_name(a.key) < M.conn_display_name(b.key) end)
-  table.insert(items, { key = "[+ New connection]" })
+  table.sort(driver_ids)
 
-  vim.ui.select(items, {
-    prompt      = "belvedere — select connection:",
-    format_item = function(item)
-      if not item.params then return item.key end
-      local dn  = M.conn_display_name(item.key)
-      local out = item.label and (dn .. " (" .. item.label .. ")") or dn
-      if active_set[item.key] then out = out .. "  [connected]" end
-      return out
-    end,
-  }, function(choice)
-    if not choice then callback(nil) return end
-    if not choice.params then
-      M.create(caps, callback)
-    else
+  local function do_pick_conn(driver_id, group)
+    local driver_data = server_data[driver_id] or {}
+    local group_conns = ((driver_data.groups or {})[group]) or {}
+    local items = {}
+    for name, params in pairs(group_conns) do
+      local key = M.conn_key(server, driver_id, group, name)
+      table.insert(items, { key = key, params = params })
+    end
+    table.sort(items, function(a, b) return M.conn_display_name(a.key) < M.conn_display_name(b.key) end)
+    table.insert(items, { key = "[+ New connection]" })
+
+    vim.ui.select(items, {
+      prompt      = "Connection:",
+      format_item = function(item)
+        if not item.params then return item.key end
+        local dn = M.conn_display_name(item.key)
+        if active_set[item.key] then dn = dn .. "  [connected]" end
+        return dn
+      end,
+    }, function(choice)
+      if not choice then callback(nil) return end
+      if not choice.params then
+        M.create(caps, callback)
+        return
+      end
       prompt_password(choice.params, function(params)
         if not params then callback(nil) return end
         callback(choice.key, params)
       end)
+    end)
+  end
+
+  local function do_pick_group(driver_id)
+    local driver_data = server_data[driver_id] or {}
+    local groups = {}
+    for group, group_conns in pairs(driver_data.groups or {}) do
+      if next(group_conns) then table.insert(groups, group) end
     end
+    table.sort(groups)
+
+    if #groups <= 1 then
+      do_pick_conn(driver_id, groups[1] or "")
+      return
+    end
+
+    local group_items = {}
+    for _, g in ipairs(groups) do
+      table.insert(group_items, { name = g, label = g ~= "" and g or "[No group]" })
+    end
+
+    vim.ui.select(group_items, {
+      prompt      = "Group:",
+      format_item = function(item) return item.label end,
+    }, function(choice)
+      if not choice then callback(nil) return end
+      vim.schedule(function() do_pick_conn(driver_id, choice.name) end)
+    end)
+  end
+
+  if #driver_ids == 0 then
+    M.create(caps, callback)
+    return
+  end
+
+  if #driver_ids == 1 then
+    do_pick_group(driver_ids[1])
+    return
+  end
+
+  local driver_items = {}
+  for _, driver_id in ipairs(driver_ids) do
+    local label = (server_data[driver_id] or {}).label or driver_id
+    table.insert(driver_items, { driver_id = driver_id, label = label })
+  end
+
+  vim.ui.select(driver_items, {
+    prompt      = "Driver:",
+    format_item = function(item) return item.label end,
+  }, function(choice)
+    if not choice then callback(nil) return end
+    vim.schedule(function() do_pick_group(choice.driver_id) end)
   end)
 end
 
