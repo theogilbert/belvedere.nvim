@@ -5,6 +5,7 @@
 :DbDisconnect	belvedere.txt	/*:DbDisconnect*
 :DbExecute	belvedere.txt	/*:DbExecute*
 :DbExplore	belvedere.txt	/*:DbExplore*
+:DbLoadQueries	belvedere.txt	/*:DbLoadQueries*
 :DbNewConnection	belvedere.txt	/*:DbNewConnection*
 :DbRestart	belvedere.txt	/*:DbRestart*
 :DbSaveQuery	belvedere.txt	/*:DbSaveQuery*
@@ -35,6 +36,7 @@ belvedere.connect()	belvedere.txt	/*belvedere.connect()*
 belvedere.disconnect()	belvedere.txt	/*belvedere.disconnect()*
 belvedere.execute()	belvedere.txt	/*belvedere.execute()*
 belvedere.execute_range()	belvedere.txt	/*belvedere.execute_range()*
+belvedere.load_query()	belvedere.txt	/*belvedere.load_query()*
 belvedere.open_connections()	belvedere.txt	/*belvedere.open_connections()*
 belvedere.open_current_driver_help()	belvedere.txt	/*belvedere.open_current_driver_help()*
 belvedere.open_driver_help()	belvedere.txt	/*belvedere.open_driver_help()*
