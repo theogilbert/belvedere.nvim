@@ -246,6 +246,35 @@ Returns detailed metadata about a specific node.
 
 ---
 
+### `explore.preview`
+
+Returns a sample of up to 10 rows from the node at the given path. Only supported for table, view, and collection nodes; returns null fields for unsupported node types.
+
+**params**
+
+| Field           | Type             | Description            |
+|-----------------|------------------|------------------------|
+| `connection_id` | string           | Connection to query    |
+| `path`          | array of strings | Path to the node       |
+
+**result**
+
+| Field         | Type              | Description                                        |
+|---------------|-------------------|----------------------------------------------------|
+| `columns`     | array of strings or null | Column names, in order; null if not supported |
+| `rows`        | array of arrays or null  | Up to 10 rows; null if not supported         |
+| `rows_total`  | integer or null   | Total rows returned                                |
+| `duration_ms` | number            | Wall-clock execution time in milliseconds          |
+
+**example**
+
+```json
+{"id":6,"method":"explore.preview","params":{"connection_id":"0","path":["public","users"]}}
+{"id":6,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]],"rows_total":2,"duration_ms":1.5},"error":null}
+```
+
+---
+
 ### `driver.help`
 
 Returns documentation for a specific driver as a markdown string. Clients should display this in a help buffer when the user requests driver-specific documentation.
