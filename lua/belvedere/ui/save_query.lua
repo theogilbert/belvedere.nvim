@@ -78,8 +78,10 @@ local function prompt_name(content, filetype, hint, on_confirm, on_cancel)
   local preview_buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(preview_buf, 0, -1, false, preview_lines)
   vim.bo[preview_buf].modifiable = false
-  vim.bo[preview_buf].filetype   = filetype ~= "" and filetype or "sql"
+  local ft = filetype ~= "" and (vim.filetype.match({ filename = "q." .. filetype }) or filetype) or "sql"
+  vim.bo[preview_buf].filetype   = ft
   vim.bo[preview_buf].bufhidden  = "wipe"
+  pcall(vim.treesitter.start, preview_buf)
 
   -- row + 2 = the same screen row as the input window's bottom border.
   -- zindex 51 > input's default 50, so preview's top border renders on top,

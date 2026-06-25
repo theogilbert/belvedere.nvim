@@ -83,6 +83,7 @@ function M.list(scope_key)
         content    = table.concat(vim.fn.readfile(path), "\n"),
         created_at = vim.fn.getftime(path),
         ext        = ext,
+        path       = path,
       }
     end
   end
@@ -98,7 +99,7 @@ function M.list_for_conn(conn_key)
     for name, q in pairs(M.list(sk)) do
       if not seen[name] then
         seen[name] = true
-        table.insert(result, { scope_key = sk, name = name, content = q.content, created_at = q.created_at, ext = q.ext })
+        table.insert(result, { scope_key = sk, name = name, content = q.content, created_at = q.created_at, ext = q.ext, path = q.path })
       end
     end
   end

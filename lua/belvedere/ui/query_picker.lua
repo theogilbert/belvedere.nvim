@@ -5,12 +5,12 @@ local queries = require("belvedere.queries")
 local SEP     = "\t"
 local KEY_SEP = "\1"   -- SOH: won't appear in scope keys or query names
 
-local function make_entry(e, tmp_file)
+local function make_entry(e)
   local first_line = (e.content:match("^[^\n]*") or ""):gsub("\t", "  ")
   if #first_line > 100 then first_line = first_line:sub(1, 100) .. "…" end
   local label  = "[" .. queries.scope_label(e.scope_key) .. "]"
   local hidden = e.scope_key .. KEY_SEP .. e.name
-  return label .. " " .. e.name .. SEP .. first_line .. SEP .. tmp_file .. SEP .. hidden
+  return label .. " " .. e.name .. SEP .. first_line .. SEP .. (e.path or "") .. SEP .. hidden
 end
 
 local function decode_entry(s)
@@ -42,8 +42,10 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
     vim.api.nvim_buf_set_name(bufnr, bufname)
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, vim.split(e.content, "\n", { plain = true }))
     vim.bo[bufnr].modifiable = false
-    vim.bo[bufnr].filetype   = e.ext ~= "" and e.ext or "sql"
+    local ft = e.ext ~= "" and (vim.filetype.match({ filename = "q." .. e.ext }) or e.ext) or "sql"
+    vim.bo[bufnr].filetype   = ft
     vim.bo[bufnr].bufhidden  = "hide"
+    pcall(vim.treesitter.start, bufnr)
   end
 
   if conn_key then require("belvedere").set_buf_conn(bufnr, conn_key) end
@@ -64,12 +66,6 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
   vim.api.nvim_set_current_buf(bufnr)
 end
 
-local function write_tmp(content)
-  local path = vim.fn.tempname()
-  vim.fn.writefile(vim.split(content, "\n", { plain = true }), path)
-  return path
-end
-
 local function show_picker(entries_data, conn_key)
   if #entries_data == 0 then
     vim.notify("belvedere: no saved queries", vim.log.levels.INFO)
@@ -80,10 +76,13 @@ local function show_picker(entries_data, conn_key)
   local entry_strings = {}
 
   for _, e in ipairs(entries_data) do
-    local tmp = write_tmp(e.content)
     data_by_key[e.scope_key .. KEY_SEP .. e.name] = e
-    table.insert(entry_strings, make_entry(e, tmp))
+    table.insert(entry_strings, make_entry(e))
   end
+
+  local preview_cmd = vim.fn.executable("bat") == 1
+    and "bat --style=plain --color=always {3}"
+    or  "cat {3}"
 
   local ok, fzf = pcall(require, "fzf-lua")
   if ok then
@@ -94,7 +93,7 @@ local function show_picker(entries_data, conn_key)
         ["--delimiter"] = "\t",
         ["--with-nth"]  = "1",
         ["--nth"]       = "1,2",
-        ["--preview"]   = "cat {3}",
+        ["--preview"]   = preview_cmd,
         ["--header"]    = "CTRL-D: delete",
       },
       actions = {
@@ -153,7 +152,7 @@ function M.open_for_group(server, driver_id, group)
     for name, q in pairs(queries.list(sk)) do
       if not seen[name] then
         seen[name] = true
-        table.insert(entries_data, { scope_key = sk, name = name, content = q.content, created_at = q.created_at, ext = q.ext })
+        table.insert(entries_data, { scope_key = sk, name = name, content = q.content, created_at = q.created_at, ext = q.ext, path = q.path })
       end
     end
   end
