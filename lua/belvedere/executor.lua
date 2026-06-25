@@ -50,6 +50,7 @@ end
 -- Returns { { sql, line }, ... } where line is the 0-indexed offset of each
 -- statement's first non-whitespace character within the original sql string.
 local function split_queries(sql)
+  -- TODO use treesitter parsers for that.
   local stmts = {}
   local line_offset = 0
   local pos = 1
