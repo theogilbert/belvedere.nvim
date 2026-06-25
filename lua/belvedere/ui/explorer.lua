@@ -5,6 +5,7 @@ local M = {}
 local Buffer  = require("belvedere.buffer")
 local client  = require("belvedere.client")
 local config  = require("belvedere.config")
+local results = require("belvedere.ui.results")
 local window  = require("belvedere.ui.window")
 local Spinner = require("belvedere.ui.spinner")
 
@@ -45,11 +46,13 @@ local function node_icon(node)
 end
 
 local state = {
-  buffer       = nil,
-  tree         = {},
-  conn_id      = nil,
-  conn_label   = nil,  -- "name (driver)" shown in the buffer name
-  root_loading = false,
+  buffer           = nil,
+  tree             = {},
+  conn_id          = nil,
+  conn_label       = nil,  -- "name (driver)" shown in the buffer name
+  conn_key         = nil,  -- storage key for results panel header
+  conn_driver_label = nil,
+  root_loading     = false,
 }
 
 local render  -- forward declaration so the spinner callback can reference it
@@ -377,6 +380,31 @@ local function load_root(reset_cache)
   end)
 end
 
+local PREVIEWABLE_TYPES = { table = true, ["base table"] = true, view = true, collection = true }
+
+local function on_preview_rows()
+  local line = vim.api.nvim_win_get_cursor(0)[1]
+  local node = node_at_line(line)
+  if not node or not PREVIEWABLE_TYPES[node.type] then return end
+  results.set_conn_name(state.conn_key, state.conn_driver_label)
+  results.show_message("Loading…")
+  client.request("explore.preview", { connection_id = state.conn_id, path = node.path },
+    function(err, result)
+      vim.schedule(function()
+        if err then
+          results.show_error(err)
+          return
+        end
+        if type(result.columns) ~= "table" then
+          results.show_error("Preview not supported for this node type")
+          return
+        end
+        local rows = type(result.rows) == "table" and result.rows or {}
+        results.show_results(result.columns, rows, #rows, result.rows_total, result.duration_ms)
+      end)
+    end)
+end
+
 local function get_or_create_buffer()
   if state.buffer and state.buffer:is_valid() then return end
   state.buffer = Buffer:new(BUFNAME, "belvedere_explorer", false, "nofile")
@@ -403,6 +431,8 @@ local function get_or_create_buffer()
     state.tree = {}
     load_root(true)
   end, { nowait = true, silent = true, desc = "Refresh explorer" })
+  state.buffer:set_keymap("n", "p", on_preview_rows,
+    { nowait = true, silent = true, desc = "Preview rows" })
   state.buffer:set_keymap("n", "q", function()
     local win = vim.fn.bufwinid(state.buffer.buf_id)
     if win ~= -1 then vim.api.nvim_win_close(win, true) end
@@ -412,14 +442,18 @@ end
 --- @param conn_id any
 --- @param conn_name string
 --- @param driver string
-function M.open(conn_id, conn_name, driver)
+--- @param conn_key string
+--- @param driver_label string
+function M.open(conn_id, conn_name, driver, conn_key, driver_label)
   get_or_create_buffer()
 
   -- Reset the tree when switching to a different connection.
   if conn_id ~= state.conn_id then
-    state.tree       = {}
-    state.conn_id    = conn_id
-    state.conn_label = conn_name .. " (" .. driver .. ")"
+    state.tree             = {}
+    state.conn_id          = conn_id
+    state.conn_key         = conn_key
+    state.conn_driver_label = driver_label
+    state.conn_label       = conn_name .. " (" .. driver .. ")"
     pcall(vim.api.nvim_buf_set_name, state.buffer.buf_id,
       BUFNAME .. " [" .. state.conn_label .. "]")
   end

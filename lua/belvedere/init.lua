@@ -355,7 +355,7 @@ function M.open_explorer_for(name)
     vim.notify(("belvedere: not connected to %q — press <CR> to connect first"):format(connections.conn_display_name(name)), vim.log.levels.ERROR)
     return
   end
-  explorer.open(conn.conn_id, connections.conn_display_name(name), conn.driver)
+  explorer.open(conn.conn_id, connections.conn_display_name(name), conn.driver, name, conn.driver_label)
 end
 
 function M.open_explorer()
@@ -366,7 +366,7 @@ function M.open_explorer()
     vim.notify("belvedere: no active connection — run :DbConnect first", vim.log.levels.WARN)
     return
   end
-  explorer.open(conn.conn_id, connections.conn_display_name(key), conn.driver)
+  explorer.open(conn.conn_id, connections.conn_display_name(key), conn.driver, key, conn.driver_label)
 end
 
 local function teardown()
