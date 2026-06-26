@@ -151,7 +151,36 @@ Results appear in a split window with aligned columns and a row count. For DML q
 
 **Multiple queries:** if the SQL contains `;`, each statement is sent as a separate request and results are shown as labelled sections (`── Query 1 / 3 ──`, etc.). This does not apply to MongoDB-style drivers.
 
-### 4. Save queries
+### 4. Query log
+
+Run `:DbQueryLog` (or `db.query_log()`) to open a history of all queries executed on the current buffer's connection.
+
+The log opens as a floating four-panel UI:
+
+- **Left top** — live search input (type to filter).
+- **Left bottom** — filtered list of past queries, each showing status, time, source line, and a truncated SQL preview.
+- **Right top** — full SQL of the highlighted entry.
+- **Right bottom** — result of the highlighted entry (rows, row count, or error).
+
+| Key | Action |
+|-----|--------|
+| (type) | Filter the list in real time |
+| `<CR>` (in search) | Move focus to the list |
+| `<Esc>` (in search) | Clear the filter, or close if already empty |
+| `<CR>` (in list) | Close the log, jump to the source line, and restore the result in the results window |
+| `/` | Return to the search input |
+| `q` / `<Esc>` (in list) | Close the log |
+
+Status indicators in the list:
+
+| Symbol | Meaning |
+|--------|---------|
+| (none) | Completed successfully |
+| `✗` | Error (highlighted in red) |
+| `…` | Still running |
+
+### 5. Save queries
+
 
 Select text in visual mode (or position the cursor on a single line), then run:
 
@@ -179,7 +208,7 @@ Duplicate names within the same scope are rejected with a warning and you are re
 
 Queries are stored as plain files under `~/.local/share/belvedere/queries/` and inherit the file extension of the source buffer (e.g. `.sql`, `.cypher`).
 
-### 5. Load saved queries
+### 6. Load saved queries
 
 From a buffer associated with a connection, run:
 
@@ -191,9 +220,9 @@ Or press `l` on a connection or group entry in the connections panel.
 
 A picker (fzf-lua if available, otherwise `vim.ui.select`) lists all queries in scope — connection-specific entries appear first, then group-level, then driver-level. Searching matches both name and content simultaneously.
 
-On `<CR>` the query opens in a read-only buffer (`belvedere://queries/…`) associated with the connection, so `:DbExecute` works immediately. On `<C-d>` the selected query is deleted (with confirmation).
+On `<CR>` the query opens in a new buffer (`belvedere://queries/…`) associated with the connection, so `:DbExecute` works immediately. The buffer is editable — a comment at the top reminds you that edits do not update the saved query file. On `<C-d>` the selected query is deleted (with confirmation).
 
-### 6. Explore the schema
+### 7. Explore the schema
 
 Press `e` on a connected database in the connections panel, or run `:DbExplore`.
 
@@ -221,6 +250,8 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 | `:[range]DbExecute` | Execute SQL (range, selection, or current line) |
 | `:[range]DbSaveQuery` | Save the selected/current-line query with a name and scope |
 | `:DbLoadQueries` | Open the saved-queries picker for the current buffer's connection |
+| `:DbQueryLog` | Open the query log for the current buffer's connection |
+| `:DbCancelQuery` | Cancel the running query whose gutter icon is on the cursor line |
 | `:DbExplore` | Open the schema explorer |
 | `:DbStop` | Kill the backend process |
 | `:DbRestart` | Restart the backend process (clears all state) |
@@ -318,6 +349,14 @@ db.save_query()
 -- Open the saved-queries picker for conn_key, or the current buffer's connection if omitted.
 db.load_query()
 db.load_query("prod-mssql")
+
+-- Open the query log for conn_key, or the current buffer's connection if omitted.
+db.query_log()
+db.query_log("prod-mssql")
+
+-- Cancel the in-flight query whose gutter running icon sits on the cursor line.
+-- Warns if the cursor is not over a running query.
+db.cancel_query()
 ```
 
 ```lua

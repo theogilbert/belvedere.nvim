@@ -11,12 +11,13 @@ CONTENTS                                                    *belvedere-contents*
   3. Setup .............................................. |belvedere-setup|
   4. Connections panel .................................. |belvedere-connections|
   5. Commands ........................................... |belvedere-commands|
-  6. Saved queries ...................................... |belvedere-saved-queries|
-  7. Explorer ........................................... |belvedere-explorer|
-  8. Results window ..................................... |belvedere-results|
-  9. Lua API ............................................ |belvedere-api|
- 10. Configuration ...................................... |belvedere-config|
- 11. Supported databases ................................ |belvedere-drivers|
+  6. Query log .......................................... |belvedere-query-log|
+  7. Saved queries ...................................... |belvedere-saved-queries|
+  8. Explorer ........................................... |belvedere-explorer|
+  9. Results window ..................................... |belvedere-results|
+ 10. Lua API ............................................ |belvedere-api|
+ 11. Configuration ...................................... |belvedere-config|
+ 12. Supported databases ................................ |belvedere-drivers|
 
 ================================================================================
 INTRODUCTION                                                   *belvedere-intro*
@@ -169,6 +170,18 @@ COMMANDS                                                    *belvedere-commands*
     (run |:DbAssociate| first if needed). Equivalent to `l` in the
     connections panel. See |belvedere-saved-queries|.
 
+                                                           *:DbQueryLog*
+:DbQueryLog
+    Open the query log for the connection associated with the current buffer.
+    See |belvedere-query-log|.
+
+                                                         *:DbCancelQuery*
+:DbCancelQuery
+    Cancel the in-flight query whose gutter running icon sits on the cursor
+    line. Sends a `cancel` request to the server for that request's id; the
+    query receives an error response with "cancelled". If the cursor is not
+    on a line with a running-query icon a warning is shown.
+
                                                              *:DbExplore*
 :DbExplore
     Open the schema explorer sidebar for the connection associated with
@@ -184,6 +197,42 @@ COMMANDS                                                    *belvedere-commands*
     Restart the server process. Equivalent to |:DbStop| followed by
     starting the server again. All state (open connections, buffer
     associations) is cleared.
+
+================================================================================
+QUERY LOG                                               *belvedere-query-log*
+
+|:DbQueryLog| opens a floating four-panel UI showing all queries executed on
+the current buffer's connection during this session.
+
+LAYOUT ~
+
+  Left top     Search input — type to filter the list in real time.
+  Left bottom  Filtered list of past queries. Each row shows:
+               - Status indicator (see below)
+               - Timestamp (HH:MM:SS)
+               - Source line number
+               - Truncated SQL text
+  Right top    Full SQL of the highlighted list entry.
+  Right bottom Result of the highlighted entry: row table (up to 50 rows),
+               row/affected count, or error message.
+
+KEYMAPS ~
+
+  (type)       Filter the list in real time from the search input.
+  <CR>         In search: move focus to the list.
+               In list: close the log, jump to the source line in the
+               originating buffer, and restore the result in the results
+               window.
+  <Esc>        In search: clear the filter (or close if already empty).
+               In list: close the log.
+  /            From the list: return to the search input (insert mode).
+  q            Close the log.
+
+STATUS INDICATORS ~
+
+  (none)  Query completed successfully.
+  ✗       Query failed — highlighted in red.
+  …       Query is still running.
 
 ================================================================================
 SAVED QUERIES                                          *belvedere-saved-queries*
@@ -219,11 +268,13 @@ QUERY BUFFER ~
 
 A query opened from the picker gets a dedicated buffer:
   - Name: `belvedere://queries/<scope>/<query_name>`
-  - `buftype=nofile`, `modifiable=false`
+  - `buftype=nofile`, editable (`modifiable=true`)
+  - A comment at the top of the buffer notes that edits do not update the
+    saved query file on disk.
   - `filetype` matches the extension used when the query was saved
   - Automatically associated with the connection the picker was launched from,
     so |:DbExecute| keymaps work immediately
-  - The buffer is re-used if already open
+  - Opens in a new split each time; listed in |:ls|
 
 STORAGE ~
 
@@ -365,6 +416,21 @@ require("belvedere").load_query([{conn_key}])
     the connection associated with the current buffer is used. Shows a
     warning if no connection can be resolved.
     Equivalent to |:DbLoadQueries|. See |belvedere-saved-queries|.
+
+                                               *belvedere.query_log()*
+require("belvedere").query_log([{conn_key}])
+    Open the query log for {conn_key}. If {conn_key} is omitted, the
+    connection associated with the current buffer is used. Shows a warning
+    if no connection can be resolved.
+    Equivalent to |:DbQueryLog|. See |belvedere-query-log|.
+
+                                              *belvedere.cancel_query()*
+require("belvedere").cancel_query()
+    Cancel the in-flight query whose gutter running icon sits on the cursor
+    line of the current buffer. Looks up the request id stored when the
+    query was dispatched and sends a `cancel` request to the server. If the
+    cursor is not on a running-query line a warning is shown.
+    Equivalent to |:DbCancelQuery|.
 
                                        *belvedere.open_current_driver_help()*
 require("belvedere").open_current_driver_help([{opts}])
