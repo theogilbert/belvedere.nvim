@@ -1,6 +1,7 @@
 local M = {}
 
 local NS
+local running = {}  -- [bufnr][mark_id] = request_id
 
 local ICON_RUNNING = "\xEE\xA9\xB7"  -- U+EA77
 local ICON_SUCCESS = "\xEE\xAA\xB2"  -- U+EAB2
@@ -46,6 +47,31 @@ end
 
 function M.show_error(handle)
   replace(handle, ICON_ERROR, "BelvedereQueryError")
+end
+
+function M.register_request(handle, request_id)
+  if not handle or not request_id then return end
+  running[handle.bufnr] = running[handle.bufnr] or {}
+  running[handle.bufnr][handle.mark_id] = request_id
+end
+
+function M.unregister_request(handle)
+  if not handle then return end
+  local by_buf = running[handle.bufnr]
+  if by_buf then by_buf[handle.mark_id] = nil end
+end
+
+-- Returns the request_id of a running query whose gutter mark sits on `line`
+-- (0-indexed), or nil if none.
+function M.find_request_at_line(bufnr, line)
+  local by_buf = running[bufnr]
+  if not by_buf then return nil end
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, { line, 0 }, { line, -1 }, {})
+  for _, m in ipairs(marks) do
+    local req_id = by_buf[m[1]]
+    if req_id then return req_id end
+  end
+  return nil
 end
 
 return M

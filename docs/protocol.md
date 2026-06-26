@@ -197,6 +197,34 @@ The query language and bind parameter syntax depend on the driver — see [Drive
 
 ---
 
+### `cancel`
+
+Cancels an in-flight request. The targeted request receives an error response with `"cancelled"` as the error message. If the request has already completed, or the `request_id` is not recognised, the call is a no-op and still returns `{"ok": true}`.
+
+**params**
+
+| Field        | Type    | Description                        |
+|--------------|---------|------------------------------------|
+| `request_id` | integer | `id` of the request to cancel      |
+
+**result**
+
+```json
+{"ok": true}
+```
+
+**example**
+
+```
+client → {"id":4,"method":"cancel","params":{"request_id":2}}
+server → {"id":4,"result":{"ok":true},"error":null}
+server → {"id":2,"result":null,"error":"cancelled"}
+```
+
+The `cancel` response and the cancelled request's error response may arrive in either order.
+
+---
+
 ### `explore.list`
 
 Returns the children of a node in the database object tree. The tree is navigated by a `path` — an ordered list of node names from the root.

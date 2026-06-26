@@ -436,6 +436,21 @@ function M.save_query_range(line1, line2)
   open_save_query(content, bufnr)
 end
 
+function M.cancel_query()
+  local bufnr      = vim.api.nvim_get_current_buf()
+  local line       = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
+  local request_id = gutter.find_request_at_line(bufnr, line)
+  if not request_id then
+    vim.notify("belvedere: cursor must be over a running query", vim.log.levels.WARN)
+    return
+  end
+  client.cancel(request_id, function(err, _)
+    if err then
+      vim.notify("belvedere: cancel failed — " .. err, vim.log.levels.ERROR)
+    end
+  end)
+end
+
 function M.load_query(conn_key)
   if not conn_key then
     conn_key = state.buf_conns[vim.api.nvim_get_current_buf()]

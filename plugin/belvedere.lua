@@ -121,6 +121,11 @@ vim.api.nvim_create_user_command("DbQueryLog", function(_)
   db.query_log()
 end, {})
 
+-- :DbCancelQuery  — cancel the running query under the cursor (gutter icon line)
+vim.api.nvim_create_user_command("DbCancelQuery", function(_)
+  db.cancel_query()
+end, {})
+
 -- :DbStop
 vim.api.nvim_create_user_command("DbStop", function(_)
   db.stop()

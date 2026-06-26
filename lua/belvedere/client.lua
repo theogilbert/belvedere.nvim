@@ -57,10 +57,11 @@ end
 
 -- Send a request; callback(err, result) is called on completion.
 -- on_progress(progress) is called for each intermediate progress message (optional).
+-- Returns the request id.
 function M.request(method, params, callback, on_progress)
   if not state.job_id then
     callback("Backend not running", nil)
-    return
+    return nil
   end
   local id      = state.next_id
   state.next_id = id + 1
@@ -68,6 +69,11 @@ function M.request(method, params, callback, on_progress)
   local p = (params == nil or vim.tbl_isempty(params)) and vim.empty_dict() or params
   local line = vim.json.encode({ id = id, method = method, params = p }) .. "\n"
   vim.fn.chansend(state.job_id, line)
+  return id
+end
+
+function M.cancel(request_id, callback)
+  M.request("cancel", { request_id = request_id }, callback or function() end)
 end
 
 -- Start the Python backend process.

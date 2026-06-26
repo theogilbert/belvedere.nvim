@@ -95,7 +95,7 @@ local function dispatch_batch_result(idx, total, result, sql)
 end
 
 local function execute(conn, sql, on_done, on_progress)
-  client.request(
+  return client.request(
     "execute",
     { connection_id = conn.conn_id, query = sql, params = {} },
     on_done,
@@ -110,8 +110,9 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
   local log_id      = log.add(conn.key, bufnr, source_line, q.sql)
   local gh          = (bufnr and first_line ~= nil)
       and gutter.show_running(bufnr, first_line + q.line) or nil
-  execute(conn, q.sql, function(err, result)
+  local req_id = execute(conn, q.sql, function(err, result)
     vim.schedule(function()
+      gutter.unregister_request(gh)
       if err then
         had_error = true
         results.append_batch_error(idx, #queries, err)
@@ -142,13 +143,15 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
       end
     end)
   end)
+  gutter.register_request(gh, req_id)
 end
 
 local function run_single(conn, sql, gh, conn_key, log_id)
   results.show_message("Executing…")
-  execute(conn, sql,
+  local req_id = execute(conn, sql,
     function(err, result)
       vim.schedule(function()
+        gutter.unregister_request(gh)
         if err then
           results.show_error(err)
           gutter.show_error(gh)
@@ -180,6 +183,7 @@ local function run_single(conn, sql, gh, conn_key, log_id)
         results.show_message(progress.message or progress.status or "…")
       end)
     end)
+  gutter.register_request(gh, req_id)
 end
 
 --- Execute `query` against `conn`.  Multiple ;-separated statements are run as
