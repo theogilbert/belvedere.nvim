@@ -43,7 +43,7 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
   local bufnr   = find_buf_by_name(bufname)
 
   if bufnr == -1 then
-    bufnr = vim.api.nvim_create_buf(false, true)
+    bufnr = vim.api.nvim_create_buf(true, true)
     vim.api.nvim_buf_set_name(bufnr, bufname)
     local ft = e.ext ~= "" and (vim.filetype.match({ filename = "q." .. e.ext }) or e.ext) or "sql"
     local lines = vim.split(e.content, "\n", { plain = true })
