@@ -1,8 +1,10 @@
 -- Query results window.
 --
--- One buffer per connection, named "belvedere://results [name (driver)]".
--- Buffers are listed so the user can :b between them. A single split window
--- is reused; switching connections swaps the buffer shown in it.
+-- One buffer per source buffer, named:
+--   "belvedere://results [conn (driver)] [filename]"   (named source buf)
+--   "belvedere://results [conn (driver)] #N"            (unnamed source buf)
+-- Buffers are listed so the user can :b between them.
+-- One results window per tab: running a query in tab A never clobbers tab B.
 local Buffer      = require("belvedere.buffer")
 local table_fmt   = require("belvedere.table")
 local hl          = require("belvedere.hl")
@@ -14,7 +16,7 @@ local M = {}
 
 local BUFNAME = "belvedere://results"
 
-local render_table  -- forward declaration; defined after apply_highlights below
+local render_table  -- forward declaration; defined after apply_highlights
 
 local function same_columns(a, b)
   if #a ~= #b then return false end
@@ -53,45 +55,52 @@ local function format_duration(ms)
 end
 
 
--- Per-connection buffer state.
--- buffers[conn_name] = { buffer=Buffer, table_data=nil|FormattedTable, segments={} }
+-- state.buffers[src_bufnr] = buf_state
+-- state.win_ids[tabpage]   = win_id        (one results window per tab)
+-- state.autocmds[win_id]   = { scroll, close }
 local state = {
-  buffers           = {},
-  win_id            = nil,
-  active_conn       = nil,  -- set by set_conn_name before each query
-  scroll_autocmd_id = nil,
-  close_autocmd_id  = nil,
+  buffers    = {},
+  win_ids    = {},
+  autocmds   = {},
+  active_src = nil,  -- src_bufnr set by set_conn_name before each query
 }
 
 local function active_bs()
-  return state.active_conn and state.buffers[state.active_conn]
+  return state.active_src and state.buffers[state.active_src]
 end
 
--- Find the buf_state for whichever buffer is currently shown in the results window.
-local function win_bs()
-  if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return nil end
-  local buf_id = vim.api.nvim_win_get_buf(state.win_id)
+local function win_bs_for(win_id)
+  if not win_id or not vim.api.nvim_win_is_valid(win_id) then return nil end
+  local buf_id = vim.api.nvim_win_get_buf(win_id)
   for _, bs in pairs(state.buffers) do
     if bs.buffer.buf_id == buf_id then return bs end
   end
   return nil
 end
 
+local function current_results_win()
+  return state.win_ids[vim.api.nvim_get_current_tabpage()]
+end
+
+local function win_bs()
+  return win_bs_for(current_results_win())
+end
+
 
 local function scroll_columns(direction)
-  if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
-  local bs = win_bs()
+  local win_id = vim.api.nvim_get_current_win()
+  local bs = win_bs_for(win_id)
   if not bs or not bs.table_data then return end
   local boundaries = table_fmt.column_boundaries(bs.table_data.columns_width)
 
   local leftcol
-  vim.api.nvim_win_call(state.win_id, function()
+  vim.api.nvim_win_call(win_id, function()
     leftcol = vim.fn.winsaveview().leftcol
   end)
 
   local target = leftcol
   if direction > 0 then
-    local win_width = vim.api.nvim_win_get_width(state.win_id)
+    local win_width = vim.api.nvim_win_get_width(win_id)
     for i, b in ipairs(boundaries) do
       if i == #boundaries then break end
       if b > leftcol then
@@ -107,7 +116,7 @@ local function scroll_columns(direction)
   end
 
   if target ~= leftcol then
-    vim.api.nvim_win_call(state.win_id, function()
+    vim.api.nvim_win_call(win_id, function()
       local cursor_vcol = vim.fn.virtcol(".")
       local new_vcol    = math.max(1, target + cursor_vcol - leftcol)
       local row         = vim.fn.line(".")
@@ -119,9 +128,10 @@ local function scroll_columns(direction)
 end
 
 
-local function update_truncation_indicators()
-  if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
-  local bs = win_bs()
+local function update_truncation_indicators(win_id)
+  win_id = win_id or current_results_win()
+  if not win_id or not vim.api.nvim_win_is_valid(win_id) then return end
+  local bs = win_bs_for(win_id)
   if not bs then return end
   local buf_id = bs.buffer.buf_id
   vim.api.nvim_buf_clear_namespace(buf_id, hl.TRUNCATION_NS_ID, 0, -1)
@@ -129,9 +139,9 @@ local function update_truncation_indicators()
   if not bs.table_data then return end
   local boundaries = table_fmt.column_boundaries(bs.table_data.columns_width)
 
-  local win_width = vim.api.nvim_win_get_width(state.win_id)
+  local win_width = vim.api.nvim_win_get_width(win_id)
   local leftcol = 0
-  vim.api.nvim_win_call(state.win_id, function()
+  vim.api.nvim_win_call(win_id, function()
     leftcol = vim.fn.winsaveview().leftcol
   end)
 
@@ -156,20 +166,15 @@ local function update_truncation_indicators()
 end
 
 
-local function is_open()
-  return state.win_id ~= nil and vim.api.nvim_win_is_valid(state.win_id)
-end
-
-local function teardown()
-  if state.scroll_autocmd_id then
-    pcall(vim.api.nvim_del_autocmd, state.scroll_autocmd_id)
-    state.scroll_autocmd_id = nil
+local function teardown(win_id)
+  local ac = state.autocmds[win_id]
+  if ac then
+    pcall(vim.api.nvim_del_autocmd, ac.scroll)
+    state.autocmds[win_id] = nil
   end
-  if state.close_autocmd_id then
-    pcall(vim.api.nvim_del_autocmd, state.close_autocmd_id)
-    state.close_autocmd_id = nil
+  for tab, wid in pairs(state.win_ids) do
+    if wid == win_id then state.win_ids[tab] = nil; break end
   end
-  state.win_id = nil
 end
 
 local function open_win(buf_id)
@@ -178,40 +183,55 @@ local function open_win(buf_id)
       and "botright vsplit"
       or  ("botright " .. opts.height .. "split")
   local prev_win = vim.api.nvim_get_current_win()
+  local tab      = vim.api.nvim_get_current_tabpage()
   vim.cmd(cmd)
-  state.win_id = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(state.win_id, buf_id)
+  local win_id = vim.api.nvim_get_current_win()
+  state.win_ids[tab] = win_id
+  vim.api.nvim_win_set_buf(win_id, buf_id)
 
-  vim.api.nvim_set_option_value("number",       false, { win = state.win_id })
-  vim.api.nvim_set_option_value("signcolumn",   "no",  { win = state.win_id })
-  vim.api.nvim_set_option_value("winfixheight", true,  { win = state.win_id })
-  vim.api.nvim_set_option_value("winfixwidth",  true,  { win = state.win_id })
-  vim.api.nvim_set_option_value("wrap",         false, { win = state.win_id })
-  vim.api.nvim_win_set_hl_ns(state.win_id, hl.NS_ID)
+  vim.api.nvim_set_option_value("number",       false, { win = win_id })
+  vim.api.nvim_set_option_value("signcolumn",   "no",  { win = win_id })
+  vim.api.nvim_set_option_value("winfixheight", true,  { win = win_id })
+  vim.api.nvim_set_option_value("winfixwidth",  true,  { win = win_id })
+  vim.api.nvim_set_option_value("wrap",         false, { win = win_id })
+  vim.api.nvim_win_set_hl_ns(win_id, hl.NS_ID)
 
-  state.scroll_autocmd_id = vim.api.nvim_create_autocmd("WinScrolled", {
-    pattern  = tostring(state.win_id),
-    callback = function() update_truncation_indicators() end,
-  })
-  state.close_autocmd_id = vim.api.nvim_create_autocmd("WinClosed", {
-    pattern  = tostring(state.win_id),
-    once     = true,
-    callback = function() teardown() end,
-  })
+  state.autocmds[win_id] = {
+    scroll = vim.api.nvim_create_autocmd("WinScrolled", {
+      pattern  = tostring(win_id),
+      callback = function() update_truncation_indicators(win_id) end,
+    }),
+    close = vim.api.nvim_create_autocmd("WinClosed", {
+      pattern  = tostring(win_id),
+      once     = true,
+      callback = function() teardown(win_id) end,
+    }),
+  }
   vim.api.nvim_set_current_win(prev_win)
 end
 
--- Open the results window if closed; otherwise just swap the buffer inside it.
+-- Open the results window for the current tab if closed; otherwise swap the buffer.
 local function ensure_win(buf_id)
-  if is_open() then
-    vim.api.nvim_win_set_buf(state.win_id, buf_id)
+  local tab    = vim.api.nvim_get_current_tabpage()
+  local win_id = state.win_ids[tab]
+  if win_id and vim.api.nvim_win_is_valid(win_id) then
+    vim.api.nvim_win_set_buf(win_id, buf_id)
   else
     open_win(buf_id)
   end
 end
 
-local function get_or_create_buf_state(conn_name, buf_title)
-  local existing = state.buffers[conn_name]
+local function src_buf_suffix(src_bufnr)
+  if not src_bufnr then return "" end
+  local name = vim.api.nvim_buf_get_name(src_bufnr)
+  if name ~= "" then
+    return " [" .. vim.fn.fnamemodify(name, ":t") .. "]"
+  end
+  return " #" .. src_bufnr
+end
+
+local function get_or_create_buf_state(src_bufnr, buf_title)
+  local existing = state.buffers[src_bufnr]
   if existing and existing.buffer:is_valid() then return existing end
 
   local buf = Buffer:new(buf_title, "belvedere_results", false, "nofile", "hide")
@@ -230,14 +250,11 @@ local function get_or_create_buf_state(conn_name, buf_title)
     duration_ms   = nil,
     page          = 1,
   }
-  state.buffers[conn_name] = bs
+  state.buffers[src_bufnr] = bs
 
   buf:set_keymap("n", "q", function()
-    if is_open() then
-      local win = state.win_id
-      teardown()
-      vim.api.nvim_win_close(win, true)
-    end
+    local win_id = vim.api.nvim_get_current_win()
+    pcall(vim.api.nvim_win_close, win_id, true)
   end, { desc = "Close results window", silent = true })
   buf:set_keymap("n", "L", function() scroll_columns(1)  end,
     { desc = "Scroll right one column", silent = true })
@@ -298,7 +315,6 @@ render_table = function(bs)
   local first = (bs.page - 1) * page_size + 1
   local last  = math.min(rows_ret, bs.page * page_size)
 
-  -- Build index map: vis column name → position in raw_columns
   local col_indices = {}
   for _, vc in ipairs(bs.vis_columns) do
     for i, rc in ipairs(bs.raw_columns) do
@@ -356,15 +372,16 @@ local function render_segments(bs)
 end
 
 
--- Set the active connection for subsequent show calls. Creates the buffer if needed.
--- `key` is the full composite connection key; the display name is derived from it.
-function M.set_conn_name(key, driver_label)
+-- Set the active source buffer for subsequent show calls. Creates the results
+-- buffer if needed. src_bufnr is the number of the buffer the query was run from.
+function M.set_conn_name(key, driver_label, src_bufnr)
   local display   = key and connections.conn_display_name(key) or nil
   local label     = display and (driver_label and (display .. " (" .. driver_label .. ")") or display)
-  local buf_title = label and (BUFNAME .. " [" .. label .. "]") or BUFNAME
-  local conn_key  = key or ""
-  get_or_create_buf_state(conn_key, buf_title)
-  state.active_conn = conn_key
+  local buf_title = (label and (BUFNAME .. " [" .. label .. "]") or BUFNAME)
+                    .. src_buf_suffix(src_bufnr)
+  local buf_key   = src_bufnr or 0
+  get_or_create_buf_state(buf_key, buf_title)
+  state.active_src = buf_key
 end
 
 function M.begin_batch(n)
@@ -407,7 +424,6 @@ end
 
 function M.show_results(columns, rows, rows_returned, rows_total, duration_ms)
   local bs = active_bs()
-  -- Reset vis_columns when the query returns a different schema.
   if not bs.raw_columns or not same_columns(bs.raw_columns, columns) then
     bs.vis_columns = vim.list_extend({}, columns)
   end
