@@ -57,20 +57,22 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
 
   if conn_key then require("belvedere").set_buf_conn(bufnr, conn_key) end
 
-  -- Reuse an existing window already showing this buffer.
-  local wins = vim.fn.win_findbuf(bufnr)
-  if #wins > 0 then vim.api.nvim_set_current_win(wins[1]); return end
-
-  -- Otherwise find a normal editing window.
-  for _, w in ipairs(vim.api.nvim_list_wins()) do
-    if vim.bo[vim.api.nvim_win_get_buf(w)].buftype == "" then
-      vim.api.nvim_set_current_win(w)
-      vim.api.nvim_set_current_buf(bufnr)
-      return
+  -- Snapshot sidebar widths before the split redistributes them.
+  local sidebar_widths = {}
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local b = vim.api.nvim_win_get_buf(w)
+    local name = vim.api.nvim_buf_get_name(b)
+    if name:match("^belvedere://") and vim.bo[b].buftype == "nofile" then
+      sidebar_widths[w] = vim.api.nvim_win_get_width(w)
     end
   end
+
   vim.cmd("leftabove vsplit")
   vim.api.nvim_set_current_buf(bufnr)
+
+  for w, width in pairs(sidebar_widths) do
+    if vim.api.nvim_win_is_valid(w) then vim.api.nvim_win_set_width(w, width) end
+  end
 end
 
 local function show_picker(entries_data, conn_key)
