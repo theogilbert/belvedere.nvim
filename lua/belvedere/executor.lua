@@ -6,6 +6,7 @@ local client  = require("belvedere.client")
 local config  = require("belvedere.config")
 local results = require("belvedere.ui.results")
 local gutter  = require("belvedere.ui.gutter")
+local log     = require("belvedere.log")
 
 -- Past-tense verb shown for DML statements, keyed by leading keyword.
 local DML_VERBS = {
@@ -102,10 +103,12 @@ local function execute(conn, sql, on_done, on_progress)
 end
 
 -- Run statements one after another, each appended to the batch view.
--- Each statement gets its own gutter mark created as it starts.
+-- Each statement gets its own gutter mark and log entry created as it starts.
 local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
-  local q = queries[idx]
-  local gh = (bufnr and first_line ~= nil)
+  local q           = queries[idx]
+  local source_line = (bufnr and first_line ~= nil) and (first_line + q.line) or nil
+  local log_id      = log.add(conn.key, bufnr, source_line, q.sql)
+  local gh          = (bufnr and first_line ~= nil)
       and gutter.show_running(bufnr, first_line + q.line) or nil
   execute(conn, q.sql, function(err, result)
     vim.schedule(function()
@@ -113,9 +116,26 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
         had_error = true
         results.append_batch_error(idx, #queries, err)
         gutter.show_error(gh)
+        log.update(conn.key, log_id, { err = err })
       else
         dispatch_batch_result(idx, #queries, result, q.sql)
         gutter.show_success(gh)
+        if result.rows_affected ~= nil then
+          log.update(conn.key, log_id, {
+            rows_affected = result.rows_affected,
+            verb          = detect_operation(q.sql),
+            duration_ms   = result.duration_ms,
+          })
+        else
+          local rows = result.rows or {}
+          log.update(conn.key, log_id, {
+            columns       = result.columns or {},
+            rows          = rows,
+            rows_returned = #rows,
+            rows_total    = result.rows_total,
+            duration_ms   = result.duration_ms,
+          })
+        end
       end
       if idx < #queries then
         run_batch(queries, conn, idx + 1, bufnr, first_line, had_error)
@@ -124,7 +144,7 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
   end)
 end
 
-local function run_single(conn, sql, gh)
+local function run_single(conn, sql, gh, conn_key, log_id)
   results.show_message("Executing…")
   execute(conn, sql,
     function(err, result)
@@ -132,9 +152,26 @@ local function run_single(conn, sql, gh)
         if err then
           results.show_error(err)
           gutter.show_error(gh)
+          log.update(conn_key, log_id, { err = err })
         else
           dispatch_result(result, sql)
           gutter.show_success(gh)
+          if result.rows_affected ~= nil then
+            log.update(conn_key, log_id, {
+              rows_affected = result.rows_affected,
+              verb          = detect_operation(sql),
+              duration_ms   = result.duration_ms,
+            })
+          else
+            local rows = result.rows or {}
+            log.update(conn_key, log_id, {
+              columns       = result.columns or {},
+              rows          = rows,
+              rows_returned = #rows,
+              rows_total    = result.rows_total,
+              duration_ms   = result.duration_ms,
+            })
+          end
         end
       end)
     end,
@@ -163,9 +200,10 @@ function M.run(conn, query, bufnr, first_line)
     results.begin_batch(#queries)
     run_batch(queries, conn, 1, bufnr, first_line, false)
   else
-    local sql = (queries and queries[1] and queries[1].sql) or query
-    local gh = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
-    run_single(conn, sql, gh)
+    local sql    = (queries and queries[1] and queries[1].sql) or query
+    local log_id = log.add(conn.key, bufnr, first_line, sql)
+    local gh     = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
+    run_single(conn, sql, gh, conn.key, log_id)
   end
 end
 

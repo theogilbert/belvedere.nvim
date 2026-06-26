@@ -116,6 +116,11 @@ vim.api.nvim_create_user_command("DbLoadQueries", function(_)
   db.load_query()
 end, {})
 
+-- :DbQueryLog  — open the query log for the current buffer's connection
+vim.api.nvim_create_user_command("DbQueryLog", function(_)
+  db.query_log()
+end, {})
+
 -- :DbStop
 vim.api.nvim_create_user_command("DbStop", function(_)
   db.stop()

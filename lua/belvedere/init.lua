@@ -244,6 +244,11 @@ function M.active_keys()
   return keys
 end
 
+-- Return the active conn record for a key, or nil.
+function M.get_conn(key)
+  return state.conns[key]
+end
+
 -- Return valid bufnrs whose associated connection matches {name}.
 function M.buffers_for(name)
   local result = {}
@@ -440,6 +445,17 @@ function M.load_query(conn_key)
     return
   end
   require("belvedere.ui.query_picker").open(conn_key)
+end
+
+function M.query_log(conn_key)
+  if not conn_key then
+    conn_key = state.buf_conns[vim.api.nvim_get_current_buf()]
+  end
+  if not conn_key then
+    vim.notify("belvedere: no connection associated with current buffer", vim.log.levels.WARN)
+    return
+  end
+  require("belvedere.ui.query_log").open(conn_key, state.conns[conn_key])
 end
 
 return M

@@ -1,6 +1,6 @@
 -- Panel listing all saved connections, grouped by driver then group.
 -- Keymaps: <CR> expand/collapse or connect, b jump to buffer, e edit, c clone, D delete,
---          n new connection, G new group, d disconnect, x explore, l load queries,
+--          n new connection, G new group, d disconnect, x explore, l load queries, L query log,
 --          K hover, ? driver help, R refresh, q close.
 local M = {}
 
@@ -436,6 +436,12 @@ local function on_load_query()
   end
 end
 
+local function on_query_log()
+  local entry = entry_at_cursor()
+  if not entry or entry.type ~= "conn" then return end
+  require("belvedere").query_log(entry.key)
+end
+
 function M.open()
   local db = require("belvedere")
   db.ensure_backend_with_caps(function()
@@ -475,6 +481,7 @@ function M.open()
     state.buffer:set_keymap("n", "d",       on_disconnect,  { nowait = true, silent = true, desc = "Disconnect",                group = "Session" })
     state.buffer:set_keymap("n", "x",       on_explore,     { nowait = true, silent = true, desc = "Open explorer",             group = "Session" })
     state.buffer:set_keymap("n", "l",       on_load_query,  { nowait = true, silent = true, desc = "Load saved queries",        group = "Session" })
+    state.buffer:set_keymap("n", "L",       on_query_log,   { nowait = true, silent = true, desc = "Query log",                 group = "Session" })
     state.buffer:set_keymap("n", hover_key, on_hover,      { nowait = true, silent = true, desc = "Hover details / error",     group = "Info" })
     state.buffer:set_keymap("n", "?",       on_help,       { nowait = true, silent = true, desc = "Driver help",               group = "Info" })
     state.buffer:set_keymap("n", "R",       refresh,       { nowait = true, silent = true, desc = "Refresh",                   group = "Info" })
