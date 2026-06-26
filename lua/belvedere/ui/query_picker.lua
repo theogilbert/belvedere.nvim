@@ -5,6 +5,11 @@ local queries = require("belvedere.queries")
 local SEP     = "\t"
 local KEY_SEP = "\1"   -- SOH: won't appear in scope keys or query names
 
+local COMMENT_PREFIX = { cypher = "//" }
+local function render_comment(filetype, text)
+  return (COMMENT_PREFIX[filetype] or "--") .. " " .. text
+end
+
 local function make_entry(e)
   local first_line = (e.content:match("^[^\n]*") or ""):gsub("\t", "  ")
   if #first_line > 100 then first_line = first_line:sub(1, 100) .. "…" end
@@ -40,9 +45,11 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
   if bufnr == -1 then
     bufnr = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_name(bufnr, bufname)
-    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, vim.split(e.content, "\n", { plain = true }))
-    vim.bo[bufnr].modifiable = false
     local ft = e.ext ~= "" and (vim.filetype.match({ filename = "q." .. e.ext }) or e.ext) or "sql"
+    local lines = vim.split(e.content, "\n", { plain = true })
+    table.insert(lines, 1, render_comment(ft, "NOTE: This buffer is editable, but changes will not update the saved query."))
+    table.insert(lines, 2, "")
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
     vim.bo[bufnr].filetype   = ft
     vim.bo[bufnr].bufhidden  = "hide"
     pcall(vim.treesitter.start, bufnr)
