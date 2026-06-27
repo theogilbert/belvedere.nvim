@@ -58,6 +58,7 @@
 "OR"        @keyword.operator
 "XOR"       @keyword.operator
 "NOT"       @keyword.operator
+"PRIOR"     @keyword.operator
 "IN"        @keyword.operator
 "BETWEEN"   @keyword.operator
 "LIKE"      @keyword.operator
@@ -82,6 +83,12 @@
 ; ─── RETURNING ───────────────────────────────────────────────────────────────
 
 "RETURNING" @keyword.return
+
+; ─── Oracle hierarchical query keywords ─────────────────────────────────────
+
+"CONNECT"  @keyword
+"NOCYCLE"  @keyword
+"SIBLINGS" @keyword
 
 ; ─── DQL keywords ────────────────────────────────────────────────────────────
 
