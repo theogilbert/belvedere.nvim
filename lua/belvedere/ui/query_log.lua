@@ -69,6 +69,7 @@ function M.open(conn_key, conn)
   -- Search input (editable; cursor protected from eating the "/ " prompt).
   local input_buf = vim.api.nvim_create_buf(false, true)
   vim.bo[input_buf].bufhidden = "wipe"
+  vim.bo[input_buf].complete  = ""   -- disable completion so <C-n>/<C-p> don't open a popup
   vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { SEARCH_PROMPT })
 
   -- Filtered entry list (read-only).
@@ -364,44 +365,51 @@ function M.open(conn_key, conn)
   end
 
   -- ── Keymaps ────────────────────────────────────────────────────────────────
+  -- Move the list cursor from inside the search bar.
+  local function list_move(delta)
+    if not vim.api.nvim_win_is_valid(list_win) then return end
+    local count = math.max(1, vim.api.nvim_buf_line_count(list_buf))
+    local row   = vim.api.nvim_win_get_cursor(list_win)[1]
+    local new   = math.max(1, math.min(count, row + delta))
+    if new ~= row then
+      vim.api.nvim_win_set_cursor(list_win, { new, 0 })
+      update_preview(line_map[new])
+    end
+  end
+
+  local function register_nav_keymaps()
+    if not vim.api.nvim_buf_is_valid(input_buf) then return end
+    for _, key in ipairs({ "<Down>", "<C-n>" }) do
+      vim.keymap.set({ "i", "n" }, key, function() list_move(1)  end,
+        { buffer = input_buf, nowait = true, silent = true })
+    end
+    for _, key in ipairs({ "<Up>", "<C-p>" }) do
+      vim.keymap.set({ "i", "n" }, key, function() list_move(-1) end,
+        { buffer = input_buf, nowait = true, silent = true })
+    end
+  end
+
+  -- Register now (overrides BufEnter-based plugins like nvim-cmp).
+  register_nav_keymaps()
+
+  -- Re-register after InsertEnter so any InsertEnter-based plugin that sets
+  -- buffer-local <C-n>/<C-p> keymaps gets overridden. vim.schedule defers
+  -- until all InsertEnter handlers have completed.
+  vim.api.nvim_create_autocmd("InsertEnter", {
+    group    = aug,
+    buffer   = input_buf,
+    once     = true,
+    callback = function() vim.schedule(register_nav_keymaps) end,
+  })
+
   -- Block <BS> from eating the "/ " prompt.
   vim.keymap.set("i", "<BS>", function()
     if vim.api.nvim_win_get_cursor(0)[2] <= SEARCH_PROMPT_LEN then return end
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<BS>", true, false, true), "n", false)
   end, { buffer = input_buf, nowait = true })
 
-  -- <CR> in input: move focus to the list.
+  -- <CR> in input: open the currently selected list entry.
   vim.keymap.set({ "i", "n" }, "<CR>", function()
-    vim.cmd("stopinsert")
-    if vim.api.nvim_win_is_valid(list_win) then vim.api.nvim_set_current_win(list_win) end
-  end, { buffer = input_buf, nowait = true, silent = true })
-
-  -- <Esc> in input: if filter is non-empty, clear it; otherwise close.
-  vim.keymap.set({ "i", "n" }, "<Esc>", function()
-    local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
-    local text = vim.trim(line:sub(SEARCH_PROMPT_LEN + 1))
-    if text ~= "" then
-      vim.cmd("stopinsert")
-      vim.api.nvim_buf_set_lines(input_buf, 0, 1, false, { SEARCH_PROMPT })
-      vim.api.nvim_win_set_cursor(input_win, { 1, SEARCH_PROMPT_LEN })
-      update_list("")
-    else
-      close()
-    end
-  end, { buffer = input_buf, nowait = true, silent = true })
-
-  -- "/" in list: jump back to input in insert mode.
-  vim.keymap.set("n", "/", function()
-    if vim.api.nvim_win_is_valid(input_win) then
-      vim.api.nvim_set_current_win(input_win)
-      vim.schedule(function() vim.cmd("startinsert!") end)
-    end
-  end, { buffer = list_buf, nowait = true, silent = true })
-
-  vim.keymap.set("n", "q",     close, { buffer = list_buf, nowait = true, silent = true })
-  vim.keymap.set("n", "<Esc>", close, { buffer = list_buf, nowait = true, silent = true })
-
-  vim.keymap.set("n", "<CR>", function()
     if not vim.api.nvim_win_is_valid(list_win) then return end
     local row   = vim.api.nvim_win_get_cursor(list_win)[1]
     local entry = line_map[row]
@@ -409,13 +417,11 @@ function M.open(conn_key, conn)
 
     close()
 
-    -- Jump to source buffer + line.
     if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
       local buf_wins = vim.tbl_filter(function(w)
         return vim.api.nvim_win_is_valid(w)
             and vim.api.nvim_win_get_config(w).relative == ""
       end, vim.fn.win_findbuf(entry.bufnr))
-
       if #buf_wins > 0 then
         vim.api.nvim_set_current_win(buf_wins[1])
       else
@@ -426,10 +432,8 @@ function M.open(conn_key, conn)
       end
     end
 
-    -- Restore result in the results window.
     local results_ui = require("belvedere.ui.results")
-    results_ui.set_conn_name(conn_key, conn and conn.driver_label)
-
+    results_ui.set_conn_name(conn_key, conn and conn.driver_label, entry.bufnr)
     if entry.status == "success" then
       local rows = rows_cache[entry.id] or log.load_rows(entry)
       results_ui.show_results(
@@ -439,7 +443,30 @@ function M.open(conn_key, conn)
     elseif entry.status == "error" then
       results_ui.show_error(entry.error_msg or "unknown error")
     end
-  end, { buffer = list_buf, nowait = true, silent = true })
+  end, { buffer = input_buf, nowait = true, silent = true })
+
+  -- <Esc> in input: if filter is non-empty, clear it; otherwise close.
+  -- Insert mode: no `nowait` so that terminal arrow-key sequences (e.g. \x1b[A for
+  -- <Up> over SSH) are not immediately consumed by the \x1b prefix before the rest
+  -- of the sequence arrives. Normal mode: nowait is safe.
+  local function esc_action()
+    local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
+    local text = vim.trim(line:sub(SEARCH_PROMPT_LEN + 1))
+    if text ~= "" then
+      vim.cmd("stopinsert")
+      vim.api.nvim_buf_set_lines(input_buf, 0, 1, false, { SEARCH_PROMPT })
+      vim.api.nvim_win_set_cursor(input_win, { 1, SEARCH_PROMPT_LEN })
+      update_list("")
+    else
+      close()
+    end
+  end
+  vim.keymap.set("i", "<Esc>", esc_action, { buffer = input_buf, silent = true })
+  vim.keymap.set("n", "<Esc>", esc_action, { buffer = input_buf, nowait = true, silent = true })
+
+  -- Fallback close if the user somehow focuses the list (e.g. mouse click).
+  vim.keymap.set("n", "q",     close, { buffer = list_buf, nowait = true, silent = true })
+  vim.keymap.set("n", "<Esc>", close, { buffer = list_buf, nowait = true, silent = true })
 
   -- Start in search mode.
   vim.schedule(function() vim.cmd("startinsert!") end)
