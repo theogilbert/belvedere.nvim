@@ -1,12 +1,11 @@
--- Splits a SQL string into statements and runs them against a connection,
--- dispatching each result (or batch section) to the results window.
 local M = {}
 
-local client  = require("belvedere.client")
-local config  = require("belvedere.config")
-local results = require("belvedere.ui.results")
-local gutter  = require("belvedere.ui.gutter")
-local log     = require("belvedere.log")
+local client    = require("belvedere.client")
+local config    = require("belvedere.config")
+local results   = require("belvedere.ui.results")
+local gutter    = require("belvedere.ui.gutter")
+local log       = require("belvedere.log")
+local ts_queries = require("belvedere.ts_queries")
 
 -- Past-tense verb shown for DML statements, keyed by leading keyword.
 local DML_VERBS = {
@@ -19,57 +18,6 @@ local DML_VERBS = {
 local function detect_operation(sql)
   local word = (vim.trim(sql):match("^(%a+)") or ""):lower()
   return DML_VERBS[word] or "affected"
-end
-
-local function is_only_comments(sql)
-  local stripped = sql:gsub("/%*.-%*/", ""):gsub("%-%-[^\n]*", "")
-  return vim.trim(stripped) == ""
-end
-
--- Returns the position of the next ";" that is outside of SQL comments,
--- or nil if none exists.
-local function next_real_semi(sql, from)
-  local pos = from
-  local n = #sql
-  while pos <= n do
-    local c = sql:sub(pos, pos)
-    if sql:sub(pos, pos + 1) == "--" then
-      local eol = sql:find("\n", pos + 2, true)
-      pos = eol and eol + 1 or n + 1
-    elseif sql:sub(pos, pos + 1) == "/*" then
-      local close = sql:find("*/", pos + 2, true)
-      pos = close and close + 2 or n + 1
-    elseif c == ";" then
-      return pos
-    else
-      pos = pos + 1
-    end
-  end
-  return nil
-end
-
--- Returns { { sql, line }, ... } where line is the 0-indexed offset of each
--- statement's first non-whitespace character within the original sql string.
-local function split_queries(sql)
-  -- TODO use treesitter parsers for that.
-  local stmts = {}
-  local line_offset = 0
-  local pos = 1
-  while pos <= #sql do
-    local semicolon_pos = next_real_semi(sql, pos)
-    local chunk = semicolon_pos and sql:sub(pos, semicolon_pos - 1) or sql:sub(pos)
-    local before_trim = chunk:match("^(%s*)") or ""
-    local stmt_line = line_offset
-    for _ in before_trim:gmatch("\n") do stmt_line = stmt_line + 1 end
-    local trimmed = vim.trim(chunk)
-    if trimmed ~= "" and not is_only_comments(trimmed) then
-      table.insert(stmts, { sql = trimmed, line = stmt_line })
-    end
-    for _ in chunk:gmatch("\n") do line_offset = line_offset + 1 end
-    if not semicolon_pos then break end
-    pos = semicolon_pos + 1
-  end
-  return stmts
 end
 
 local function is_mongo(driver)
@@ -186,35 +134,39 @@ local function run_single(conn, sql, gh, conn_key, log_id)
   gutter.register_request(gh, req_id)
 end
 
---- Execute `query` against `conn`.  Multiple ;-separated statements are run as
---- a labelled batch, unless the driver is document-oriented (MongoDB).
+--- Execute `query` against `conn`.
+--- When treesitter is available and multiple statements are found in the buffer
+--- range, they are run as a labelled batch.  MongoDB is always single-statement.
 --- @param conn table             { conn_id, driver }
 --- @param query string
---- @param bufnr integer|nil      source buffer (for gutter marks)
+--- @param bufnr integer|nil      source buffer (for gutter marks and splitting)
 --- @param first_line integer|nil 0-indexed first line of the query in bufnr
---- @param prebuilt_queries table|nil  pre-split { { sql, line } } list; skips split_queries when set
-function M.run(conn, query, bufnr, first_line, prebuilt_queries)
+function M.run(conn, query, bufnr, first_line)
   results.set_conn_name(conn.key, conn.driver_label, bufnr)
   local ft = (bufnr and vim.api.nvim_buf_is_valid(bufnr)) and vim.bo[bufnr].filetype or ""
   results.set_query(query, ft)
 
-  local queries = prebuilt_queries
-  if not queries and not is_mongo(conn.driver) and next_real_semi(query, 1) then
-    queries = split_queries(query)
+  local queries
+  if not is_mongo(conn.driver) and bufnr and first_line ~= nil then
+    local nlines = select(2, query:gsub("\n", ""))
+    local stmts  = ts_queries.statements_in_range(bufnr, first_line, first_line + nlines)
+    if stmts and #stmts > 1 then
+      queries = {}
+      for _, s in ipairs(stmts) do
+        table.insert(queries, { sql = s.text, line = s.start_row - first_line })
+      end
+    end
   end
 
   if queries and #queries > 1 then
     results.begin_batch(#queries)
     run_batch(queries, conn, 1, bufnr, first_line, false)
   else
-    local sql    = (queries and queries[1] and queries[1].sql) or query
+    local sql    = query
     local log_id = log.add(conn.key, bufnr, first_line, sql)
     local gh     = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
     run_single(conn, sql, gh, conn.key, log_id)
   end
 end
-
-M._split_queries    = split_queries
-M._is_only_comments = is_only_comments
 
 return M

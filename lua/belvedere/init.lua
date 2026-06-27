@@ -275,8 +275,8 @@ function M.buffers_for(name)
 end
 
 
-local function execute_sql(sql, bufnr, first_line, prebuilt_queries)
-  if not prebuilt_queries and (not sql or sql == "") then
+local function execute_sql(sql, bufnr, first_line)
+  if not sql or sql == "" then
     vim.notify("belvedere: no SQL to execute", vim.log.levels.WARN)
     return
   end
@@ -289,7 +289,7 @@ local function execute_sql(sql, bufnr, first_line, prebuilt_queries)
     end
     return
   end
-  executor.run(conn, sql or "", bufnr, first_line, prebuilt_queries)
+  executor.run(conn, sql, bufnr, first_line)
 end
 
 function M.execute()
@@ -301,22 +301,14 @@ function M.execute()
     local sr  = math.min(vsr, ver) - 1  -- 0-indexed
     local er  = math.max(vsr, ver) - 1
 
-    -- Use treesitter to detect multiple distinct statements in the selection.
+    -- Flash all detected statements so the user sees what will run.
     local ts_stmts = ts_queries.statements_in_range(bufnr, sr, er)
     if ts_stmts and #ts_stmts > 1 then
       local first_s = ts_stmts[1]
       local last_s  = ts_stmts[#ts_stmts]
       flash_range(bufnr, first_s.start_row, first_s.start_col, last_s.end_row, last_s.end_col)
-      local first = first_s.start_row
-      local queries = {}
-      for _, s in ipairs(ts_stmts) do
-        table.insert(queries, { sql = s.text, line = s.start_row - first })
-      end
-      execute_sql(nil, bufnr, first, queries)
-      return
     end
 
-    -- Single statement or no treesitter — fall back to raw selection text.
     local sql = selection.get_selection()
     if not sql or sql == "" then
       vim.notify("belvedere: empty selection", vim.log.levels.WARN)
