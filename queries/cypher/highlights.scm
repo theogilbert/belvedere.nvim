@@ -4,6 +4,9 @@
 ; ── Clause keywords ──────────────────────────────────────────────────────────
 
 [
+  (kw_explain)
+  (kw_profile)
+  (kw_index)
   (kw_match)
   (kw_optional)
   (kw_create)
@@ -34,6 +37,8 @@
   (kw_as)
   (kw_distinct)
   (kw_in)
+  (kw_for)
+  (kw_if)
 ] @keyword
 
 ; ── Sorting direction ─────────────────────────────────────────────────────────
