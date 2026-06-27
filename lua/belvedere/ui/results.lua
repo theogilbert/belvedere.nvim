@@ -51,7 +51,18 @@ local function rows_affected_msg(n, verb)
 end
 
 local function format_duration(ms)
-  return ("%.3f"):format(ms / 1000):gsub("0+$", ""):gsub("%.$", "") .. "s"
+  local total_s = ms / 1000
+  if total_s >= 3600 then
+    local h = math.floor(total_s / 3600)
+    local m = math.floor((total_s % 3600) / 60)
+    return ("%dh %dm"):format(h, m)
+  elseif total_s >= 60 then
+    local m = math.floor(total_s / 60)
+    local s = math.floor(total_s % 60)
+    return ("%dm %ds"):format(m, s)
+  else
+    return ("%.3f"):format(total_s):gsub("0+$", ""):gsub("%.$", "") .. "s"
+  end
 end
 
 
