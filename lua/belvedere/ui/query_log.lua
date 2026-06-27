@@ -461,10 +461,10 @@ function M.open(conn_key, conn)
   -- <Up> over SSH) are not immediately consumed by the \x1b prefix before the rest
   -- of the sequence arrives. Normal mode: nowait is safe.
   local function esc_action()
+    vim.cmd("stopinsert")  -- always leave insert mode; keymap suppresses the default <Esc> behaviour
     local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
     local text = vim.trim(line:sub(SEARCH_PROMPT_LEN + 1))
     if text ~= "" then
-      vim.cmd("stopinsert")
       vim.api.nvim_buf_set_lines(input_buf, 0, 1, false, { SEARCH_PROMPT })
       vim.api.nvim_win_set_cursor(input_win, { 1, SEARCH_PROMPT_LEN })
       update_list("")
