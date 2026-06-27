@@ -194,6 +194,8 @@ end
 --- @param first_line integer|nil  0-indexed first line of the query in bufnr
 function M.run(conn, query, bufnr, first_line)
   results.set_conn_name(conn.key, conn.driver_label, bufnr)
+  local ft = (bufnr and vim.api.nvim_buf_is_valid(bufnr)) and vim.bo[bufnr].filetype or ""
+  results.set_query(query, ft)
 
   local queries
   if not is_mongo(conn.driver) and next_real_semi(query, 1) then

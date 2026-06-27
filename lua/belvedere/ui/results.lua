@@ -241,6 +241,43 @@ local function src_buf_suffix(src_bufnr)
   return " #" .. src_bufnr
 end
 
+local function show_source_query(bs)
+  if not bs.query then return end
+  local lines = vim.split(bs.query, "\n", { plain = true })
+  local fbuf  = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
+  vim.bo[fbuf].modifiable = false
+  vim.bo[fbuf].bufhidden  = "wipe"
+  if bs.query_ft and bs.query_ft ~= "" then
+    vim.bo[fbuf].filetype = bs.query_ft
+    pcall(vim.treesitter.start, fbuf)
+  end
+  local ui     = vim.api.nvim_list_uis()[1]
+  local width  = math.min(math.max(20, math.floor(ui.width * 0.6)), 120)
+  local height = math.min(#lines + 2, math.floor(ui.height * 0.6))
+  local row    = math.floor((ui.height - height) / 2)
+  local col    = math.floor((ui.width  - width)  / 2)
+  local fwin   = vim.api.nvim_open_win(fbuf, true, {
+    relative  = "editor",
+    width     = width,
+    height    = height,
+    row       = row,
+    col       = col,
+    style     = "minimal",
+    border    = "rounded",
+    title     = " Source query ",
+    title_pos = "center",
+  })
+  vim.api.nvim_set_option_value("wrap",       false, { win = fwin })
+  vim.api.nvim_set_option_value("number",     false, { win = fwin })
+  vim.api.nvim_set_option_value("signcolumn", "no",  { win = fwin })
+  for _, k in ipairs({ "q", "<Esc>" }) do
+    vim.keymap.set("n", k, function()
+      if vim.api.nvim_win_is_valid(fwin) then vim.api.nvim_win_close(fwin, true) end
+    end, { buffer = fbuf, nowait = true, silent = true })
+  end
+end
+
 local function get_or_create_buf_state(src_bufnr, buf_title)
   local existing = state.buffers[src_bufnr]
   if existing and existing.buffer:is_valid() then return existing end
@@ -260,6 +297,8 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
     rows_total    = nil,
     duration_ms   = nil,
     page          = 1,
+    query         = nil,
+    query_ft      = nil,
   }
   state.buffers[src_bufnr] = bs
 
@@ -292,6 +331,8 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
     bs.page = bs.page - 1
     render_table(bs)
   end, { desc = "Previous page", silent = true })
+  buf:set_keymap("n", "gq", function() show_source_query(bs) end,
+    { desc = "Show source query", silent = true })
 
   return bs
 end
@@ -385,6 +426,14 @@ end
 
 -- Set the active source buffer for subsequent show calls. Creates the results
 -- buffer if needed. src_bufnr is the number of the buffer the query was run from.
+function M.set_query(sql, filetype)
+  local bs = active_bs()
+  if bs then
+    bs.query    = sql
+    bs.query_ft = filetype
+  end
+end
+
 function M.set_conn_name(key, driver_label, src_bufnr)
   local display   = key and connections.conn_display_name(key) or nil
   local label     = display and (driver_label and (display .. " (" .. driver_label .. ")") or display)
