@@ -19,6 +19,8 @@ local M = {}
 
 local config = require("belvedere.config")
 
+local _cache = nil  -- cached parsed file contents; nil means not yet loaded
+
 -- Internal key: server\0driver\0group\0name  (NUL as separator, never in user strings).
 function M.conn_key(server, driver, group, name)
   return (server or "") .. "\0" .. (driver or "") .. "\0" .. (group or "") .. "\0" .. name
@@ -64,9 +66,10 @@ M.prompt_password = prompt_password
 local function file_path() return config.options.connections_file end
 
 local function read_data()
+  if _cache then return _cache end
   local path = file_path()
   local ok, lines = pcall(vim.fn.readfile, path)
-  if not ok or #lines == 0 then return {} end
+  if not ok or #lines == 0 then _cache = {}; return _cache end
   local ok2, parsed = pcall(vim.json.decode, table.concat(lines, "\n"))
   if not ok2 or type(parsed) ~= "table" then
     vim.notify(
@@ -77,7 +80,8 @@ local function read_data()
     )
     return nil
   end
-  return parsed
+  _cache = parsed
+  return _cache
 end
 
 local function write_data(data)
@@ -85,6 +89,11 @@ local function write_data(data)
   vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
   vim.fn.writefile({ vim.json.encode(data) }, path)
   vim.uv.fs_chmod(path, tonumber("600", 8))
+  _cache = data
+end
+
+function M.invalidate()
+  _cache = nil
 end
 
 -- Return the full file data.

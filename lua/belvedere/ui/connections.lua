@@ -443,6 +443,7 @@ local function on_query_log()
 end
 
 function M.open()
+  connections.invalidate()
   local db = require("belvedere")
   db.ensure_backend_with_caps(function()
     if state.panel_loading then
