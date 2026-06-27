@@ -35,8 +35,8 @@ function M.statement_at_cursor(bufnr)
   local text = node_text(stmt, bufnr)
   if text == "" then return nil end
 
-  local start_row = stmt:range()
-  return { text = text, start_row = start_row }
+  local sr, sc, er, ec = stmt:range()
+  return { text = text, start_row = sr, start_col = sc, end_row = er, end_col = ec }
 end
 
 -- Returns a list of { text, start_row } for every top-level statement whose range
@@ -54,7 +54,7 @@ function M.statements_in_range(bufnr, start_row, end_row)
       if sr <= end_row and er >= start_row then
         local text = node_text(node, bufnr)
         if text ~= "" then
-          table.insert(stmts, { text = text, start_row = sr })
+          table.insert(stmts, { text = text, start_row = sr, start_col = sc, end_row = er, end_col = ec })
         end
       end
     end

@@ -12,6 +12,18 @@ local selection         = require("belvedere.selection")
 local gutter            = require("belvedere.ui.gutter")
 local ts_queries        = require("belvedere.ts_queries")
 
+local FLASH_NS = vim.api.nvim_create_namespace("BelvedereFlash")
+
+local function flash_range(bufnr, sr, sc, er, ec)
+  vim.api.nvim_buf_clear_namespace(bufnr, FLASH_NS, 0, -1)
+  vim.highlight.range(bufnr, FLASH_NS, "BelvedereQueryFlash", { sr, sc }, { er, ec })
+  vim.defer_fn(function()
+    if vim.api.nvim_buf_is_valid(bufnr) then
+      vim.api.nvim_buf_clear_namespace(bufnr, FLASH_NS, 0, -1)
+    end
+  end, 200)
+end
+
 -- Session state.
 --   conns:     connections opened this session  { [name]  = { conn_id, driver } }
 --   buf_conns: connection each buffer queries    { [bufnr] = name }
@@ -292,7 +304,10 @@ function M.execute()
     -- Use treesitter to detect multiple distinct statements in the selection.
     local ts_stmts = ts_queries.statements_in_range(bufnr, sr, er)
     if ts_stmts and #ts_stmts > 1 then
-      local first = ts_stmts[1].start_row
+      local first_s = ts_stmts[1]
+      local last_s  = ts_stmts[#ts_stmts]
+      flash_range(bufnr, first_s.start_row, first_s.start_col, last_s.end_row, last_s.end_col)
+      local first = first_s.start_row
       local queries = {}
       for _, s in ipairs(ts_stmts) do
         table.insert(queries, { sql = s.text, line = s.start_row - first })
@@ -312,6 +327,7 @@ function M.execute()
     -- No selection: use treesitter to find the outermost statement at cursor.
     local ts_stmt = ts_queries.statement_at_cursor(bufnr)
     if ts_stmt then
+      flash_range(bufnr, ts_stmt.start_row, ts_stmt.start_col, ts_stmt.end_row, ts_stmt.end_col)
       execute_sql(ts_stmt.text, bufnr, ts_stmt.start_row)
       return
     end
