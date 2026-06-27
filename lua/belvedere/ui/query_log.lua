@@ -278,9 +278,9 @@ function M.open(conn_key, conn)
     if filter_text == "" then
       filtered = entries
     else
-      local lower = filter_text:lower()
       for _, e in ipairs(entries) do
-        if e.sql:lower():find(lower, 1, true) then
+        local ok, m = pcall(vim.fn.match, e.sql, "\\c" .. filter_text)
+        if ok and m >= 0 then
           table.insert(filtered, e)
         end
       end
