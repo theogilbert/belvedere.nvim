@@ -148,12 +148,19 @@ function M.run(conn, query, bufnr, first_line)
 
   local queries
   if not is_mongo(conn.driver) and bufnr and first_line ~= nil then
-    local nlines = select(2, query:gsub("\n", ""))
-    local stmts  = ts_queries.statements_in_range(bufnr, first_line, first_line + nlines)
+    local nlines   = select(2, query:gsub("\n", ""))
+    local end_row  = first_line + nlines
+    local stmts    = ts_queries.statements_in_range(bufnr, first_line, end_row)
     if stmts and #stmts > 1 then
-      queries = {}
-      for _, s in ipairs(stmts) do
-        table.insert(queries, { sql = s.text, line = s.start_row - first_line })
+      local first_s = stmts[1]
+      local last_s  = stmts[#stmts]
+      -- Only split when all statements are fully contained in the queried range.
+      -- end_row is exclusive in treesitter, so allow off-by-one vs end_row.
+      if first_s.start_row >= first_line and last_s.end_row <= end_row + 1 then
+        queries = {}
+        for _, s in ipairs(stmts) do
+          table.insert(queries, { sql = s.text, line = s.start_row - first_line })
+        end
       end
     end
   end

@@ -16,7 +16,12 @@ local FLASH_NS = vim.api.nvim_create_namespace("BelvedereFlash")
 
 local function flash_range(bufnr, sr, sc, er, ec)
   vim.api.nvim_buf_clear_namespace(bufnr, FLASH_NS, 0, -1)
-  vim.highlight.range(bufnr, FLASH_NS, "BelvedereQueryFlash", { sr, sc }, { er, ec })
+  vim.api.nvim_buf_set_extmark(bufnr, FLASH_NS, sr, sc, {
+    end_row  = er,
+    end_col  = ec,
+    hl_group = "BelvedereQueryFlash",
+    priority = 200,
+  })
   vim.defer_fn(function()
     if vim.api.nvim_buf_is_valid(bufnr) then
       vim.api.nvim_buf_clear_namespace(bufnr, FLASH_NS, 0, -1)
@@ -301,12 +306,15 @@ function M.execute()
     local sr  = math.min(vsr, ver) - 1  -- 0-indexed
     local er  = math.max(vsr, ver) - 1
 
-    -- Flash all detected statements so the user sees what will run.
+    -- Flash when the selection fully covers 2+ distinct statements.
     local ts_stmts = ts_queries.statements_in_range(bufnr, sr, er)
     if ts_stmts and #ts_stmts > 1 then
       local first_s = ts_stmts[1]
       local last_s  = ts_stmts[#ts_stmts]
-      flash_range(bufnr, first_s.start_row, first_s.start_col, last_s.end_row, last_s.end_col)
+      -- end_row is exclusive in treesitter, so allow off-by-one vs er
+      if first_s.start_row >= sr and last_s.end_row <= er + 1 then
+        flash_range(bufnr, first_s.start_row, first_s.start_col, last_s.end_row, last_s.end_col)
+      end
     end
 
     local sql = selection.get_selection()
