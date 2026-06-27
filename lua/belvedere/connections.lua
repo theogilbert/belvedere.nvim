@@ -343,16 +343,23 @@ function M.pick(caps, active_set, filetype, callback)
     rank_map[d.driver] = { rank = rank, idx = i }
   end
 
-  -- Collect drivers that have at least one connection.
-  local driver_ids = {}
+  -- Build label map from caps for drivers not yet in server_data.
+  local caps_label = {}
+  for _, d in ipairs(caps.drivers or {}) do
+    caps_label[d.driver] = d.label or d.driver
+  end
+
+  -- Collect all known drivers: those with saved connections plus all caps drivers.
+  local driver_id_set = {}
   for driver_id, driver_data in pairs(server_data) do
     for _, group_conns in pairs(driver_data.groups or {}) do
-      if next(group_conns) then
-        table.insert(driver_ids, driver_id)
-        break
-      end
+      if next(group_conns) then driver_id_set[driver_id] = true; break end
     end
   end
+  for _, d in ipairs(caps.drivers or {}) do
+    driver_id_set[d.driver] = true
+  end
+  local driver_ids = vim.tbl_keys(driver_id_set)
   table.sort(driver_ids, function(a, b)
     local ra = rank_map[a] or { rank = 2, idx = 999 }
     local rb = rank_map[b] or { rank = 2, idx = 999 }
@@ -468,7 +475,7 @@ function M.pick(caps, active_set, filetype, callback)
 
   local driver_items = {}
   for _, driver_id in ipairs(driver_ids) do
-    local label = (server_data[driver_id] or {}).label or driver_id
+    local label = (server_data[driver_id] or {}).label or caps_label[driver_id] or driver_id
     table.insert(driver_items, { driver_id = driver_id, label = label })
   end
 
