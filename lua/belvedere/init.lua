@@ -116,10 +116,11 @@ function M.connect(name)
       M._do_connect(resolved_key, params_with_pw, after_connect)
     end)
   else
+    local ft = vim.bo[bufnr].filetype
     M.ensure_backend_with_caps(function(caps)
       local active_set = {}
       for _, k in ipairs(M.active_keys()) do active_set[k] = true end
-      connections.pick(caps, active_set, function(picked_name, params)
+      connections.pick(caps, active_set, ft, function(picked_name, params)
         if not picked_name then return end
         M._do_connect(picked_name, params, after_connect)
       end)

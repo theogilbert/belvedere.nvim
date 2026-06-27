@@ -317,9 +317,31 @@ local function pick_group(server, driver, callback)
   end)
 end
 
-function M.pick(caps, active_set, callback)
+-- Maps protocol language identifiers (from the server's Language enum) to Vim
+-- filetypes.  This is the only place that knows about Vim-specific filetype names.
+local LANGUAGE_TO_FT = {
+  sql    = "sql",
+  cypher = "cypher",
+}
+
+function M.pick(caps, active_set, filetype, callback)
   local server      = caps.server or ""
   local server_data = M.load(server)
+
+  -- Build a rank map from caps so driver ordering is data-driven, not hardcoded.
+  -- rank 1 = one of the driver's languages maps to the current filetype,
+  -- rank 2 = generic driver (no declared languages),
+  -- rank 3 = specialty driver for a different filetype.
+  -- idx preserves the server's declared order as a tiebreaker within a rank.
+  local rank_map = {}
+  for i, d in ipairs(caps.drivers or {}) do
+    local langs = d.languages or {}
+    local rank = #langs == 0 and 2 or 3
+    for _, lang in ipairs(langs) do
+      if LANGUAGE_TO_FT[lang] == filetype then rank = 1; break end
+    end
+    rank_map[d.driver] = { rank = rank, idx = i }
+  end
 
   -- Collect drivers that have at least one connection.
   local driver_ids = {}
@@ -331,7 +353,13 @@ function M.pick(caps, active_set, callback)
       end
     end
   end
-  table.sort(driver_ids)
+  table.sort(driver_ids, function(a, b)
+    local ra = rank_map[a] or { rank = 2, idx = 999 }
+    local rb = rank_map[b] or { rank = 2, idx = 999 }
+    if ra.rank ~= rb.rank then return ra.rank < rb.rank end
+    if ra.idx  ~= rb.idx  then return ra.idx  < rb.idx  end
+    return a < b
+  end)
 
   local function do_pick_conn(driver_id, group)
     local driver_data = server_data[driver_id] or {}
