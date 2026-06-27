@@ -26,6 +26,10 @@ M.defaults = {
     hover_key = "K",
   },
 
+  -- When a driver has at most this many connections total, skip the group step
+  -- and show all connections as "group/name" in a flat list.
+  flat_conn_threshold = 5,
+
   -- Results window options.
   results = {
     split     = "below",  -- "below" | "right"

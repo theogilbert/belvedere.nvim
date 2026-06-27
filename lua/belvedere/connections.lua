@@ -406,6 +406,42 @@ function M.pick(caps, active_set, filetype, callback)
       return
     end
 
+    -- Count total connections across all groups.
+    local total = 0
+    for _, g in ipairs(groups) do
+      total = total + vim.tbl_count((driver_data.groups or {})[g] or {})
+    end
+
+    local threshold = config.options.flat_conn_threshold or 5
+    if total <= threshold then
+      -- Flat list: show every connection as "group/name", sorted by display name.
+      local items = {}
+      for _, g in ipairs(groups) do
+        local group_conns = (driver_data.groups or {})[g] or {}
+        for conn_name, params in pairs(group_conns) do
+          local key   = M.conn_key(server, driver_id, g, conn_name)
+          local label = M.conn_display_name(key)
+          if active_set[key] then label = label .. "  [connected]" end
+          table.insert(items, { key = key, params = params, label = label })
+        end
+      end
+      table.sort(items, function(a, b) return a.label < b.label end)
+      table.insert(items, { key = "[+ New connection]" })
+
+      vim.ui.select(items, {
+        prompt      = "Connection:",
+        format_item = function(item) return item.label or item.key end,
+      }, function(choice)
+        if not choice then callback(nil) return end
+        if not choice.params then M.create(caps, callback) return end
+        prompt_password(choice.params, function(params)
+          if not params then callback(nil) return end
+          callback(choice.key, params)
+        end)
+      end)
+      return
+    end
+
     local group_items = {}
     for _, g in ipairs(groups) do
       table.insert(group_items, { name = g, label = g ~= "" and g or "[No group]" })
