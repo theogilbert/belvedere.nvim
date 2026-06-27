@@ -428,15 +428,31 @@ function M.open(conn_key, conn)
 
     close()
 
+    -- Resolve source buffer: valid in-session bufnr takes priority; fall back to
+    -- source_file for entries loaded from a previous session.
+    local target_buf
     if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
+      target_buf = entry.bufnr
+    elseif entry.source_file and entry.source_file ~= "" then
+      local bn = vim.fn.bufnr(entry.source_file)
+      if bn > 0 then
+        target_buf = bn
+      else
+        vim.cmd("edit " .. vim.fn.fnameescape(entry.source_file))
+        if entry.source_line then
+          pcall(vim.api.nvim_win_set_cursor, 0, { entry.source_line + 1, 0 })
+        end
+      end
+    end
+    if target_buf then
       local buf_wins = vim.tbl_filter(function(w)
         return vim.api.nvim_win_is_valid(w)
             and vim.api.nvim_win_get_config(w).relative == ""
-      end, vim.fn.win_findbuf(entry.bufnr))
+      end, vim.fn.win_findbuf(target_buf))
       if #buf_wins > 0 then
         vim.api.nvim_set_current_win(buf_wins[1])
       else
-        vim.api.nvim_set_current_buf(entry.bufnr)
+        vim.api.nvim_set_current_buf(target_buf)
       end
       if entry.source_line then
         vim.api.nvim_win_set_cursor(0, { entry.source_line + 1, 0 })
