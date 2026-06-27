@@ -34,6 +34,15 @@ local function on_stdout(_, data, _)
 end
 
 
+local function strip_nil(v)
+  if v == vim.NIL then return nil end
+  if type(v) ~= "table" then return v end
+  for k, val in pairs(v) do
+    v[k] = strip_nil(val)
+  end
+  return v
+end
+
 function M._dispatch(msg)
   local id = msg.id
   if id == nil then return end
@@ -48,9 +57,7 @@ function M._dispatch(msg)
   if err and err ~= vim.NIL then
     entry.cb(err, nil)
   else
-    local result = msg.result
-    if result == vim.NIL then result = nil end
-    entry.cb(nil, result)
+    entry.cb(nil, strip_nil(msg.result))
   end
 end
 
