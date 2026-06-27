@@ -334,11 +334,23 @@ Returns documentation for a specific driver as a markdown string. Clients should
 
 Each entry in the `capabilities.drivers` array:
 
-| Field    | Type                              | Description                                     |
-|----------|-----------------------------------|-------------------------------------------------|
-| `driver` | string                            | Driver identifier; passed as `driver` in `connect.params` |
-| `label`  | string                            | Human-readable display name (e.g. `"SQLite"`, `"SQL Server"`) |
-| `params` | array of [DriverParam](#driverparam) | Connection parameters, in display order |
+| Field       | Type                              | Description                                     |
+|-------------|-----------------------------------|-------------------------------------------------|
+| `driver`    | string                            | Driver identifier; passed as `driver` in `connect.params` |
+| `label`     | string                            | Human-readable display name (e.g. `"SQLite"`, `"SQL Server"`) |
+| `params`    | array of [DriverParam](#driverparam) | Connection parameters, in display order      |
+| `languages` | array of [Language](#language)    | Query languages this driver supports. Empty when the driver has no language affinity. |
+
+## Language
+
+String enum of standard query-language identifiers used in `Driver.languages`:
+
+| Value      | Language                |
+|------------|-------------------------|
+| `"sql"`    | Structured Query Language (SQL) |
+| `"cypher"` | Cypher graph query language (Neo4j) |
+
+Mapping these to editor-specific concepts (e.g. Vim filetypes) is the client's responsibility.
 
 ## DriverParam
 
