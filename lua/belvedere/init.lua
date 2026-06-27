@@ -10,6 +10,7 @@ local conn_label        = require("belvedere.ui.conn_label")
 local connections_panel = require("belvedere.ui.connections")
 local selection         = require("belvedere.selection")
 local gutter            = require("belvedere.ui.gutter")
+local ts_queries        = require("belvedere.ts_queries")
 
 -- Session state.
 --   conns:     connections opened this session  { [name]  = { conn_id, driver } }
@@ -262,8 +263,8 @@ function M.buffers_for(name)
 end
 
 
-local function execute_sql(sql, bufnr, first_line)
-  if not sql or sql == "" then
+local function execute_sql(sql, bufnr, first_line, prebuilt_queries)
+  if not prebuilt_queries and (not sql or sql == "") then
     vim.notify("belvedere: no SQL to execute", vim.log.levels.WARN)
     return
   end
@@ -276,30 +277,53 @@ local function execute_sql(sql, bufnr, first_line)
     end
     return
   end
-  executor.run(conn, sql, bufnr, first_line)
+  executor.run(conn, sql or "", bufnr, first_line, prebuilt_queries)
 end
 
 function M.execute()
   local bufnr = vim.api.nvim_get_current_buf()
-  local sql, first_line
+
   if selection.is_in_visual_mode() then
-    sql = selection.get_selection()
+    local vsr = vim.fn.getpos("v")[2]
+    local ver = vim.fn.getpos(".")[2]
+    local sr  = math.min(vsr, ver) - 1  -- 0-indexed
+    local er  = math.max(vsr, ver) - 1
+
+    -- Use treesitter to detect multiple distinct statements in the selection.
+    local ts_stmts = ts_queries.statements_in_range(bufnr, sr, er)
+    if ts_stmts and #ts_stmts > 1 then
+      local first = ts_stmts[1].start_row
+      local queries = {}
+      for _, s in ipairs(ts_stmts) do
+        table.insert(queries, { sql = s.text, line = s.start_row - first })
+      end
+      execute_sql(nil, bufnr, first, queries)
+      return
+    end
+
+    -- Single statement or no treesitter — fall back to raw selection text.
+    local sql = selection.get_selection()
     if not sql or sql == "" then
       vim.notify("belvedere: empty selection", vim.log.levels.WARN)
       return
     end
-    local sr = vim.fn.getpos("v")[2]
-    local er = vim.fn.getpos(".")[2]
-    first_line = math.min(sr, er) - 1
+    execute_sql(sql, bufnr, sr)
   else
-    sql = vim.api.nvim_get_current_line()
+    -- No selection: use treesitter to find the outermost statement at cursor.
+    local ts_stmt = ts_queries.statement_at_cursor(bufnr)
+    if ts_stmt then
+      execute_sql(ts_stmt.text, bufnr, ts_stmt.start_row)
+      return
+    end
+
+    -- Treesitter unavailable — fall back to the current line.
+    local sql = vim.api.nvim_get_current_line()
     if vim.trim(sql) == "" then
       vim.notify("belvedere: current line is empty", vim.log.levels.WARN)
       return
     end
-    first_line = vim.api.nvim_win_get_cursor(0)[1] - 1
+    execute_sql(sql, bufnr, vim.api.nvim_win_get_cursor(0)[1] - 1)
   end
-  execute_sql(sql, bufnr, first_line)
 end
 
 function M.execute_range(line1, line2)
