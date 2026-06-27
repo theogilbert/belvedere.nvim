@@ -182,8 +182,19 @@ function M.open(conn_key, conn)
   end
 
   local function set_buf_lines(buf, lines)
+    -- nvim_buf_set_lines rejects items that contain \n; flatten them.
+    local flat = {}
+    for _, l in ipairs(lines) do
+      if l:find("\n", 1, true) then
+        for _, sub in ipairs(vim.split(l, "\n", { plain = true })) do
+          flat[#flat + 1] = sub
+        end
+      else
+        flat[#flat + 1] = l
+      end
+    end
     vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, flat)
     vim.bo[buf].modifiable = false
   end
 
