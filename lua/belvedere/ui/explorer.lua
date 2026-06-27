@@ -218,7 +218,7 @@ local function open_describe_float(details, node)
 
   local function is_nil_val(v) return v == nil or v == vim.NIL end
 
-  local function rpad(s, n) return s .. string.rep(" ", math.max(0, n - #s)) end
+  local function rpad(s, n) return s .. string.rep(" ", math.max(0, n - vim.fn.strdisplaywidth(s))) end
 
   local win_title = details.type == "index"
     and (details.index or node.name)
@@ -272,23 +272,32 @@ local function open_describe_float(details, node)
 
     local cols = details.columns
     if cols and #cols > 0 then
-      local w_name, w_type, w_default = #"Name", #"Type", #"Default"
+      local w_name, w_type, w_default = 4, 4, 7  -- "Name", "Type", "Default"
       for _, col in ipairs(cols) do
-        w_name    = math.max(w_name,    #col.name)
-        w_type    = math.max(w_type,    #col.type)
+        w_name    = math.max(w_name,    vim.fn.strdisplaywidth(col.name))
+        w_type    = math.max(w_type,    vim.fn.strdisplaywidth(col.type))
         local ds  = not is_nil_val(col.default) and tostring(col.default) or "—"
-        w_default = math.max(w_default, #ds)
+        w_default = math.max(w_default, vim.fn.strdisplaywidth(ds))
       end
+
+      local idx_hdr   = "  Excl.  Comp."   -- 14 display chars
+      local idx_w     = vim.fn.strdisplaywidth(idx_hdr)
+      local grp_lbl   = "Index"
+      local prefix_w  = 2 + w_name + 2 + w_type + 12 + w_default
+      local grp_off   = math.floor((idx_w - #grp_lbl) / 2)
+      local grp_line  = string.rep(" ", prefix_w + grp_off) .. grp_lbl
+      table.insert(lines, grp_line)
+      add_hl("BelvedereHeaderRow", #lines - 1, prefix_w + grp_off, prefix_w + grp_off + #grp_lbl)
 
       local hdr = "  " .. rpad("Name", w_name)
                .. "  " .. rpad("Type", w_type)
                .. "  Null  PK  "
                .. rpad("Default", w_default)
-               .. "  Indexes"
+               .. idx_hdr
       table.insert(lines, hdr)
       add_hl("BelvedereHeaderRow", #lines - 1, 0, #hdr)
 
-      local sep = "  " .. string.rep("─", #hdr - 2)
+      local sep = "  " .. string.rep("─", vim.fn.strdisplaywidth(hdr) - 2)
       table.insert(lines, sep)
       add_hl("BelvedereBorder", #lines - 1, 0, #sep)
 
@@ -296,14 +305,15 @@ local function open_describe_float(details, node)
         local null_s    = col.nullable == true and "✓" or col.nullable == false and "✗" or " "
         local pk_s      = col.pk and "✓" or " "
         local default_s = not is_nil_val(col.default) and tostring(col.default) or "—"
-        local indexes_s = (type(col.indexes) == "table" and #col.indexes > 0)
-                          and table.concat(col.indexes, ", ") or "—"
+        local excl_s    = col.exclusive_index and "✓" or " "
+        local comp_s    = col.composite_index and "✓" or " "
         local row = "  " .. rpad(col.name, w_name)
                  .. "  " .. rpad(col.type, w_type)
                  .. "   " .. null_s
                  .. "    " .. pk_s
                  .. "   " .. rpad(default_s, w_default)
-                 .. "  " .. indexes_s
+                 .. "    " .. excl_s
+                 .. "      " .. comp_s
         table.insert(lines, row)
         if col.pk then
           add_hl("BelvedereHeaderRow", #lines - 1, 2, 2 + #col.name)

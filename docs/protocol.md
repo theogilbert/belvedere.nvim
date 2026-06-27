@@ -398,7 +398,8 @@ Column metadata object used inside [TableDescription](#tabledescription):
 | `nullable` | boolean or null  | Whether the column allows NULL; null if unknown   |
 | `pk`       | boolean          | Whether the column is part of the primary key     |
 | `default`  | string or null   | Default expression, or null if not set            |
-| `indexes`  | array of strings | Names of indexes that include this column; empty if none |
+| `exclusive_index` | boolean | `true` if this column is covered by at least one index that spans only this column |
+| `composite_index` | boolean | `true` if this column is covered by at least one index that also spans other columns |
 
 ---
 
