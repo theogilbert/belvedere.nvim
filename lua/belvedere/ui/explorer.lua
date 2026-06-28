@@ -5,6 +5,7 @@ local M = {}
 local Buffer  = require("belvedere.buffer")
 local client  = require("belvedere.client")
 local config  = require("belvedere.config")
+local hl      = require("belvedere.hl")
 local results = require("belvedere.ui.results")
 local window  = require("belvedere.ui.window")
 local Spinner = require("belvedere.ui.spinner")
@@ -271,17 +272,32 @@ local function open_describe_float(details, node)
         local default_s = not is_nil_val(col.default) and tostring(col.default) or "—"
         local excl_s    = col.exclusive_index and "✓" or " "
         local comp_s    = col.composite_index and "✓" or " "
-        local row = "  " .. rpad(col.name, w_name)
-                 .. "  " .. rpad(col.type, w_type)
-                 .. "   " .. null_s
-                 .. "    " .. pk_s
-                 .. "   " .. rpad(default_s, w_default)
-                 .. "    " .. excl_s
-                 .. "      " .. comp_s
-        table.insert(lines, row)
-        if col.pk then
-          add_hl("BelvedereHeaderRow", #lines - 1, 2, 2 + #col.name)
+
+        local row_idx  = #lines
+        local parts    = {}
+        local pos      = 0
+        local function seg(s, grp)
+          if grp then add_hl(grp, row_idx, pos, pos + #s) end
+          parts[#parts + 1] = s
+          pos = pos + #s
         end
+
+        seg("  ")
+        seg(rpad(col.name, w_name), col.pk and "BelvedereExplorerSchema" or nil)
+        seg("  ")
+        seg(rpad(col.type, w_type),  "BelvedereExplorerTable")
+        seg("   ")
+        seg(null_s,  null_s ~= " " and "BelvedereExplorerDim" or nil)
+        seg("    ")
+        seg(pk_s,    col.pk         and "BelvedereExplorerSchema" or nil)
+        seg("   ")
+        seg(rpad(default_s, w_default))
+        seg("    ")
+        seg(excl_s,  excl_s == "✓" and "BelvedereExplorerIndex" or nil)
+        seg("      ")
+        seg(comp_s,  comp_s == "✓"  and "BelvedereExplorerIndex" or nil)
+
+        table.insert(lines, table.concat(parts))
       end
     end
   end
@@ -312,6 +328,7 @@ local function open_describe_float(details, node)
     title     = " " .. win_title .. " ",
     title_pos = "center",
   })
+  vim.api.nvim_win_set_hl_ns(win, hl.NS_ID)
   vim.api.nvim_set_option_value("cursorline", true, { win = win })
 
   for _, key in ipairs({ "q", "<Esc>" }) do
