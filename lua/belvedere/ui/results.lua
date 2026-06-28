@@ -473,11 +473,13 @@ function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_to
 end
 
 function M.append_batch_error(idx, total, msg)
-  local bs = active_bs()
+  local bs    = active_bs()
+  local lines = vim.split(msg, "\n", { plain = true })
+  lines[1]    = "Error: " .. lines[1]
   table.insert(bs.segments, {
     header   = make_separator(idx, total),
-    lines    = { "Error: " .. msg },
-    hl_rules = { { higroup = "BelvedereError", start = { 0, 0 }, finish = { 0, -1 } } },
+    lines    = lines,
+    hl_rules = { { higroup = "BelvedereError", start = { 0, 0 }, finish = { #lines - 1, -1 } } },
   })
   render_segments(bs)
 end
@@ -522,12 +524,14 @@ function M.append_batch_rows_affected(idx, total, n, verb, duration_ms)
 end
 
 function M.show_error(msg)
-  local bs = active_bs()
+  local bs    = active_bs()
   bs.table_data = nil
   ensure_win(bs.buffer.buf_id)
-  bs.buffer:set_content({ "Error: " .. msg })
+  local lines = vim.split(msg, "\n", { plain = true })
+  lines[1]    = "Error: " .. lines[1]
+  bs.buffer:set_content(lines)
   bs.buffer:apply_highlight({
-    { higroup = "BelvedereError", start = { 0, 0 }, finish = { 0, -1 } },
+    { higroup = "BelvedereError", start = { 0, 0 }, finish = { #lines - 1, -1 } },
   })
 end
 
