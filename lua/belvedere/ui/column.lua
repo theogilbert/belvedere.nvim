@@ -28,16 +28,18 @@ local function render(buf, col)
 
   -- One-liner: data_type · [nullable/not null] · [primary key]
   local data_type = (not is_nil(col.data_type) and col.data_type ~= "") and col.data_type or "?"
-  local tags = { data_type }
+  local tagged = { { data_type, "BelvedereExplorerTable" } }
   if col.nullable == true then
-    tags[#tags + 1] = "nullable"
+    tagged[#tagged + 1] = { "nullable", "BelvedereExplorerDim" }
   elseif col.nullable == false then
-    tags[#tags + 1] = "not null"
+    tagged[#tagged + 1] = { "not null", "BelvedereExplorerDim" }
   end
-  if col.pk then tags[#tags + 1] = "primary key" end
+  if col.pk then tagged[#tagged + 1] = { "primary key", "BelvedereExplorerSchema" } end
 
-  lines[#lines + 1] = "  " .. table.concat(tags, "  ·  ")
-  if col.pk then hls[#hls + 1] = { "BelvedereHeaderRow", 0, 0, -1 } end
+  local row0 = #lines
+  local line, specs = pane.tag_line(tagged)
+  lines[#lines + 1] = line
+  for _, s in ipairs(specs) do hls[#hls + 1] = { s[1], row0, s[2], s[3] } end
   lines[#lines + 1] = ""
 
   if not is_nil(col.default) and col.default ~= "" then
@@ -65,7 +67,10 @@ local function render(buf, col)
   if #excl > 0 then
     pane.section(lines, hls, "Exclusive indices")
     for _, idx in ipairs(excl) do
-      lines[#lines + 1] = "  " .. (type(idx) == "table" and idx.index or tostring(idx))
+      local name = type(idx) == "table" and idx.index or tostring(idx)
+      local irow = #lines
+      lines[#lines + 1] = "  " .. name
+      hls[#hls + 1] = { "BelvedereExplorerIndex", irow, 2, 2 + #name }
     end
     lines[#lines + 1] = ""
   end
@@ -74,7 +79,10 @@ local function render(buf, col)
   if #comp > 0 then
     pane.section(lines, hls, "Composite indices")
     for _, idx in ipairs(comp) do
-      lines[#lines + 1] = "  " .. (type(idx) == "table" and idx.index or tostring(idx))
+      local name = type(idx) == "table" and idx.index or tostring(idx)
+      local irow = #lines
+      lines[#lines + 1] = "  " .. name
+      hls[#hls + 1] = { "BelvedereExplorerIndex", irow, 2, 2 + #name }
     end
     lines[#lines + 1] = ""
   end

@@ -3,8 +3,11 @@
 -- management, sizing, keymaps, and autocmds.
 local M = {}
 
-local SEP = string.rep("─", 48)
-local NS  = vim.api.nvim_create_namespace("BelvedereDetailPane")
+local hl         = require("belvedere.hl")
+local SEP        = string.rep("─", 48)
+local TAG_SEP    = "  ·  "
+local TAG_PREFIX = "  "
+local NS         = vim.api.nvim_create_namespace("BelvedereDetailPane")
 
 --- True when v is nil or vim.NIL (JSON null decoded by Neovim).
 function M.is_nil(v) return v == nil or v == vim.NIL end
@@ -20,6 +23,24 @@ function M.section(lines, hls, title)
   row = #lines
   lines[#lines + 1] = "  " .. SEP
   hls[#hls + 1] = { "BelvedereBorder", row, 2, 2 + #SEP }
+end
+
+--- Build a "tag summary" line with per-segment highlight specs.
+--- @param tagged table  list of {text, hl_group} pairs (hl_group nil/false = no highlight)
+--- @return string line, table specs  specs: list of {group, col_s, col_e}
+function M.tag_line(tagged)
+  local texts = {}
+  for _, t in ipairs(tagged) do texts[#texts + 1] = t[1] end
+  local line  = TAG_PREFIX .. table.concat(texts, TAG_SEP)
+  local specs = {}
+  local pos   = #TAG_PREFIX
+  for i, t in ipairs(tagged) do
+    if t[2] then
+      specs[#specs + 1] = { t[2], pos, pos + #t[1] }
+    end
+    pos = pos + #t[1] + (i < #tagged and #TAG_SEP or 0)
+  end
+  return line, specs
 end
 
 --- Write lines + highlights into buf (replaces all existing content).
@@ -96,6 +117,8 @@ function M.open_two_pane(opts)
     style     = "minimal", border = "rounded",
   })
 
+  vim.api.nvim_win_set_hl_ns(lwin, hl.NS_ID)
+  vim.api.nvim_win_set_hl_ns(rwin, hl.NS_ID)
   vim.api.nvim_set_option_value("cursorline", true,  { win = lwin })
   vim.api.nvim_set_option_value("wrap",       false, { win = rwin })
 
@@ -182,6 +205,7 @@ function M.open_single(opts)
     title     = " " .. opts.title .. " ",
     title_pos = "center",
   })
+  vim.api.nvim_win_set_hl_ns(win, hl.NS_ID)
   vim.api.nvim_set_option_value("wrap", false, { win = win })
 
   local function close() pcall(vim.api.nvim_win_close, win, true) end

@@ -29,17 +29,24 @@ local function render(buf, idx)
   local hls   = {}
 
   -- One-liner: type · unique/non-unique · [clustered] · [invisible/disabled]
-  local tags = {}
+  local tagged = {}
   if not is_nil(idx.index_type) and idx.index_type ~= "" then
-    tags[#tags + 1] = idx.index_type
+    tagged[#tagged + 1] = { idx.index_type, "BelvedereExplorerIndex" }
   end
-  tags[#tags + 1] = idx.unique and "unique" or "non-unique"
-  if idx.clustered then tags[#tags + 1] = "clustered" end
+  tagged[#tagged + 1] = idx.unique
+    and { "unique",     "BelvedereQuerySuccess" }
+    or  { "non-unique", "BelvedereExplorerDim"  }
+  if idx.clustered then
+    tagged[#tagged + 1] = { "clustered", "BelvedereExplorerSchema" }
+  end
   if not is_nil(idx.visible) and not idx.visible then
-    tags[#tags + 1] = "invisible"
-    hls[#hls + 1] = { "BelvedereError", 0, 0, -1 }
+    tagged[#tagged + 1] = { "invisible", "BelvedereError" }
   end
-  lines[#lines + 1] = "  " .. table.concat(tags, "  ·  ")
+
+  local row0 = #lines
+  local line, specs = pane.tag_line(tagged)
+  lines[#lines + 1] = line
+  for _, s in ipairs(specs) do hls[#hls + 1] = { s[1], row0, s[2], s[3] } end
   lines[#lines + 1] = ""
 
   if type(idx.tables) == "table" and #idx.tables > 1 then
@@ -55,7 +62,11 @@ local function render(buf, idx)
       local dir = f.direction == "asc"  and " ↑"
                or f.direction == "desc" and " ↓"
                or (f.direction and ("  " .. f.direction) or "")
+      local frow = #lines
       lines[#lines + 1] = "  " .. f.name .. dir
+      if dir ~= "" then
+        hls[#hls + 1] = { "BelvedereExplorerDim", frow, 2 + #f.name, -1 }
+      end
     end
     lines[#lines + 1] = ""
   end
@@ -75,8 +86,10 @@ local function render(buf, idx)
 
   if not is_nil(idx.ddl) and idx.ddl ~= "" then
     pane.section(lines, hls, "DDL")
-    for _, line in ipairs(vim.split(idx.ddl, "\n", { plain = true })) do
-      lines[#lines + 1] = "  " .. line
+    for _, dline in ipairs(vim.split(idx.ddl, "\n", { plain = true })) do
+      local drow = #lines
+      lines[#lines + 1] = "  " .. dline
+      hls[#hls + 1] = { "BelvedereExplorerDim", drow, 2, -1 }
     end
   end
 
