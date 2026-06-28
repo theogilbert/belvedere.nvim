@@ -50,7 +50,7 @@ function M.statements_in_range(bufnr, start_row, end_row)
   local stmts = {}
   for node in tree:root():iter_children() do
     if node:type() == "statement" then
-      local sr, _, er, _ = node:range()
+      local sr, sc, er, ec = node:range()
       if sr <= end_row and er >= start_row then
         local text = node_text(node, bufnr)
         if text ~= "" then
