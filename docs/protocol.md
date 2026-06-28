@@ -270,7 +270,7 @@ Returns detailed metadata about a specific node.
 
 | Field     | Type                | Description                    |
 |-----------|---------------------|--------------------------------|
-| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription), `"indices"` → [IndicesDescription](#indicesdescription) |
+| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription), `"indices"` → [IndicesDescription](#indicesdescription), `"column"` → [ColumnDescription](#columndescription), `"columns"` → [ColumnsDescription](#columnsdescription) |
 
 ---
 
@@ -455,6 +455,36 @@ Returned as `details` by `explore.describe` when the path resolves to an indices
 |-----------|----------------------------------------------|------------------------------------------------------|
 | `type`    | string                                       | Always `"indices"` — use to discriminate description types |
 | `indices` | array of [IndexDescription](#indexdescription) | All indexes on this table, in driver-defined order |
+
+---
+
+## ColumnDescription
+
+Returned as `details` by `explore.describe` when the path resolves to an individual column node (e.g. `["public", "users", "columns", "id"]`), and embedded inside [ColumnsDescription](#columnsdescription).
+
+| Field               | Type                                           | Description                                                              |
+|---------------------|------------------------------------------------|--------------------------------------------------------------------------|
+| `type`              | string                                         | Always `"column"` — use to discriminate description types                |
+| `name`              | string                                         | Column name                                                              |
+| `data_type`         | string                                         | Data type as reported by the database                                    |
+| `nullable`          | boolean or null                                | Whether the column allows NULL; null if unknown                          |
+| `pk`                | boolean                                        | Whether the column is part of the primary key                            |
+| `default`           | string or null                                 | Default expression, or null if not set                                   |
+| `exclusive_indices` | array of [IndexDescription](#indexdescription) | Indices that cover only this column                                      |
+| `composite_indices` | array of [IndexDescription](#indexdescription) | Indices that cover this column and at least one other column             |
+| `comment`           | string or null                                 | Column comment as stored in the database; null if unsupported or not set |
+| `sample`            | array                                          | Up to 3 distinct non-null representative values sampled from the column  |
+
+---
+
+## ColumnsDescription
+
+Returned as `details` by `explore.describe` when the path resolves to a columns group node (e.g. `["public", "users", "columns"]`):
+
+| Field     | Type                                             | Description                                                     |
+|-----------|--------------------------------------------------|-----------------------------------------------------------------|
+| `type`    | string                                           | Always `"columns"` — use to discriminate description types      |
+| `columns` | array of [ColumnDescription](#columndescription) | All columns in this table, in declaration order                 |
 
 ---
 
