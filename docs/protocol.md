@@ -454,8 +454,6 @@ Returned as `details` by `explore.describe` when the path resolves to an indices
 | Field     | Type                                         | Description                                          |
 |-----------|----------------------------------------------|------------------------------------------------------|
 | `type`    | string                                       | Always `"indices"` — use to discriminate description types |
-| `table`   | string                                       | Table name                                           |
-| `schema`  | string or null                               | Schema name, or `null` for databases without schema support |
 | `indices` | array of [IndexDescription](#indexdescription) | All indexes on this table, in driver-defined order |
 
 ---

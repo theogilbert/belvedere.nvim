@@ -333,7 +333,11 @@ local function on_describe()
     vim.schedule(function()
       local details = result.details
       if details and details.type == "indices" then
-        require("belvedere.ui.indices").open(details)
+        local p = node.path
+        local parts = vim.list_slice(p, 1, #p - 1)
+        local ctx = table.concat(parts, ".")
+        local title = ctx ~= "" and (" Indices · " .. ctx .. " ") or " Indices "
+        require("belvedere.ui.indices").open(details, title)
       elseif details and details.type == "index" then
         require("belvedere.ui.indices").open_single(details)
       else

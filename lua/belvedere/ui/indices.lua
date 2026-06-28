@@ -116,18 +116,16 @@ end
 -- ── public entry point ────────────────────────────────────────────────────────
 
 --- Open the two-pane indices browser.
---- @param details table  IndicesDescription as decoded from the server response
-function M.open(details)
+--- @param details table   IndicesDescription as decoded from the server response
+--- @param title   string  Left pane window title (caller derives from the request path)
+function M.open(details, title)
   local indices = type(details.indices) == "table" and details.indices or {}
   if #indices == 0 then
     vim.notify("belvedere: no indices found for this table", vim.log.levels.WARN)
     return
   end
 
-  -- Title for the left pane header
-  local ctx = (not is_nil(details.schema) and details.schema .. "." or "")
-           .. (not is_nil(details.table)  and details.table  or "")
-  local left_title = ctx ~= "" and (" Indices · " .. ctx .. " ") or " Indices "
+  local left_title = title or " Indices "
 
   -- Window geometry
   local ew       = vim.o.columns
