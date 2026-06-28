@@ -368,7 +368,12 @@ local function on_describe()
       return
     end
     vim.schedule(function()
-      open_describe_float(result.details, node)
+      local details = result.details
+      if details and details.type == "indices" then
+        require("belvedere.ui.indices").open(details)
+      else
+        open_describe_float(details, node)
+      end
     end)
   end)
 end
