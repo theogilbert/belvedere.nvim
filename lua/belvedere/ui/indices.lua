@@ -247,4 +247,47 @@ function M.open(details)
   rmap("<S-Tab>", function() vim.api.nvim_set_current_win(lwin) end)
 end
 
+--- Open a single-index detail float using the same renderer as the right pane.
+--- @param idx table  IndexDescription as decoded from the server response
+function M.open_single(idx)
+  local ew = vim.o.columns
+  local eh = vim.o.lines
+  local width  = math.min(math.floor(ew * 0.60), 110)
+  local max_h  = math.max(math.floor(eh * 0.72), 8)
+  local height = math.min(math.max(estimate_lines(idx), 8), max_h)
+  local col0   = math.max(0, math.floor((ew - width  - 2) / 2))
+  local row0   = math.max(0, math.floor((eh - height - 2) / 2))
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].modifiable = false
+
+  render_right(buf, idx)
+
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative  = "editor",
+    row       = row0, col = col0,
+    width     = width, height = height,
+    style     = "minimal", border = "rounded",
+    title     = " " .. ICON .. idx.index .. " ",
+    title_pos = "center",
+  })
+  vim.api.nvim_set_option_value("wrap", false, { win = win })
+
+  local function close()
+    pcall(vim.api.nvim_win_close, win, true)
+  end
+
+  local aug = vim.api.nvim_create_augroup("BelvedereIndex_" .. buf, { clear = true })
+  vim.api.nvim_create_autocmd("WinClosed", {
+    group   = aug,
+    pattern = tostring(win),
+    once    = true,
+    callback = function() vim.api.nvim_del_augroup_by_id(aug) end,
+  })
+
+  vim.keymap.set("n", "q",     close, { buffer = buf, nowait = true, silent = true })
+  vim.keymap.set("n", "<Esc>", close, { buffer = buf, nowait = true, silent = true })
+end
+
 return M

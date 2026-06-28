@@ -55,6 +55,7 @@ local state = {
   root_loading     = false,
 }
 
+
 local render  -- forward declaration so the spinner callback can reference it
 
 local spinner = Spinner.new(function() render() end)
@@ -220,48 +221,10 @@ local function open_describe_float(details, node)
 
   local function rpad(s, n) return s .. string.rep(" ", math.max(0, n - vim.fn.strdisplaywidth(s))) end
 
-  local win_title = details.type == "index"
-    and (details.index or node.name)
-    or  (not is_nil_val(details.schema) and details.schema and details.schema .. "." or "")
-        .. (details.table or node.name)
+  local win_title = (not is_nil_val(details.schema) and details.schema and details.schema .. "." or "")
+      .. (details.table or node.name)
 
-  if details.type == "index" then
-    local iname = details.index or node.name
-    local title = node_icon(node) .. iname
-    table.insert(lines, "  " .. title)
-    add_hl("BelvedereHeaderRow", 0, 2, 2 + #title)
-    table.insert(lines, "")
-
-    local entity   = not is_nil_val(details.entity) and details.entity or nil
-    local unique_s = details.unique and "unique" or "non-unique"
-    local meta     = entity and (unique_s .. "  ·  on " .. entity) or unique_s
-    table.insert(lines, "  " .. meta)
-    table.insert(lines, "")
-
-    local fields = details.fields
-    if fields and #fields > 0 then
-      local w_name, w_dir = #"Field", #"Direction"
-      for _, f in ipairs(fields) do
-        w_name = math.max(w_name, #f.name)
-        w_dir  = math.max(w_dir,  #(f.direction or ""))
-      end
-      local hdr = "  " .. rpad("Field", w_name) .. "  " .. rpad("Direction", w_dir)
-      table.insert(lines, hdr)
-      add_hl("BelvedereHeaderRow", #lines - 1, 0, #hdr)
-      local sep = "  " .. string.rep("─", #hdr - 2)
-      table.insert(lines, sep)
-      add_hl("BelvedereBorder", #lines - 1, 0, #sep)
-      for _, f in ipairs(fields) do
-        table.insert(lines, "  " .. rpad(f.name, w_name) .. "  " .. (f.direction or ""))
-      end
-    end
-
-    local cond = not is_nil_val(details.condition) and details.condition or nil
-    if cond then
-      table.insert(lines, "")
-      table.insert(lines, "  WHERE " .. cond)
-    end
-  else
+  do
     local tname  = details.table or node.name
     local schema = not is_nil_val(details.schema) and details.schema or nil
     local title  = node_icon(node) .. (schema and schema .. "." or "") .. tname
@@ -371,6 +334,8 @@ local function on_describe()
       local details = result.details
       if details and details.type == "indices" then
         require("belvedere.ui.indices").open(details)
+      elseif details and details.type == "index" then
+        require("belvedere.ui.indices").open_single(details)
       else
         open_describe_float(details, node)
       end
