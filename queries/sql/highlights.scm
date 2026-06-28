@@ -37,6 +37,18 @@
 
 (data_type) @type
 
+; Typed string literals: DATE 'val', TIMESTAMP 'val', etc.
+(typed_string type: _ @type)
+
+; Interval literals: INTERVAL '3' DAY, INTERVAL '1-2' YEAR TO MONTH, etc.
+"INTERVAL" @keyword
+"YEAR"     @keyword
+"MONTH"    @keyword
+"DAY"      @keyword
+"HOUR"     @keyword
+"MINUTE"   @keyword
+"SECOND"   @keyword
+
 ; ─── Operators ───────────────────────────────────────────────────────────────
 
 (binary_expression operator: _ @operator)
@@ -240,6 +252,10 @@
 "CALL"    @keyword
 "EXEC"    @keyword
 "EXECUTE" @keyword
+
+; ─── Ordered-set aggregates ──────────────────────────────────────────────────
+
+"WITHIN" @keyword
 
 ; ─── Window / Frame keywords ─────────────────────────────────────────────────
 
