@@ -270,7 +270,7 @@ Returns detailed metadata about a specific node.
 
 | Field     | Type                | Description                    |
 |-----------|---------------------|--------------------------------|
-| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription) |
+| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription), `"indices"` → [IndicesDescription](#indicesdescription) |
 
 ---
 
@@ -429,16 +429,34 @@ One field in an index key, used inside [IndexDescription](#indexdescription):
 
 ## IndexDescription
 
-Returned as `details` by `explore.describe` for index nodes:
+Returned as `details` by `explore.describe` for index nodes, and embedded inside [IndicesDescription](#indicesdescription):
 
-| Field                  | Type                              | Description                                              |
-|------------------------|-----------------------------------|----------------------------------------------------------|
-| `type`      | string                                   | Always `"index"` — use to discriminate description types                          |
-| `index`     | string                                   | Index name                                                                        |
-| `fields`    | array of [IndexKeyField](#indexkeyfield) | Ordered list of key fields                                                        |
-| `unique`    | boolean                                  | Whether the index enforces uniqueness (default `false`)                           |
-| `entity`    | string or null                           | Label, table, or collection the index operates on; `null` when already implicit from the explore path |
-| `condition` | string or null                           | Partial/filtered index predicate in the driver's native syntax; `null` if the index covers all documents |
+| Field               | Type                                     | Description                                                                                              |
+|---------------------|------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| `type`              | string                                   | Always `"index"` — use to discriminate description types                                                 |
+| `index`             | string                                   | Index name                                                                                               |
+| `fields`            | array of [IndexKeyField](#indexkeyfield) | Ordered list of key fields                                                                               |
+| `unique`            | boolean                                  | Whether the index enforces uniqueness (default `false`)                                                  |
+| `tables`            | array of strings                         | Tables (or labels/collections) the index operates on. Typically one entry; multiple for Oracle cluster indexes and SQL Server indexed views |
+| `index_type`        | string or null                           | Storage type as reported by the driver (e.g. `"btree"`, `"hash"`, `"bitmap"`, `"text"`, `"hashed"`); `null` if unknown |
+| `clustered`         | boolean                                  | Whether the index defines the physical row order of the table (default `false`)                          |
+| `visible`           | boolean                                  | Whether the query optimiser considers this index (default `true`); `false` for Oracle `INVISIBLE` or SQL Server `DISABLED` indexes |
+| `included_columns`  | array of strings                         | Non-key columns stored in index leaf pages for covering queries (PostgreSQL / SQL Server `INCLUDE`); empty when not supported |
+| `condition`         | string or null                           | Partial/filtered index predicate in the driver's native syntax; `null` if the index covers all rows      |
+| `ddl`               | string or null                           | `CREATE INDEX` statement as stored by the database; `null` when the driver cannot produce it             |
+
+---
+
+## IndicesDescription
+
+Returned as `details` by `explore.describe` when the path resolves to an indices group node (e.g. `["public", "users", "indices"]`):
+
+| Field     | Type                                         | Description                                          |
+|-----------|----------------------------------------------|------------------------------------------------------|
+| `type`    | string                                       | Always `"indices"` — use to discriminate description types |
+| `table`   | string                                       | Table name                                           |
+| `schema`  | string or null                               | Schema name, or `null` for databases without schema support |
+| `indices` | array of [IndexDescription](#indexdescription) | All indexes on this table, in driver-defined order |
 
 ---
 
