@@ -4,16 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running tests
 
-Tests use [busted](https://lunarmodules.github.io/busted/). Run the full suite:
+Tests use [plenary.nvim](https://github.com/nvim-lua/plenary.nvim). Run a single spec file from within Neovim:
 
-```bash
-busted spec/
 ```
-
-Run a single spec file:
-
-```bash
-busted spec/connections_spec.lua
+:PlenaryBustedFile spec/connections_spec.lua
 ```
 
 There is no build step for the Lua code. The precompiled treesitter parsers (`parser/sql.so`, `parser/cypher.so`) are binary and should not be regenerated manually.
