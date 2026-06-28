@@ -87,7 +87,8 @@ render = function()
       end
 
       local row = #lines  -- 0-based
-      lines[#lines + 1] = indent_s .. chevron_s .. icon_s .. node.name .. label
+      local desc_s = node.describing and (" " .. spinner:glyph()) or ""
+      lines[#lines + 1] = indent_s .. chevron_s .. icon_s .. node.name .. label .. desc_s
 
       -- Byte column boundaries (Lua # gives byte length).
       local c0 = #indent_s
@@ -323,14 +324,21 @@ local function on_describe()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
   if not node then return end
+  node.describing = true
+  spinner:start()
+  render()
   client.request("explore.describe", { connection_id = state.conn_id, path = node.path }, function(err, result)
+    node.describing = false
+    spinner:stop()
     if err then
       vim.schedule(function()
         vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
+        render()
       end)
       return
     end
     vim.schedule(function()
+      render()
       local details = result.details
       if details and details.type == "indices" then
         local p = node.path
