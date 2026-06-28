@@ -43,7 +43,9 @@ belvedere.nvim is a Neovim database-client plugin that delegates all database wo
 | `lua/belvedere/ui/query_picker.lua` | Saved-query picker (fzf-lua or `vim.ui.select`) |
 | `lua/belvedere/ui/save_query.lua` | Save-query wizard |
 | `lua/belvedere/ui/col_picker.lua` | Column-visibility picker for the results panel |
-| `lua/belvedere/ui/indices.lua` | Index-description float |
+| `lua/belvedere/ui/detail_pane.lua` | Shared two-pane and single-item detail float infrastructure |
+| `lua/belvedere/ui/indices.lua` | Index-description float (uses detail_pane) |
+| `lua/belvedere/ui/column.lua` | Column-description float (uses detail_pane) |
 | `lua/belvedere/ui/window.lua` | Sidebar window helper |
 | `lua/belvedere/log.lua` | In-memory query log (per connection) |
 | `lua/belvedere/selection.lua` | Visual selection extraction |

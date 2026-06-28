@@ -348,6 +348,14 @@ local function on_describe()
         require("belvedere.ui.indices").open(details, title)
       elseif details and details.type == "index" then
         require("belvedere.ui.indices").open_single(details)
+      elseif details and details.type == "columns" then
+        local p = node.path
+        local parts = vim.list_slice(p, 1, #p - 1)
+        local ctx = table.concat(parts, ".")
+        local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
+        require("belvedere.ui.column").open(details, title)
+      elseif details and details.type == "column" then
+        require("belvedere.ui.column").open_single(details)
       else
         open_describe_float(details, node)
       end
