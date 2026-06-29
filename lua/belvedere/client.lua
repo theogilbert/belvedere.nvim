@@ -37,14 +37,24 @@ local function on_stdout(_, data, _)
 end
 
 
---- Recursively replace vim.NIL sentinels with nil in a decoded JSON value.
+--- Recursively strip vim.NIL from object keys; preserve it in array positions
+--- so that SQL NULL cells remain as vim.NIL for the table renderer.
 --- @param v any
 --- @return any
 local function strip_nil(v)
   if v == vim.NIL then return nil end
   if type(v) ~= "table" then return v end
-  for k, val in pairs(v) do
-    v[k] = strip_nil(val)
+  if vim.islist(v) then
+    for i = 1, #v do
+      local val = v[i]
+      if val ~= vim.NIL and type(val) == "table" then
+        v[i] = strip_nil(val)
+      end
+    end
+  else
+    for k, val in pairs(v) do
+      v[k] = strip_nil(val)
+    end
   end
   return v
 end
