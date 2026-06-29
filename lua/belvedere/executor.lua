@@ -95,22 +95,7 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
       else
         dispatch_batch_result(idx, #queries, result, q.sql)
         gutter.show_success(gh)
-        if result.rows_affected ~= nil then
-          log.update(conn.key, log_id, {
-            rows_affected = result.rows_affected,
-            verb          = detect_operation(q.sql),
-            duration_ms   = result.duration_ms,
-          })
-        else
-          local rows = result.rows or {}
-          log.update(conn.key, log_id, {
-            columns       = result.columns or {},
-            rows          = rows,
-            rows_returned = #rows,
-            rows_total    = result.rows_total,
-            duration_ms   = result.duration_ms,
-          })
-        end
+        update_log_from_result(conn.key, log_id, result, q.sql)
       end
       if idx < #queries then
         run_batch(queries, conn, idx + 1, bufnr, first_line, had_error)
@@ -118,6 +103,30 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
     end)
   end)
   gutter.register_request(gh, req_id)
+end
+
+--- Persist a completed execution result into the query log.
+--- @param conn_key string
+--- @param log_id   string
+--- @param result   table   server execute response
+--- @param sql      string  original query text
+local function update_log_from_result(conn_key, log_id, result, sql)
+  if result.rows_affected ~= nil then
+    log.update(conn_key, log_id, {
+      rows_affected = result.rows_affected,
+      verb          = detect_operation(sql),
+      duration_ms   = result.duration_ms,
+    })
+  else
+    local rows = result.rows or {}
+    log.update(conn_key, log_id, {
+      columns       = result.columns or {},
+      rows          = rows,
+      rows_returned = #rows,
+      rows_total    = result.rows_total,
+      duration_ms   = result.duration_ms,
+    })
+  end
 end
 
 --- Execute a single SQL statement, updating the results panel and gutter on completion.
@@ -139,22 +148,7 @@ local function run_single(conn, sql, gh, conn_key, log_id)
         else
           dispatch_result(result, sql)
           gutter.show_success(gh)
-          if result.rows_affected ~= nil then
-            log.update(conn_key, log_id, {
-              rows_affected = result.rows_affected,
-              verb          = detect_operation(sql),
-              duration_ms   = result.duration_ms,
-            })
-          else
-            local rows = result.rows or {}
-            log.update(conn_key, log_id, {
-              columns       = result.columns or {},
-              rows          = rows,
-              rows_returned = #rows,
-              rows_total    = result.rows_total,
-              duration_ms   = result.duration_ms,
-            })
-          end
+          update_log_from_result(conn_key, log_id, result, sql)
         end
       end)
     end,

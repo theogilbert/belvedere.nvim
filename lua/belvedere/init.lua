@@ -12,6 +12,7 @@ local selection         = require("belvedere.selection")
 local gutter            = require("belvedere.ui.gutter")
 local ts_queries        = require("belvedere.ts_queries")
 local log               = require("belvedere.log")
+local hover             = require("belvedere.ui.hover")
 
 local FLASH_NS = vim.api.nvim_create_namespace("BelvedereFlash")
 
@@ -556,21 +557,10 @@ function M.save_query_range(line1, line2)
   open_save_query(content, bufnr)
 end
 
---- Open a hover float showing execution info for the query at the cursor.
-function M.show_query_info()
-  local bufnr    = vim.api.nvim_get_current_buf()
-  local conn_key = state.buf_conns[bufnr]
-  if not conn_key then return end
-
-  local stmt = ts_queries.statement_at_cursor(bufnr)
-  local line = stmt and stmt.start_row or (vim.api.nvim_win_get_cursor(0)[1] - 1)
-
-  local entry = log.find_at(conn_key, bufnr, line)
-  if not entry then
-    vim.notify("belvedere: no executed query at cursor", vim.log.levels.INFO)
-    return
-  end
-
+--- Return display lines for a query log entry (pure, no nvim API calls).
+--- @param entry table  log entry returned by log.find_at
+--- @return string[]
+local function render_query_info(entry)
   local lines = {}
   table.insert(lines, "Executed: " .. os.date("%Y-%m-%d %H:%M:%S", entry.timestamp))
   if entry.status == "running" then
@@ -592,32 +582,24 @@ function M.show_query_info()
       table.insert(lines, s)
     end
   end
+  return lines
+end
 
-  local width = 0
-  for _, l in ipairs(lines) do width = math.max(width, #l) end
+--- Open a hover float showing execution info for the query at the cursor.
+function M.show_query_info()
+  local bufnr    = vim.api.nvim_get_current_buf()
+  local conn_key = state.buf_conns[bufnr]
+  if not conn_key then return end
 
-  local float_buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(float_buf, 0, -1, false, lines)
-  vim.bo[float_buf].modifiable = false
+  local stmt  = ts_queries.statement_at_cursor(bufnr)
+  local line  = stmt and stmt.start_row or (vim.api.nvim_win_get_cursor(0)[1] - 1)
+  local entry = log.find_at(conn_key, bufnr, line)
+  if not entry then
+    vim.notify("belvedere: no executed query at cursor", vim.log.levels.INFO)
+    return
+  end
 
-  local win = vim.api.nvim_open_win(float_buf, false, {
-    relative  = "cursor",
-    row       = 1,
-    col       = 0,
-    width     = width,
-    height    = #lines,
-    style     = "minimal",
-    border    = "rounded",
-    focusable = false,
-  })
-
-  vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufLeave" }, {
-    buffer   = bufnr,
-    once     = true,
-    callback = function()
-      if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
-    end,
-  })
+  hover.open(render_query_info(entry), bufnr)
 end
 
 --- Cancel the running query whose gutter mark is on the cursor line.
