@@ -1,8 +1,8 @@
--- Query log: persisted for the current calendar day, shared across sessions.
+-- Query log: persisted for a rolling 7-day window, shared across sessions.
 -- Entries are stored as JSON files under:
 --   stdpath("data")/belvedere/logs/{YYYY-MM-DD}/{conn_hash}/{id}.json
 -- Rows are stored inline in the entry file.
--- Older day-directories are pruned automatically (5 s after startup).
+-- Day-directories older than 7 days are pruned automatically (5 s after startup).
 local M = {}
 
 local today = os.date("%Y-%m-%d")
@@ -213,12 +213,16 @@ end
 
 -- ── Pruning ───────────────────────────────────────────────────────────────────
 
---- Delete all log day-directories except today's.
+--- Delete log day-directories older than 7 days.
 local function prune_old_days()
   local root = log_root()
   if vim.fn.isdirectory(root) == 0 then return end
+  -- Cutoff: midnight at the start of 7 days ago (inclusive of today = 8 slots, keeps 7 full days).
+  local cutoff = os.time() - 7 * 24 * 60 * 60
+  local cutoff_date = os.date("%Y-%m-%d", cutoff)
   for _, d in ipairs(vim.fn.glob(root .. "/*", false, true)) do
-    if vim.fn.isdirectory(d) == 1 and vim.fn.fnamemodify(d, ":t") ~= today then
+    local name = vim.fn.fnamemodify(d, ":t")
+    if vim.fn.isdirectory(d) == 1 and name < cutoff_date then
       vim.fn.delete(d, "rf")
     end
   end
