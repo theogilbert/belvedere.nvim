@@ -557,10 +557,47 @@ function M.save_query_range(line1, line2)
   open_save_query(content, bufnr)
 end
 
+local render_query_info  -- forward declaration; defined below show_query_info
+
+--- Open a hover float showing execution info for the query at the cursor.
+--- If the hover float is already open, close it and open the results pane instead.
+function M.show_query_info()
+  local bufnr    = vim.api.nvim_get_current_buf()
+  local conn_key = state.buf_conns[bufnr]
+  if not conn_key then return end
+
+  local stmt  = ts_queries.statement_at_cursor(bufnr)
+  local line  = stmt and stmt.start_row or (vim.api.nvim_win_get_cursor(0)[1] - 1)
+  local entry = log.find_at(conn_key, bufnr, line)
+  if not entry then
+    vim.notify("belvedere: no executed query at cursor", vim.log.levels.INFO)
+    return
+  end
+
+  if hover.is_open() then
+    hover.close()
+    local results_ui = require("belvedere.ui.results")
+    local conn       = state.conns[conn_key]
+    results_ui.set_conn_name(conn_key, conn and conn.driver_label, entry.bufnr or bufnr)
+    if entry.status == "success" then
+      results_ui.show_results(
+        entry.columns or {}, log.load_rows(entry),
+        entry.rows_returned, entry.rows_total, entry.duration_ms)
+    elseif entry.status == "rows_affected" then
+      results_ui.show_rows_affected(entry.rows_affected, entry.verb or "affected", entry.duration_ms)
+    elseif entry.status == "error" then
+      results_ui.show_error(entry.error_msg or "unknown error")
+    end
+    return
+  end
+
+  hover.open(render_query_info(entry), bufnr)
+end
+
 --- Return display lines for a query log entry (pure, no nvim API calls).
---- @param entry table  log entry returned by log.find_at
+--- @param entry LogEntry
 --- @return string[]
-local function render_query_info(entry)
+render_query_info = function(entry)
   local lines = {}
   table.insert(lines, "Executed: " .. os.date("%Y-%m-%d %H:%M:%S", entry.timestamp))
   if entry.status == "running" then
@@ -583,23 +620,6 @@ local function render_query_info(entry)
     end
   end
   return lines
-end
-
---- Open a hover float showing execution info for the query at the cursor.
-function M.show_query_info()
-  local bufnr    = vim.api.nvim_get_current_buf()
-  local conn_key = state.buf_conns[bufnr]
-  if not conn_key then return end
-
-  local stmt  = ts_queries.statement_at_cursor(bufnr)
-  local line  = stmt and stmt.start_row or (vim.api.nvim_win_get_cursor(0)[1] - 1)
-  local entry = log.find_at(conn_key, bufnr, line)
-  if not entry then
-    vim.notify("belvedere: no executed query at cursor", vim.log.levels.INFO)
-    return
-  end
-
-  hover.open(render_query_info(entry), bufnr)
 end
 
 --- Cancel the running query whose gutter mark is on the cursor line.

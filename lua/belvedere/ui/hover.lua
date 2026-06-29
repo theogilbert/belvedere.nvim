@@ -1,10 +1,28 @@
 local M = {}
 
+local state = { win = nil }
+
+--- Close the current hover float if one is open.
+function M.close()
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    vim.api.nvim_win_close(state.win, true)
+  end
+  state.win = nil
+end
+
+--- Return true if a hover float is currently visible.
+--- @return boolean
+function M.is_open()
+  return state.win ~= nil and vim.api.nvim_win_is_valid(state.win)
+end
+
 --- Open a non-focusable hover float near the cursor displaying `lines`.
 --- The float closes automatically when the cursor moves or `source_bufnr` is left.
---- @param lines      string[]  lines to display
---- @param source_bufnr integer  buffer to attach the autoclose autocmd to
+--- @param lines        string[]  lines to display
+--- @param source_bufnr integer   buffer to attach the autoclose autocmd to
 function M.open(lines, source_bufnr)
+  M.close()
+
   local width = 0
   for _, l in ipairs(lines) do width = math.max(width, #l) end
 
@@ -22,12 +40,14 @@ function M.open(lines, source_bufnr)
     border    = "rounded",
     focusable = false,
   })
+  state.win = win
 
   vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufLeave" }, {
     buffer   = source_bufnr,
     once     = true,
     callback = function()
       if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+      if state.win == win then state.win = nil end
     end,
   })
 end

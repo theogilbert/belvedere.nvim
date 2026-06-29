@@ -115,6 +115,24 @@ end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
+--- @class LogEntry
+--- @field id            string
+--- @field conn_key      string
+--- @field timestamp     number
+--- @field bufnr         integer|nil
+--- @field source_file   string|nil
+--- @field source_line   integer|nil
+--- @field sql           string
+--- @field status        "running"|"error"|"rows_affected"|"success"
+--- @field error_msg     string|nil
+--- @field rows_affected integer|nil
+--- @field verb          string|nil
+--- @field columns       string[]|nil
+--- @field rows          table[]|nil
+--- @field rows_returned integer|nil
+--- @field rows_total    integer|nil
+--- @field duration_ms   number|nil
+
 --- Record a new query as "running" and persist it to disk.
 --- `source_line` is 0-indexed.
 --- @param conn_key   string
