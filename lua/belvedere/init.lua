@@ -11,6 +11,7 @@ local connections_panel = require("belvedere.ui.connections")
 local selection         = require("belvedere.selection")
 local gutter            = require("belvedere.ui.gutter")
 local ts_queries        = require("belvedere.ts_queries")
+local log               = require("belvedere.log")
 
 local FLASH_NS = vim.api.nvim_create_namespace("BelvedereFlash")
 
@@ -74,6 +75,11 @@ local function set_buf_conn(bufnr, name)
   state.buf_conns[bufnr] = name
   for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
     if name then conn_label.show(winid, conn_display_label(name)) else conn_label.hide(winid) end
+  end
+  if name then
+    vim.keymap.set("n", "K", function() M.show_query_info() end, { buffer = bufnr, desc = "Show query info" })
+  else
+    pcall(vim.keymap.del, "n", "K", { buffer = bufnr })
   end
 end
 
@@ -486,9 +492,10 @@ end
 --- Stop the backend and clear all session state.
 local function teardown()
   client.stop()  -- also resets capabilities cache
-  state.conns     = {}
-  state.buf_conns = {}
-  conn_label.clear_all()
+  state.conns = {}
+  for _, bufnr in ipairs(vim.tbl_keys(state.buf_conns)) do
+    set_buf_conn(bufnr, nil)
+  end
   explorer.reset()
 end
 
@@ -547,6 +554,70 @@ function M.save_query_range(line1, line2)
     return
   end
   open_save_query(content, bufnr)
+end
+
+--- Open a hover float showing execution info for the query at the cursor.
+function M.show_query_info()
+  local bufnr    = vim.api.nvim_get_current_buf()
+  local conn_key = state.buf_conns[bufnr]
+  if not conn_key then return end
+
+  local stmt = ts_queries.statement_at_cursor(bufnr)
+  local line = stmt and stmt.start_row or (vim.api.nvim_win_get_cursor(0)[1] - 1)
+
+  local entry = log.find_at(conn_key, bufnr, line)
+  if not entry then
+    vim.notify("belvedere: no executed query at cursor", vim.log.levels.INFO)
+    return
+  end
+
+  local lines = {}
+  table.insert(lines, "Executed: " .. os.date("%Y-%m-%d %H:%M:%S", entry.timestamp))
+  if entry.status == "running" then
+    table.insert(lines, "Status:   running…")
+  elseif entry.status == "error" then
+    table.insert(lines, "Status:   error")
+    if entry.error_msg then
+      table.insert(lines, "Error:    " .. entry.error_msg)
+    end
+  else
+    table.insert(lines, ("Duration: %d ms"):format(entry.duration_ms or 0))
+    if entry.status == "rows_affected" then
+      table.insert(lines, ("Rows:     %d %s"):format(entry.rows_affected or 0, entry.verb or "affected"))
+    elseif entry.rows_returned ~= nil then
+      local s = ("Rows:     %d returned"):format(entry.rows_returned)
+      if entry.rows_total and entry.rows_total > entry.rows_returned then
+        s = s .. (" (of %d)"):format(entry.rows_total)
+      end
+      table.insert(lines, s)
+    end
+  end
+
+  local width = 0
+  for _, l in ipairs(lines) do width = math.max(width, #l) end
+
+  local float_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(float_buf, 0, -1, false, lines)
+  vim.bo[float_buf].modifiable = false
+
+  local win = vim.api.nvim_open_win(float_buf, false, {
+    relative  = "cursor",
+    row       = 1,
+    col       = 0,
+    width     = width,
+    height    = #lines,
+    style     = "minimal",
+    border    = "rounded",
+    focusable = false,
+  })
+
+  vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufLeave" }, {
+    buffer   = bufnr,
+    once     = true,
+    callback = function()
+      if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+    end,
+  })
 end
 
 --- Cancel the running query whose gutter mark is on the cursor line.

@@ -186,6 +186,24 @@ function M.entries(conn_key)
   return out
 end
 
+--- Return the most-recent log entry for `conn_key` whose source matches `bufnr`/`source_line`, or nil.
+--- @param conn_key   string
+--- @param bufnr      integer
+--- @param source_line integer  0-indexed
+--- @return table|nil
+function M.find_at(conn_key, bufnr, source_line)
+  ensure_loaded(conn_key)
+  local list = state.logs[conn_key]
+  if not list then return nil end
+  for i = #list, 1, -1 do
+    local e = list[i]
+    if e.bufnr == bufnr and e.source_line == source_line then
+      return e
+    end
+  end
+  return nil
+end
+
 --- Return the rows stored inline in `entry` (no separate file read needed).
 --- @param entry table
 --- @return table[]
