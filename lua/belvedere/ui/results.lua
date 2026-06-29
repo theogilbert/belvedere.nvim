@@ -167,6 +167,14 @@ local function scroll_columns(direction)
 end
 
 
+--- Reset the results window cursor to line 1, column 0, with no horizontal scroll.
+local function reset_cursor()
+  local win_id = current_results_win()
+  if not win_id or not vim.api.nvim_win_is_valid(win_id) then return end
+  vim.api.nvim_win_set_cursor(win_id, { 1, 0 })
+  vim.api.nvim_win_call(win_id, function() vim.fn.winrestview({ leftcol = 0 }) end)
+end
+
 --- Redraw truncation indicator extmarks (◂/▸) based on the current scroll position.
 --- @param win_id integer|nil  defaults to the current tab's results window
 local function update_truncation_indicators(win_id)
@@ -343,6 +351,7 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
     page          = 1,
     query         = nil,
     query_ft      = nil,
+    conn_key      = nil,
   }
   state.buffers[src_bufnr] = bs
 
@@ -377,7 +386,6 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
   end, { desc = "Previous page", silent = true })
   buf:set_keymap("n", "gq", function() show_source_query(bs) end,
     { desc = "Show source query", silent = true })
-
   return bs
 end
 
@@ -477,6 +485,7 @@ local function render_segments(bs)
   bs.buffer:set_content(all_lines)
   bs.buffer:apply_highlight(all_rules)
   update_truncation_indicators()
+  reset_cursor()
 end
 
 
@@ -578,6 +587,7 @@ function M.show_results(columns, rows, rows_returned, rows_total, duration_ms)
   bs.page           = 1
   ensure_win(bs.buffer.buf_id)
   render_table(bs)
+  reset_cursor()
 end
 
 --- Display a DML row-count message.
@@ -594,6 +604,7 @@ function M.show_rows_affected(n, verb, duration_ms)
   bs.buffer:apply_highlight({
     { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } },
   })
+  reset_cursor()
 end
 
 --- Append a DML row-count message to the batch view.
@@ -626,6 +637,7 @@ function M.show_error(msg)
   bs.buffer:apply_highlight({
     { higroup = "BelvedereError", start = { 0, 0 }, finish = { #lines - 1, -1 } },
   })
+  reset_cursor()
 end
 
 --- Display a plain text message in the results window (e.g. "Executing…").
@@ -636,6 +648,7 @@ function M.show_message(msg)
   ensure_win(bs.buffer.buf_id)
   bs.buffer:set_content({ msg })
   bs.buffer:apply_highlight({})
+  reset_cursor()
 end
 
 return M
