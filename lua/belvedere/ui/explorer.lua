@@ -40,7 +40,7 @@ local GROUP_ICON = { closed = " ", open = " " }
 local FIELD_ICON = "󰠵 "
 
 --- Return the icon glyph for `node`, based on its type and expansion state.
---- @param node table
+--- @param node ExplorerNode
 --- @return string
 local function node_icon(node)
   if node.type == "group" then
@@ -137,10 +137,15 @@ render = function()
   end
 end
 
+--- @class ServerItem
+--- @field name       string
+--- @field type       string
+--- @field expandable boolean
+
 --- Construct a tree node from a server item and its absolute path.
---- @param item table   { name, type, expandable }
+--- @param item ServerItem
 --- @param path string[]  absolute path from the root
---- @return table
+--- @return ExplorerNode
 local function make_node(item, path)
   return {
     name       = item.name,
@@ -192,7 +197,7 @@ end
 
 --- Send an explore.list request for `node`, populate its children, and re-render.
 --- `reset_cache` = true instructs the server to discard its cache.
---- @param node        table
+--- @param node        ExplorerNode
 --- @param reset_cache boolean|nil
 local function load_children(node, reset_cache)
   node.loading = true
@@ -233,124 +238,160 @@ local function on_enter()
   end
 end
 
+--- @class ExplorerNode
+--- @field name        string
+--- @field type        string
+--- @field path        string[]
+--- @field expandable  boolean
+--- @field expanded    boolean
+--- @field children    ExplorerNode[]|nil
+--- @field loading     boolean|nil
+--- @field describing  boolean|nil
+
+--- @class TableColumn
+--- @field name            string
+--- @field type            string
+--- @field nullable        boolean|nil
+--- @field pk              boolean|nil
+--- @field default         any
+--- @field exclusive_index boolean|nil
+--- @field composite_index boolean|nil
+
+--- @class TableDetails
+--- @field table   string|nil
+--- @field schema  string|nil
+--- @field columns TableColumn[]|nil
+
+--- @class HlRule
+--- @field [1] string   highlight group name
+--- @field [2] integer  0-indexed row
+--- @field [3] integer  byte start column
+--- @field [4] integer  byte end column (-1 for end of line)
+
+local render_describe, calculate_win_size, present_describe_float  -- forward declarations
+
 --- Open a floating window showing the describe details returned by the server for a node.
---- @param details table|nil  decoded server response details
---- @param node    table
+--- @param details TableDetails|nil
+--- @param node    ExplorerNode
 local function open_describe_float(details, node)
   if not details or details == vim.NIL then
     vim.notify("belvedere: nothing to describe for this node", vim.log.levels.WARN)
     return
   end
+  present_describe_float(render_describe(details, node))
+end
 
+--- Return display lines, highlight rules, and window title for a describe float (pure).
+--- @param details TableDetails
+--- @param node    ExplorerNode
+--- @return string[], HlRule[], string  lines, hl_rules, win_title
+render_describe = function(details, node)
   local lines    = {}
   local hl_rules = {}
 
-  --- Append a highlight rule.
-  --- @param group    string
-  --- @param line_idx integer  0-indexed
-  --- @param col_s    integer
-  --- @param col_e    integer
   local function add_hl(group, line_idx, col_s, col_e)
     table.insert(hl_rules, { group, line_idx, col_s, col_e })
   end
 
-  --- Return true when `v` is nil or vim.NIL.
-  --- @param v any
-  --- @return boolean
   local function is_nil_val(v) return v == nil or v == vim.NIL end
 
-  --- Right-pad `s` with spaces to display width `n`.
-  --- @param s string
-  --- @param n integer
-  --- @return string
-  local function rpad(s, n) return s .. string.rep(" ", math.max(0, n - vim.fn.strdisplaywidth(s))) end
+  local function rpad(s, n)
+    return s .. string.rep(" ", math.max(0, n - vim.fn.strdisplaywidth(s)))
+  end
 
-  local win_title = (not is_nil_val(details.schema) and details.schema and details.schema .. "." or "")
-      .. (details.table or node.name)
+  local tname     = details.table or node.name
+  local schema    = not is_nil_val(details.schema) and details.schema or nil
+  local win_title = (schema and schema .. "." or "") .. tname
+  local hdr_title = node_icon(node) .. win_title
 
-  do
-    local tname  = details.table or node.name
-    local schema = not is_nil_val(details.schema) and details.schema or nil
-    local title  = node_icon(node) .. (schema and schema .. "." or "") .. tname
+  table.insert(lines, "  " .. hdr_title)
+  add_hl("BelvedereHeaderRow", 0, 2, 2 + #hdr_title)
+  table.insert(lines, "")
 
-    table.insert(lines, "  " .. title)
-    add_hl("BelvedereHeaderRow", 0, 2, 2 + #title)
-    table.insert(lines, "")
+  local cols = details.columns
+  if cols and #cols > 0 then
+    local w_name, w_type, w_default = 4, 4, 7  -- "Name", "Type", "Default"
+    for _, col in ipairs(cols) do
+      w_name    = math.max(w_name,    vim.fn.strdisplaywidth(col.name))
+      w_type    = math.max(w_type,    vim.fn.strdisplaywidth(col.type))
+      local ds  = not is_nil_val(col.default) and tostring(col.default) or "—"
+      w_default = math.max(w_default, vim.fn.strdisplaywidth(ds))
+    end
 
-    local cols = details.columns
-    if cols and #cols > 0 then
-      local w_name, w_type, w_default = 4, 4, 7  -- "Name", "Type", "Default"
-      for _, col in ipairs(cols) do
-        w_name    = math.max(w_name,    vim.fn.strdisplaywidth(col.name))
-        w_type    = math.max(w_type,    vim.fn.strdisplaywidth(col.type))
-        local ds  = not is_nil_val(col.default) and tostring(col.default) or "—"
-        w_default = math.max(w_default, vim.fn.strdisplaywidth(ds))
+    local idx_hdr  = "  Excl.  Comp."   -- 14 display chars
+    local idx_w    = vim.fn.strdisplaywidth(idx_hdr)
+    local grp_lbl  = "Index"
+    local prefix_w = 2 + w_name + 2 + w_type + 12 + w_default
+    local grp_off  = math.floor((idx_w - #grp_lbl) / 2)
+    local grp_line = string.rep(" ", prefix_w + grp_off) .. grp_lbl
+    table.insert(lines, grp_line)
+    add_hl("BelvedereHeaderRow", #lines - 1, prefix_w + grp_off, prefix_w + grp_off + #grp_lbl)
+
+    local hdr = "  " .. rpad("Name", w_name)
+             .. "  " .. rpad("Type", w_type)
+             .. "  Null  PK  "
+             .. rpad("Default", w_default)
+             .. idx_hdr
+    table.insert(lines, hdr)
+    add_hl("BelvedereHeaderRow", #lines - 1, 0, #hdr)
+
+    local sep = "  " .. string.rep("─", vim.fn.strdisplaywidth(hdr) - 2)
+    table.insert(lines, sep)
+    add_hl("BelvedereBorder", #lines - 1, 0, #sep)
+
+    for _, col in ipairs(cols) do
+      local null_s    = col.nullable == true and "✓" or col.nullable == false and "✗" or " "
+      local pk_s      = col.pk and "✓" or " "
+      local default_s = not is_nil_val(col.default) and tostring(col.default) or "—"
+      local excl_s    = col.exclusive_index and "✓" or " "
+      local comp_s    = col.composite_index and "✓" or " "
+
+      local row_idx = #lines
+      local parts   = {}
+      local pos     = 0
+      local function seg(s, grp)
+        if grp then add_hl(grp, row_idx, pos, pos + #s) end
+        parts[#parts + 1] = s
+        pos = pos + #s
       end
 
-      local idx_hdr   = "  Excl.  Comp."   -- 14 display chars
-      local idx_w     = vim.fn.strdisplaywidth(idx_hdr)
-      local grp_lbl   = "Index"
-      local prefix_w  = 2 + w_name + 2 + w_type + 12 + w_default
-      local grp_off   = math.floor((idx_w - #grp_lbl) / 2)
-      local grp_line  = string.rep(" ", prefix_w + grp_off) .. grp_lbl
-      table.insert(lines, grp_line)
-      add_hl("BelvedereHeaderRow", #lines - 1, prefix_w + grp_off, prefix_w + grp_off + #grp_lbl)
+      seg("  ")
+      seg(rpad(col.name, w_name), col.pk and "BelvedereExplorerSchema" or nil)
+      seg("  ")
+      seg(rpad(col.type, w_type),  "BelvedereExplorerTable")
+      seg("   ")
+      seg(null_s,  null_s ~= " " and "BelvedereExplorerDim" or nil)
+      seg("    ")
+      seg(pk_s,    col.pk         and "BelvedereExplorerSchema" or nil)
+      seg("   ")
+      seg(rpad(default_s, w_default))
+      seg("    ")
+      seg(excl_s,  excl_s == "✓" and "BelvedereExplorerIndex" or nil)
+      seg("      ")
+      seg(comp_s,  comp_s == "✓"  and "BelvedereExplorerIndex" or nil)
 
-      local hdr = "  " .. rpad("Name", w_name)
-               .. "  " .. rpad("Type", w_type)
-               .. "  Null  PK  "
-               .. rpad("Default", w_default)
-               .. idx_hdr
-      table.insert(lines, hdr)
-      add_hl("BelvedereHeaderRow", #lines - 1, 0, #hdr)
-
-      local sep = "  " .. string.rep("─", vim.fn.strdisplaywidth(hdr) - 2)
-      table.insert(lines, sep)
-      add_hl("BelvedereBorder", #lines - 1, 0, #sep)
-
-      for _, col in ipairs(cols) do
-        local null_s    = col.nullable == true and "✓" or col.nullable == false and "✗" or " "
-        local pk_s      = col.pk and "✓" or " "
-        local default_s = not is_nil_val(col.default) and tostring(col.default) or "—"
-        local excl_s    = col.exclusive_index and "✓" or " "
-        local comp_s    = col.composite_index and "✓" or " "
-
-        local row_idx  = #lines
-        local parts    = {}
-        local pos      = 0
-        --- Append segment `s` to the current row, optionally applying highlight `grp`.
-        --- @param s    string
-        --- @param grp  string|nil
-        local function seg(s, grp)
-          if grp then add_hl(grp, row_idx, pos, pos + #s) end
-          parts[#parts + 1] = s
-          pos = pos + #s
-        end
-
-        seg("  ")
-        seg(rpad(col.name, w_name), col.pk and "BelvedereExplorerSchema" or nil)
-        seg("  ")
-        seg(rpad(col.type, w_type),  "BelvedereExplorerTable")
-        seg("   ")
-        seg(null_s,  null_s ~= " " and "BelvedereExplorerDim" or nil)
-        seg("    ")
-        seg(pk_s,    col.pk         and "BelvedereExplorerSchema" or nil)
-        seg("   ")
-        seg(rpad(default_s, w_default))
-        seg("    ")
-        seg(excl_s,  excl_s == "✓" and "BelvedereExplorerIndex" or nil)
-        seg("      ")
-        seg(comp_s,  comp_s == "✓"  and "BelvedereExplorerIndex" or nil)
-
-        table.insert(lines, table.concat(parts))
-      end
+      table.insert(lines, table.concat(parts))
     end
   end
 
+  return lines, hl_rules, win_title
+end
+
+--- Compute float dimensions for `lines` (display-width aware).
+--- @param lines string[]
+--- @return integer, integer  width, height
+calculate_win_size = function(lines)
   local max_w = 0
   for _, l in ipairs(lines) do max_w = math.max(max_w, vim.fn.strdisplaywidth(l)) end
-  local width  = math.max(max_w + 2, 30)
-  local height = math.min(#lines, math.floor(vim.o.lines * 0.7))
+  return math.max(max_w + 2, 30), math.min(#lines, math.floor(vim.o.lines * 0.7))
+end
+
+--- Open a centred editor float displaying `lines` with `hl_rules` applied.
+--- @param lines     string[]
+--- @param hl_rules  HlRule[]
+--- @param win_title string
+present_describe_float = function(lines, hl_rules, win_title)
+  local width, height = calculate_win_size(lines)
 
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
