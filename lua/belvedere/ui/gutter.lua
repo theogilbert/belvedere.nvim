@@ -1,5 +1,9 @@
 local M = {}
 
+--- @class GutterHandle
+--- @field bufnr   integer  buffer the extmark lives in
+--- @field mark_id integer  extmark id returned by nvim_buf_set_extmark
+
 local NS
 local running = {}  -- [bufnr][mark_id] = request_id
 
@@ -7,15 +11,24 @@ local ICON_RUNNING = "\xEE\xA9\xB7"  -- U+EA77
 local ICON_SUCCESS = "\xEE\xAA\xB2"  -- U+EAB2
 local ICON_ERROR   = "\xEE\xAA\xB8"  -- U+EAB8
 
+--- Create the extmark namespace used by all gutter marks.
 function M.setup()
   NS = vim.api.nvim_create_namespace("BelvedereGutter")
 end
 
+--- Return the 0-indexed row of `mark_id` in `bufnr`, or nil when not found.
+--- @param bufnr   integer
+--- @param mark_id integer
+--- @return integer|nil
 local function get_mark_row(bufnr, mark_id)
   local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, NS, mark_id, {})
   return pos[1]
 end
 
+--- Replace the sign text and highlight of an existing extmark handle.
+--- @param handle GutterHandle|nil
+--- @param icon   string
+--- @param hl     string  highlight group name
 local function replace(handle, icon, hl)
   if not handle or not vim.api.nvim_buf_is_valid(handle.bufnr) then return end
   local row = get_mark_row(handle.bufnr, handle.mark_id)
@@ -28,7 +41,10 @@ local function replace(handle, icon, hl)
   })
 end
 
--- Replace any existing mark on this line with the running icon and return a handle.
+--- Replace any existing mark on `line` with the running icon and return a handle.
+--- @param bufnr integer
+--- @param line  integer  0-indexed
+--- @return GutterHandle
 function M.show_running(bufnr, line)
   for _, m in ipairs(vim.api.nvim_buf_get_extmarks(bufnr, NS, {line, 0}, {line, -1}, {})) do
     vim.api.nvim_buf_del_extmark(bufnr, NS, m[1])
@@ -41,28 +57,39 @@ function M.show_running(bufnr, line)
   return { bufnr = bufnr, mark_id = mark_id }
 end
 
+--- Update the gutter mark to the success icon.
+--- @param handle GutterHandle|nil
 function M.show_success(handle)
   replace(handle, ICON_SUCCESS, "BelvedereQuerySuccess")
 end
 
+--- Update the gutter mark to the error icon.
+--- @param handle GutterHandle|nil
 function M.show_error(handle)
   replace(handle, ICON_ERROR, "BelvedereQueryError")
 end
 
+--- Associate a backend request id with a gutter mark handle.
+--- @param handle     GutterHandle|nil
+--- @param request_id integer|nil
 function M.register_request(handle, request_id)
   if not handle or not request_id then return end
   running[handle.bufnr] = running[handle.bufnr] or {}
   running[handle.bufnr][handle.mark_id] = request_id
 end
 
+--- Remove the request-id association for a gutter mark handle.
+--- @param handle GutterHandle|nil
 function M.unregister_request(handle)
   if not handle then return end
   local by_buf = running[handle.bufnr]
   if by_buf then by_buf[handle.mark_id] = nil end
 end
 
--- Returns the request_id of a running query whose gutter mark sits on `line`
--- (0-indexed), or nil if none.
+--- Return the request_id of a running query whose gutter mark sits on `line` (0-indexed), or nil.
+--- @param bufnr integer
+--- @param line  integer  0-indexed
+--- @return integer|nil
 function M.find_request_at_line(bufnr, line)
   local by_buf = running[bufnr]
   if not by_buf then return nil end

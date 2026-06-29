@@ -13,11 +13,17 @@ local M = {}
 local config      = require("belvedere.config")
 local connections = require("belvedere.connections")
 
+--- Return the queries base directory from config.
+--- @return string
 local function base() return config.options.queries_dir end
 
 -- "_" is the sentinel directory name for the empty-group slot.
 local NOGROUP = "_"
 
+--- Build the relative scope key for a connection at the given hierarchy level.
+--- @param level    "driver"|"group"|"connection"
+--- @param conn_key string
+--- @return string
 function M.scope_key(level, conn_key)
   local server, driver, group, name = connections.conn_parts(conn_key)
   local g = group ~= "" and group or NOGROUP
@@ -30,6 +36,9 @@ function M.scope_key(level, conn_key)
   end
 end
 
+--- Return a human-readable label for `scope_key` (e.g. "driver: postgres").
+--- @param scope_key string
+--- @return string
 function M.scope_label(scope_key)
   local parts = vim.split(scope_key, "/", { plain = true })
   local level = parts[1]
@@ -43,9 +52,15 @@ function M.scope_label(scope_key)
   end
 end
 
+--- Return the filesystem directory for `scope_key`.
+--- @param scope_key string
+--- @return string
 local function scope_dir(scope_key) return base() .. "/" .. scope_key end
 
--- Return the path of an existing file for (scope_key, name), or nil.
+--- Return the path of the existing file for (scope_key, name), or nil if not found.
+--- @param scope_key string
+--- @param name      string
+--- @return string|nil
 local function find_file(scope_key, name)
   local dir = scope_dir(scope_key)
   if vim.fn.isdirectory(dir) == 0 then return nil end
@@ -58,8 +73,14 @@ local function find_file(scope_key, name)
   end
 end
 
--- Save a query.  ext is the file extension without dot (e.g. "sql", "cypher").
--- Returns true on success, false if a file with that name already exists in the scope.
+--- Save a query to disk.
+--- `ext` is the file extension without dot (e.g. "sql", "cypher").
+--- Returns false if a file with that name already exists in the scope.
+--- @param scope_key string
+--- @param name      string
+--- @param content   string
+--- @param ext       string
+--- @return boolean
 function M.save(scope_key, name, content, ext)
   if find_file(scope_key, name) then return false end
   local dir      = scope_dir(scope_key)
@@ -69,7 +90,9 @@ function M.save(scope_key, name, content, ext)
   return true
 end
 
--- Return all queries for a single scope: { name → { content, created_at, ext } }
+--- Return all queries for a single scope: { name → { content, created_at, ext, path } }.
+--- @param scope_key string
+--- @return table<string, {content: string, created_at: integer, ext: string, path: string}>
 function M.list(scope_key)
   local dir    = scope_dir(scope_key)
   if vim.fn.isdirectory(dir) == 0 then return {} end
@@ -90,8 +113,10 @@ function M.list(scope_key)
   return result
 end
 
--- Return all queries in scope for a connection, most-specific first.
--- Returns: { { scope_key, name, content, created_at, ext } }
+--- Return all queries visible to `conn_key`, most-specific scope first (connection > group > driver).
+--- Duplicate names are deduplicated; the most-specific definition wins.
+--- @param conn_key string
+--- @return {scope_key: string, name: string, content: string, created_at: integer, ext: string, path: string}[]
 function M.list_for_conn(conn_key)
   local seen, result = {}, {}
   for _, level in ipairs({ "connection", "group", "driver" }) do
@@ -106,6 +131,9 @@ function M.list_for_conn(conn_key)
   return result
 end
 
+--- Delete the file for (scope_key, name) if it exists.
+--- @param scope_key string
+--- @param name      string
 function M.delete(scope_key, name)
   local path = find_file(scope_key, name)
   if path then os.remove(path) end

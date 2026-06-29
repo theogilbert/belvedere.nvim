@@ -19,6 +19,9 @@ local caps_pending = {}   -- callbacks waiting for the first fetch
 
 -- Neovim jobstart line convention: data[1] continues the previous partial
 -- line; data[#data] is always the (possibly empty) start of the next line.
+--- @param _ any
+--- @param data string[]
+--- @param __ any
 local function on_stdout(_, data, _)
   state.line_buf = state.line_buf .. data[1]
   for i = 2, #data do
@@ -34,6 +37,9 @@ local function on_stdout(_, data, _)
 end
 
 
+--- Recursively replace vim.NIL sentinels with nil in a decoded JSON value.
+--- @param v any
+--- @return any
 local function strip_nil(v)
   if v == vim.NIL then return nil end
   if type(v) ~= "table" then return v end
@@ -43,6 +49,9 @@ local function strip_nil(v)
   return v
 end
 
+--- Route an incoming server message to its waiting callback.
+--- Progress messages invoke on_progress without resolving the pending entry.
+--- @param msg table  decoded JSON message from the server
 function M._dispatch(msg)
   local id = msg.id
   if id == nil then return end
@@ -62,9 +71,12 @@ function M._dispatch(msg)
 end
 
 
--- Send a request; callback(err, result) is called on completion.
--- on_progress(progress) is called for each intermediate progress message (optional).
--- Returns the request id.
+--- Send a JSON-RPC request to the backend.
+--- @param method      string
+--- @param params      table|nil
+--- @param callback    fun(err: string|nil, result: any)  called on completion
+--- @param on_progress fun(progress: table)|nil           called for each intermediate progress message
+--- @return integer|nil  request id, or nil when the backend is not running
 function M.request(method, params, callback, on_progress)
   if not state.job_id then
     callback("Backend not running", nil)
@@ -79,11 +91,16 @@ function M.request(method, params, callback, on_progress)
   return id
 end
 
+--- Send a cancellation request for `request_id`.
+--- @param request_id integer
+--- @param callback   fun(err: string|nil, result: any)|nil
 function M.cancel(request_id, callback)
   M.request("cancel", { request_id = request_id }, callback or function() end)
 end
 
--- Start the Python backend process.
+--- Start the backend process identified by `cmd`.
+--- Errors if the process cannot be spawned (e.g. command not found).
+--- @param cmd string  shell command to launch the backend
 function M.start(cmd)
   if state.job_id then return end
   local job_id = vim.fn.jobstart(cmd, {
@@ -110,7 +127,8 @@ function M.start(cmd)
   state.job_id = job_id
 end
 
--- Fetch capabilities once and cache.  Subsequent calls return immediately.
+--- Fetch capabilities once and cache the result; subsequent calls return immediately.
+--- @param callback fun(caps: table)
 function M.ensure_capabilities(callback)
   if caps_cache then callback(caps_cache) return end
   table.insert(caps_pending, callback)
@@ -123,16 +141,19 @@ function M.ensure_capabilities(callback)
   end)
 end
 
--- Returns the cached capabilities synchronously, or nil if not yet fetched.
+--- Return the cached capabilities synchronously, or nil if not yet fetched.
+--- @return table|nil
 function M.capabilities()
   return caps_cache
 end
 
+--- Clear the capabilities cache and any pending callbacks.
 function M.reset_capabilities()
   caps_cache   = nil
   caps_pending = {}
 end
 
+--- Stop the backend process and reset capabilities.
 function M.stop()
   if state.job_id then
     vim.fn.jobstop(state.job_id)
@@ -140,6 +161,8 @@ function M.stop()
   M.reset_capabilities()
 end
 
+--- Return true when the backend process is currently running.
+--- @return boolean
 function M.is_running()
   return state.job_id ~= nil
 end

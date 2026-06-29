@@ -10,6 +10,9 @@ local ROW_COUNT_FG = "#7F8490"
 local CONN_FG      = "#7DB88A"
 local NULL_FG      = "#6B7280"
 local HELP_FG      = "#4B9CD3"
+
+--- Build the table of highlight group definitions.
+--- @return table<string, table>
 local function build_highlights()
   return {
     BelvedereBorder    = { fg = BORDER_FG },
@@ -22,6 +25,7 @@ local function build_highlights()
   }
 end
 
+--- Create namespaces and define all highlight groups; re-called on ColorScheme.
 local function setup_highlights()
   M.NS_ID            = vim.api.nvim_create_namespace("BelvedereNs")
   M.TRUNCATION_NS_ID = vim.api.nvim_create_namespace("BelvedereTruncationNs")
@@ -46,6 +50,7 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "BelvedereExplorerDim",         { fg = "#6B7691",  default = true })
 end
 
+--- Initialize namespaces, define highlights, and register a ColorScheme autocmd.
 function M.setup()
   setup_highlights()
   vim.api.nvim_create_autocmd("ColorScheme", { callback = setup_highlights })

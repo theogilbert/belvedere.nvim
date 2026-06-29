@@ -6,10 +6,19 @@ local SEP     = "\t"
 local KEY_SEP = "\1"   -- SOH: won't appear in scope keys or query names
 
 local COMMENT_PREFIX = { cypher = "//" }
+
+--- Return the line-comment prefix for `filetype`, defaulting to "--".
+--- @param filetype string
+--- @param text     string
+--- @return string
 local function render_comment(filetype, text)
   return (COMMENT_PREFIX[filetype] or "--") .. " " .. text
 end
 
+--- Build the fzf entry string for a saved-query record.
+--- Format: "[scope_label] name <TAB> first_line <TAB> path <TAB> scope_key\1name"
+--- @param e table  { scope_key, name, content, path, ... }
+--- @return string
 local function make_entry(e)
   local first_line = (e.content:match("^[^\n]*") or ""):gsub("\t", "  ")
   if #first_line > 100 then first_line = first_line:sub(1, 100) .. "…" end
@@ -18,6 +27,10 @@ local function make_entry(e)
   return label .. " " .. e.name .. SEP .. first_line .. SEP .. (e.path or "") .. SEP .. hidden
 end
 
+--- Extract scope_key and query name from a fzf entry string.
+--- Returns nil, nil when the entry is malformed.
+--- @param s string  raw fzf selection string
+--- @return string|nil scope_key, string|nil name
 local function decode_entry(s)
   local parts  = vim.split(s, SEP, { plain = true })
   local hidden = parts[#parts]
@@ -26,6 +39,9 @@ local function decode_entry(s)
   return hidden:sub(1, sep - 1), hidden:sub(sep + 1)
 end
 
+--- Return the bufnr of the buffer whose name equals `name`, or -1 when not found.
+--- @param name string
+--- @return integer
 local function find_buf_by_name(name)
   for _, b in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_valid(b) and vim.api.nvim_buf_get_name(b) == name then
@@ -35,6 +51,12 @@ local function find_buf_by_name(name)
   return -1
 end
 
+--- Open (or focus) a scratch buffer containing the saved query `name` under `scope_key`.
+--- Optionally associates the buffer with `conn_key`.
+--- @param scope_key  string
+--- @param name       string
+--- @param data_by_key table<string, table>  all entries indexed by "scope_key\1name"
+--- @param conn_key   string|nil
 local function open_query_buffer(scope_key, name, data_by_key, conn_key)
   local e = data_by_key[scope_key .. KEY_SEP .. name]
   if not e then return end
@@ -75,6 +97,9 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
   end
 end
 
+--- Open fzf-lua (or fallback vim.ui.select) to pick from `entries_data`.
+--- @param entries_data table[]  list of { scope_key, name, content, ext, path, ... }
+--- @param conn_key     string|nil  associated connection for the opened buffer
 local function show_picker(entries_data, conn_key)
   if #entries_data == 0 then
     vim.notify("belvedere: no saved queries", vim.log.levels.INFO)
@@ -144,13 +169,17 @@ local function show_picker(entries_data, conn_key)
   end)
 end
 
--- Open the picker for all queries visible to a connection (conn + group + driver).
+--- Open the picker for all queries visible to a connection (conn + group + driver).
+--- @param conn_key string
 function M.open(conn_key)
   show_picker(queries.list_for_conn(conn_key), conn_key)
 end
 
--- Open the picker for a group entry: shows group-level and driver-level queries.
--- conn_key is nil here; the opened buffer won't be auto-associated.
+--- Open the picker for a group entry: shows group-level and driver-level queries.
+--- conn_key is nil here; the opened buffer won't be auto-associated.
+--- @param server    string
+--- @param driver_id string
+--- @param group     string
 function M.open_for_group(server, driver_id, group)
   local g          = group ~= "" and group or "_"
   local group_sk   = "group/"  .. server .. "/" .. driver_id .. "/" .. g

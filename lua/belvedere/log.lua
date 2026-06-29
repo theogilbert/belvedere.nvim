@@ -16,23 +16,36 @@ local state = {
 
 -- ── Paths ─────────────────────────────────────────────────────────────────────
 
+--- Return the root log directory under stdpath("data").
+--- @return string
 local function log_root()
   return vim.fn.stdpath("data") .. "/belvedere/logs"
 end
 
+--- Return today's log directory.
+--- @return string
 local function day_dir()
   return log_root() .. "/" .. today
 end
 
+--- Return the per-connection subdirectory for `conn_key` (uses a SHA-256 prefix for safety).
+--- @param conn_key string
+--- @return string
 local function conn_subdir(conn_key)
   -- conn_key may contain NUL and other filesystem-unsafe bytes; use a short hash.
   return day_dir() .. "/" .. vim.fn.sha256(conn_key):sub(1, 16)
 end
 
+--- Return the path for a single log entry JSON file.
+--- @param conn_key string
+--- @param id       string
+--- @return string
 local function entry_path(conn_key, id)
   return conn_subdir(conn_key) .. "/" .. id .. ".json"
 end
 
+--- Generate a new unique entry id: "{today}_{pid}_{seq}".
+--- @return string
 local function new_id()
   seq = seq + 1
   return today .. "_" .. pid .. "_" .. string.format("%04d", seq)
@@ -40,6 +53,8 @@ end
 
 -- ── Disk helpers ──────────────────────────────────────────────────────────────
 
+--- Serialise `e` (minus the session-local bufnr field) to its JSON file.
+--- @param e table  log entry
 local function write_entry(e)
   local out = {}
   for k, v in pairs(e) do
@@ -52,8 +67,9 @@ local function write_entry(e)
   end
 end
 
--- Merge today's on-disk entries into state.logs[conn_key].
--- Only runs once per conn_key per session.
+--- Merge today's on-disk entries into state.logs[conn_key].
+--- Only runs once per conn_key per session.
+--- @param conn_key string
 local function ensure_loaded(conn_key)
   if state.loaded[conn_key] then return end
   state.loaded[conn_key] = true
@@ -99,8 +115,13 @@ end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
---- Record a new query as "running". Returns the log_id for later update.
---- source_line is 0-indexed.
+--- Record a new query as "running" and persist it to disk.
+--- `source_line` is 0-indexed.
+--- @param conn_key   string
+--- @param bufnr      integer|nil
+--- @param source_line integer|nil  0-indexed line in the source buffer
+--- @param sql        string
+--- @return string  the new entry id
 function M.add(conn_key, bufnr, source_line, sql)
   local id          = new_id()
   local source_file = bufnr and vim.api.nvim_buf_get_name(bufnr) or nil
@@ -122,7 +143,10 @@ function M.add(conn_key, bufnr, source_line, sql)
   return id
 end
 
---- Update the entry matching `id` with the query result.
+--- Update the entry matching `id` with the query result and re-persist it.
+--- @param conn_key string
+--- @param id       string
+--- @param result   table  { err?, rows_affected?, verb?, columns?, rows?, rows_returned?, rows_total?, duration_ms? }
 function M.update(conn_key, id, result)
   local list = state.logs[conn_key]
   if not list then return end
@@ -150,7 +174,9 @@ function M.update(conn_key, id, result)
   end
 end
 
---- Return log entries for conn_key newest-first, merging from disk on first call.
+--- Return log entries for `conn_key` newest-first, merging from disk on first call.
+--- @param conn_key string
+--- @return table[]
 function M.entries(conn_key)
   ensure_loaded(conn_key)
   local list = state.logs[conn_key]
@@ -160,13 +186,16 @@ function M.entries(conn_key)
   return out
 end
 
---- Rows are stored inline in the entry; no separate file read needed.
+--- Return the rows stored inline in `entry` (no separate file read needed).
+--- @param entry table
+--- @return table[]
 function M.load_rows(entry)
   return entry.rows or {}
 end
 
 -- ── Pruning ───────────────────────────────────────────────────────────────────
 
+--- Delete all log day-directories except today's.
 local function prune_old_days()
   local root = log_root()
   if vim.fn.isdirectory(root) == 0 then return end

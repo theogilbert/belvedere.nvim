@@ -1,16 +1,33 @@
 local M = {}
 
+--- @class SqlStatement
+--- @field text      string   query text with trailing semicolons stripped
+--- @field start_row integer  0-indexed start row
+--- @field start_col integer  0-indexed start byte column
+--- @field end_row   integer  0-indexed end row
+--- @field end_col   integer  0-indexed end byte column
+
+--- Return the treesitter parser for `bufnr`, or nil if one is not available.
+--- @param bufnr integer
+--- @return userdata|nil
 local function get_parser(bufnr)
   local ok, parser = pcall(vim.treesitter.get_parser, bufnr)
   return ok and parser or nil
 end
 
+--- Return the trimmed text of `node` with trailing semicolons removed.
+--- @param node userdata
+--- @param bufnr integer
+--- @return string
 local function node_text(node, bufnr)
   local text = vim.treesitter.get_node_text(node, bufnr) or ""
   return vim.trim(text:gsub(";%s*$", ""))
 end
 
--- Returns { text, start_row } for the outermost statement containing the cursor, or nil.
+--- Return the outermost statement node containing the cursor, or nil.
+--- Result fields: text, start_row, start_col, end_row, end_col (all 0-indexed).
+--- @param bufnr integer
+--- @return SqlStatement|nil
 function M.statement_at_cursor(bufnr)
   local parser = get_parser(bufnr)
   if not parser then return nil end
@@ -39,8 +56,12 @@ function M.statement_at_cursor(bufnr)
   return { text = text, start_row = sr, start_col = sc, end_row = er, end_col = ec }
 end
 
--- Returns a list of { text, start_row } for every top-level statement whose range
--- overlaps [start_row, end_row] (both 0-indexed, inclusive), or nil on failure.
+--- Return every top-level statement that overlaps [start_row, end_row] (0-indexed inclusive).
+--- Returns nil when treesitter is unavailable or the tree cannot be parsed.
+--- @param bufnr    integer
+--- @param start_row integer  0-indexed
+--- @param end_row   integer  0-indexed
+--- @return SqlStatement[]|nil
 function M.statements_in_range(bufnr, start_row, end_row)
   local parser = get_parser(bufnr)
   if not parser then return nil end

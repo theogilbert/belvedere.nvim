@@ -28,9 +28,17 @@ local state = {
   hover_win     = nil,
 }
 
+--- Build the line/highlight/line_map arrays for a single server's data.
+--- @param server      string
+--- @param server_data table   the connections data for one server
+--- @param active_set  table<string, boolean>  keys of currently active connections
+--- @return string[], table[], table<integer, string>
 local function build(server, server_data, active_set)
   local lines, line_map, hl_rules = {}, {}, {}
 
+  --- Append a connection row at the given indent level.
+  --- @param key    string   composite connection key
+  --- @param indent integer  number of leading spaces (in units of 1 space each)
   local function add_conn_row(key, indent)
     local active  = active_set[key]
     local loading = state.conn_loading[key]
@@ -103,6 +111,8 @@ end
 
 local FOOTER = "Press g? in any pane for help"
 
+--- Append blank padding and the help footer to `lines` so it fills the panel height.
+--- @param lines string[]
 local function append_footer(lines)
   local win        = state.buffer and vim.fn.bufwinid(state.buffer.buf_id) or -1
   local win_height = win ~= -1 and vim.api.nvim_win_get_height(win) or 0
@@ -112,6 +122,7 @@ local function append_footer(lines)
   table.insert(lines, FOOTER)
 end
 
+--- Rebuild and redisplay the connections panel buffer.
 local function refresh()
   if state.panel_loading then return end
 
@@ -138,10 +149,13 @@ local function refresh()
   state.buffer:apply_highlight(rules)
 end
 
+--- Return the line_map entry for the line the cursor is currently on, or nil.
+--- @return table|nil
 local function entry_at_cursor()
   return state.line_map[vim.api.nvim_win_get_cursor(0)[1]]
 end
 
+--- <CR> handler: expand/collapse driver/group rows, or connect for connection rows.
 local function on_enter()
   local entry = entry_at_cursor()
   if not entry then return end
@@ -158,6 +172,7 @@ local function on_enter()
   end
 end
 
+--- D key handler: delete the connection or group under the cursor.
 local function on_delete()
   local entry = entry_at_cursor()
   if not entry then return end
@@ -186,12 +201,14 @@ local function on_delete()
   end
 end
 
+--- d key handler: disconnect the connection under the cursor.
 local function on_disconnect()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
   require("belvedere").disconnect(entry.key)
 end
 
+--- e key handler: open the edit wizard for the connection under the cursor.
 local function on_edit()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
@@ -204,6 +221,7 @@ local function on_edit()
   end)
 end
 
+--- c key handler: clone the connection under the cursor.
 local function on_clone()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
@@ -220,6 +238,7 @@ local function on_clone()
   end)
 end
 
+--- n key handler: open the new-connection wizard.
 local function on_new()
   local db = require("belvedere")
   db.ensure_backend_with_caps(function(caps)
@@ -231,6 +250,7 @@ local function on_new()
   end)
 end
 
+--- G key handler: create a new named group for a driver.
 local function on_new_group()
   local db = require("belvedere")
   db.ensure_backend_with_caps(function(caps)
@@ -251,12 +271,14 @@ local function on_new_group()
   end)
 end
 
+--- x key handler: open the schema explorer for the connection under the cursor.
 local function on_explore()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
   require("belvedere").open_explorer_for(entry.key)
 end
 
+--- b key handler: jump to a buffer associated with the connection under the cursor.
 local function on_jump()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
@@ -267,6 +289,9 @@ local function on_jump()
     return
   end
   local panel_win = vim.fn.bufwinid(state.buffer.buf_id)
+
+  --- Switch to `bufnr` in a non-panel window, or open one if needed.
+  --- @param bufnr integer
   local function jump_to(bufnr)
     for _, w in ipairs(vim.fn.win_findbuf(bufnr)) do
       if w ~= panel_win then vim.api.nvim_set_current_win(w) return end
@@ -294,6 +319,7 @@ local function on_jump()
   end
 end
 
+--- ? key handler: open driver help for the item under the cursor.
 local function on_help()
   local entry = entry_at_cursor()
   if not entry then return end
@@ -310,6 +336,12 @@ end
 
 local HIDDEN_CONN_FIELDS = { password = true, requires_password = true }
 
+--- Open a non-focusable float displaying `lines` near the cursor.
+--- Closes automatically on `CursorMoved` or `BufLeave`.
+--- @param lines     string[]
+--- @param title     string
+--- @param border_hl string|nil  FloatBorder highlight group
+--- @param line_hl   string|nil  highlight group applied to every line
 local function open_hover_float(lines, title, border_hl, line_hl)
   local max_w = 1
   for _, l in ipairs(lines) do max_w = math.max(max_w, vim.fn.strdisplaywidth(l)) end
@@ -360,6 +392,8 @@ local function open_hover_float(lines, title, border_hl, line_hl)
   })
 end
 
+--- K key handler: show connection details or error in a hover float.
+--- A second press makes the float focusable (so the user can scroll it).
 local function on_hover()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
@@ -424,6 +458,7 @@ local function on_hover()
 end
 
 
+--- l key handler: open the saved-query picker for the item under the cursor.
 local function on_load_query()
   local entry = entry_at_cursor()
   if not entry then return end
@@ -436,12 +471,14 @@ local function on_load_query()
   end
 end
 
+--- L key handler: open the query log for the connection under the cursor.
 local function on_query_log()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
   require("belvedere").query_log(entry.key)
 end
 
+--- Open (or close) the connections panel.
 function M.open()
   connections.invalidate()
   local db = require("belvedere")
@@ -507,15 +544,21 @@ function M.open()
   end
 end
 
+--- Refresh the panel if it is currently visible.
 function M.refresh()
   if state.buffer and state.buffer:is_valid() then refresh() end
 end
 
+--- Record a connection error and redisplay.
+--- @param name string  composite connection key
+--- @param msg  string|nil
 function M.set_conn_error(name, msg)
   state.conn_errors[name] = msg or "unknown error"
   M.refresh()
 end
 
+--- Stop and remove the loading spinner for a connection.
+--- @param name string  composite connection key
 function M.clear_conn_loading(name)
   local spinner = state.conn_loading[name]
   if not spinner then return end
@@ -523,6 +566,8 @@ function M.clear_conn_loading(name)
   spinner:reset()
 end
 
+--- Start an animated loading indicator for a connection row.
+--- @param name string  composite connection key
 function M.set_conn_loading(name)
   M.clear_conn_loading(name)
   local spinner = Spinner.new(function() M.refresh() end)

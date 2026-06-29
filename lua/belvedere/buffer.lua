@@ -46,10 +46,13 @@ function Buffer:apply_highlight(rules)
   end
 end
 
+--- Return true when the underlying buffer handle is still valid.
+--- @return boolean
 function Buffer:is_valid()
   return vim.api.nvim_buf_is_valid(self.buf_id)
 end
 
+--- Delete the underlying buffer (force=true), if valid.
 function Buffer:close()
   if self:is_valid() then
     vim.api.nvim_buf_delete(self.buf_id, { force = true })
@@ -139,6 +142,12 @@ function Buffer:show_help()
   end
 end
 
+--- Register a buffer-local keymap and record it so it appears in the `g?` help float.
+--- `opts.group` (string) groups the key under a named section header in the help float.
+--- @param mode     string
+--- @param key      string
+--- @param callback fun()
+--- @param opts     table|nil
 function Buffer:set_keymap(mode, key, callback, opts)
   opts        = opts or {}
   local group = opts.group

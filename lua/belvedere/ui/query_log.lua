@@ -12,6 +12,9 @@ local hl        = require("belvedere.hl")
 local SEARCH_PROMPT     = "/ "
 local SEARCH_PROMPT_LEN = #SEARCH_PROMPT
 
+--- Return the Neovim filetype string for a given driver name.
+--- @param driver string|nil
+--- @return string
 local function driver_filetype(driver)
   if not driver then return "sql" end
   local d = driver:lower()
@@ -19,10 +22,17 @@ local function driver_filetype(driver)
   return "sql"
 end
 
+--- Format a millisecond duration as a human-readable seconds string.
+--- @param ms number
+--- @return string
 local function format_duration(ms)
   return ("%.3f"):format(ms / 1000):gsub("0+$", ""):gsub("%.$", "") .. "s"
 end
 
+--- Build a single-line summary of a log entry for the list panel.
+--- @param entry      table   log entry record
+--- @param content_w  integer available character width for the line
+--- @return string
 local function format_entry_line(entry, content_w)
   local status  = entry.status == "error"   and "✗ "
                or entry.status == "running" and "… "
@@ -39,7 +49,8 @@ local function format_entry_line(entry, content_w)
 end
 
 --- Open the log viewer for `conn_key`.
---- conn: { conn_id, driver, key, driver_label } — may be nil if connection is inactive.
+--- @param conn_key string
+--- @param conn     table|nil  { conn_id, driver, key, driver_label } — may be nil if inactive
 function M.open(conn_key, conn)
   local entries = log.entries(conn_key)
 
@@ -163,6 +174,7 @@ function M.open(conn_key, conn)
   local closed = false
   local aug    = vim.api.nvim_create_augroup("BelvedereQueryLog", { clear = true })
 
+  --- Close all four windows and clean up the augroup.
   local function close()
     if closed then return end
     closed = true
@@ -181,6 +193,9 @@ function M.open(conn_key, conn)
     })
   end
 
+  --- Write `lines` to `buf`, flattening any embedded newlines.
+  --- @param buf   integer
+  --- @param lines string[]
   local function set_buf_lines(buf, lines)
     -- nvim_buf_set_lines rejects items that contain \n; flatten them.
     local flat = {}
@@ -201,6 +216,8 @@ function M.open(conn_key, conn)
   -- ── Preview (right panels) ─────────────────────────────────────────────────
   local rows_cache = {}  -- [entry.id] = rows, to avoid re-reading the file every cursor move
 
+  --- Update the SQL and results preview panes to reflect `entry`.
+  --- @param entry table|nil
   local function update_preview(entry)
     if not entry then
       set_buf_lines(sql_buf, {})
@@ -273,6 +290,8 @@ function M.open(conn_key, conn)
   -- ── List (left-bottom panel) ───────────────────────────────────────────────
   local line_map = {}  -- [1-indexed row] → entry; reassigned by update_list
 
+  --- Repopulate the list panel, applying `filter_text` as a case-insensitive substring filter.
+  --- @param filter_text string
   local function update_list(filter_text)
     local filtered = {}
     if filter_text == "" then
@@ -376,7 +395,8 @@ function M.open(conn_key, conn)
   end
 
   -- ── Keymaps ────────────────────────────────────────────────────────────────
-  -- Move the list cursor from inside the search bar.
+  --- Move the list cursor by `delta` rows from the input window.
+  --- @param delta integer
   local function list_move(delta)
     if not vim.api.nvim_win_is_valid(list_win) then return end
     local count = math.max(1, vim.api.nvim_buf_line_count(list_buf))
@@ -388,6 +408,7 @@ function M.open(conn_key, conn)
     end
   end
 
+  --- Register <Down>/<C-n> and <Up>/<C-p> keymaps on the input buffer.
   local function register_nav_keymaps()
     if not vim.api.nvim_buf_is_valid(input_buf) then return end
     for _, key in ipairs({ "<Down>", "<C-n>" }) do
@@ -476,6 +497,7 @@ function M.open(conn_key, conn)
   -- Insert mode: no `nowait` so that terminal arrow-key sequences (e.g. \x1b[A for
   -- <Up> over SSH) are not immediately consumed by the \x1b prefix before the rest
   -- of the sequence arrives. Normal mode: nowait is safe.
+  --- Clear the search text on first press; close the viewer on second press.
   local function esc_action()
     vim.cmd("stopinsert")  -- always leave insert mode; keymap suppresses the default <Esc> behaviour
     local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""

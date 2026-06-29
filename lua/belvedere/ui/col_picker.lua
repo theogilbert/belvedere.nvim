@@ -18,6 +18,10 @@ local ns_id   = vim.api.nvim_create_namespace("belvedere_col_picker")
 local SEP     = "│"
 local SEP_LEN = #SEP  -- 3 bytes for the UTF-8 box-drawing character
 
+--- Right-pad `s` with spaces so its display width equals `width`.
+--- @param s     string
+--- @param width integer
+--- @return string
 local function pad(s, width)
   return s .. string.rep(" ", math.max(0, width - vim.api.nvim_strwidth(s)))
 end
@@ -25,6 +29,7 @@ end
 -- One picker at a time.
 local p = {}
 
+--- Redraw the picker buffer from the current picker state.
 local function render()
   if not p.buf or not vim.api.nvim_buf_is_valid(p.buf) then return end
 
@@ -71,13 +76,15 @@ local function render()
   end
 end
 
+--- Close the picker window.
 local function close()
   if p.win and vim.api.nvim_win_is_valid(p.win) then
     vim.api.nvim_win_close(p.win, true)
   end
 end
 
--- Re-insert col into available while preserving the original column order.
+--- Re-insert `col` into the available list while preserving original column order.
+--- @param col string
 local function insert_sorted_available(col)
   local rank = {}
   for i, c in ipairs(p.all_cols) do rank[c] = i end
@@ -91,6 +98,8 @@ local function insert_sorted_available(col)
   table.insert(p.available, col)
 end
 
+--- Move the focused item in the selected list up (`delta` = -1) or down (+1).
+--- @param delta integer
 local function reorder(delta)
   if p.side ~= "right" then return end
   local target = p.cursor + delta
@@ -101,6 +110,7 @@ local function reorder(delta)
   if p.on_change then p.on_change(vim.list_extend({}, p.selected)) end
 end
 
+--- Restore available and selected to the state when the picker was opened.
 local function reset()
   p.available = vim.list_extend({}, p.init_available)
   p.selected  = vim.list_extend({}, p.init_selected)
@@ -110,6 +120,7 @@ local function reset()
   if p.on_change then p.on_change(vim.list_extend({}, p.selected)) end
 end
 
+--- Move all available columns into selected.
 local function select_all()
   for _, col in ipairs(p.available) do
     table.insert(p.selected, col)
@@ -121,6 +132,7 @@ local function select_all()
   if p.on_change then p.on_change(vim.list_extend({}, p.selected)) end
 end
 
+--- Move all selected columns back to available (in original order).
 local function deselect_all()
   for _, col in ipairs(p.selected) do
     insert_sorted_available(col)
@@ -132,6 +144,7 @@ local function deselect_all()
   if p.on_change then p.on_change({}) end
 end
 
+--- Move the item under the cursor between available and selected.
 local function move_item()
   if p.side == "left" then
     local col = table.remove(p.available, p.cursor)
@@ -216,10 +229,15 @@ function M.open(all_cols, vis_cols, on_change)
 
   render()  -- second call positions the Neovim cursor now that p.win is set
 
+  --- Register a normal-mode keymap on the picker buffer.
+  --- @param key string
+  --- @param fn  fun()
+  --- @param desc string
   local function map(key, fn, desc)
     vim.keymap.set("n", key, fn, { buffer = buf, silent = true, nowait = true, desc = desc })
   end
 
+  --- Open a floating keymap cheatsheet for the picker.
   local function show_help()
     local keymaps = vim.api.nvim_buf_get_keymap(buf, "n")
     local lines   = {}
@@ -254,18 +272,22 @@ function M.open(all_cols, vis_cols, on_change)
     end
   end
 
-  local nav_down = function()
+  --- Move cursor to the next item in the focused panel.
+  local function nav_down()
     local list = p.side == "left" and p.available or p.selected
     p.cursor   = math.min(p.cursor + 1, math.max(#list, 1))
     render()
   end
-  local nav_up   = function() p.cursor = math.max(1, p.cursor - 1); render() end
-  local nav_left = function()
+  --- Move cursor to the previous item in the focused panel.
+  local function nav_up()   p.cursor = math.max(1, p.cursor - 1); render() end
+  --- Switch focus to the available (left) panel.
+  local function nav_left()
     p.side   = "left"
     p.cursor = math.min(p.cursor, math.max(#p.available, 1))
     render()
   end
-  local nav_right = function()
+  --- Switch focus to the selected (right) panel.
+  local function nav_right()
     p.side   = "right"
     p.cursor = math.min(p.cursor, math.max(#p.selected, 1))
     render()

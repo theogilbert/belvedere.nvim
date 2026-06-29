@@ -6,7 +6,10 @@ local M = {}
 local labels  = {}                       -- [winid] -> { win = fwin, width = w, name = s }
 local resolve = function() return nil end -- bufnr -> connection name | nil
 
--- Geometry for the label float: right-aligned, sized to the text.
+--- Return the nvim_open_win config for a label float: right-aligned, sized to the text.
+--- @param winid integer
+--- @param width integer  display-column width of the label text
+--- @return table
 local function geometry(winid, width)
   local win_width = vim.api.nvim_win_get_width(winid)
   return {
@@ -19,7 +22,8 @@ local function geometry(winid, width)
   }
 end
 
---- Remove the label for `winid`, if any.
+--- Remove the label float for `winid`, if any.
+--- @param winid integer
 function M.hide(winid)
   local entry = labels[winid]
   if entry and vim.api.nvim_win_is_valid(entry.win) then
@@ -28,7 +32,9 @@ function M.hide(winid)
   labels[winid] = nil
 end
 
---- Show (replacing any existing) the label for `winid`.
+--- Show (replacing any existing) the connection label for `winid`.
+--- @param winid integer
+--- @param name  string  human-readable connection name
 function M.show(winid, name)
   M.hide(winid)
   local text = "Connected to " .. name
@@ -45,14 +51,16 @@ function M.show(winid, name)
   labels[winid] = { win = fwin, width = w, name = name }
 end
 
--- Reposition an existing label after its parent window was resized.
+--- Reposition an existing label after its parent window was resized.
+--- @param winid integer
 local function reposition(winid)
   local entry = labels[winid]
   if not (entry and vim.api.nvim_win_is_valid(entry.win)) then return end
   vim.api.nvim_win_set_config(entry.win, geometry(winid, entry.width))
 end
 
--- Show, move, or remove the label for a window based on its current buffer.
+--- Show, move, or remove the label for `winid` based on its current buffer's connection.
+--- @param winid integer
 local function refresh(winid)
   if not vim.api.nvim_win_is_valid(winid) then return end
   -- Skip floating windows (our own labels and other plugins').
@@ -66,7 +74,7 @@ local function refresh(winid)
   end
 end
 
---- Remove every label (backend teardown).
+--- Remove every label (called on backend teardown).
 function M.clear_all()
   for winid in pairs(labels) do
     local entry = labels[winid]
@@ -77,8 +85,8 @@ function M.clear_all()
   labels = {}
 end
 
---- Install the autocmds that keep labels in sync.
---- @param resolve_fn fun(bufnr: integer): string|nil  buffer -> connection name
+--- Install the autocmds that keep labels in sync and set the buffer→name resolver.
+--- @param resolve_fn fun(bufnr: integer): string|nil  returns the connection name or nil
 function M.setup(resolve_fn)
   resolve = resolve_fn
   local aug = vim.api.nvim_create_augroup("BelvedereConnLabels", { clear = true })

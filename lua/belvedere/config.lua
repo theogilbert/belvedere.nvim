@@ -1,10 +1,14 @@
 local M = {}
 
+--- Return the XDG-aware default path for connections.json.
+--- @return string
 local function default_connections_file()
   local xdg = vim.env.XDG_CONFIG_HOME or vim.fn.expand("~/.config")
   return xdg .. "/belvedere/connections.json"
 end
 
+--- Return the XDG-aware default directory for saved queries.
+--- @return string
 local function default_queries_dir()
   local xdg = vim.env.XDG_DATA_HOME or vim.fn.expand("~/.local/share")
   return xdg .. "/belvedere/queries"
@@ -40,6 +44,8 @@ M.defaults = {
 
 M.options = {}
 
+--- Merge user options into defaults and populate path fields that require runtime evaluation.
+--- @param user_opts table|nil
 function M.setup(user_opts)
   M.options = vim.tbl_deep_extend("force", M.defaults, user_opts or {})
   if not M.options.connections_file then

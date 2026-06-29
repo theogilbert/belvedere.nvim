@@ -14,6 +14,19 @@ local ts_queries        = require("belvedere.ts_queries")
 
 local FLASH_NS = vim.api.nvim_create_namespace("BelvedereFlash")
 
+--- @class ConnSession
+--- @field conn_id      any     backend connection id returned by the server
+--- @field driver       string  driver identifier (e.g. "postgres", "neo4j")
+--- @field key          string  composite NUL-separated connection key
+--- @field driver_label string  human-readable driver name for UI labels
+
+--- Briefly highlight a range in `bufnr` using the BelvedereQueryFlash group, then clear it.
+--- All coordinates are 0-indexed.
+--- @param bufnr integer
+--- @param sr    integer  start row
+--- @param sc    integer  start col
+--- @param er    integer  end row
+--- @param ec    integer  end col
 local function flash_range(bufnr, sr, sc, er, ec)
   vim.api.nvim_buf_clear_namespace(bufnr, FLASH_NS, 0, -1)
   vim.api.nvim_buf_set_extmark(bufnr, FLASH_NS, sr, sc, {
@@ -30,27 +43,33 @@ local function flash_range(bufnr, sr, sc, er, ec)
 end
 
 -- Session state.
---   conns:     connections opened this session  { [name]  = { conn_id, driver } }
---   buf_conns: connection each buffer queries    { [bufnr] = name }
+--   conns:     connections opened this session  { [conn_key] = ConnSession }
+--   buf_conns: connection each buffer queries   { [bufnr]    = conn_key }
 local state = {
   conns     = {},
   buf_conns = {},
 }
 
--- Resolve the connection associated with `bufnr`, or nil.
+--- Return the connection record for `bufnr`, or nil when none is associated.
+--- @param bufnr integer
+--- @return ConnSession|nil
 local function conn_for_buf(bufnr)
   local name = state.buf_conns[bufnr]
   return name and state.conns[name]
 end
 
--- Compute the display label for a connection: "name (Driver Label)".
+--- Return the human-readable label "display_name (Driver Label)" for a connection key.
+--- @param key string
+--- @return string
 local function conn_display_label(key)
   local conn  = state.conns[key]
   local label = conn and (conn.driver_label or conn.driver)
   return label and (connections.conn_display_name(key) .. " (" .. label .. ")") or connections.conn_display_name(key)
 end
 
--- Associate (or, with conn_key=nil, dissociate) a buffer and update its window labels.
+--- Associate (or, with name=nil, dissociate) a buffer with a connection and update winbar labels.
+--- @param bufnr integer
+--- @param name  string|nil
 local function set_buf_conn(bufnr, name)
   state.buf_conns[bufnr] = name
   for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
@@ -58,10 +77,15 @@ local function set_buf_conn(bufnr, name)
   end
 end
 
+--- Public wrapper around set_buf_conn for use by other modules.
+--- @param bufnr    integer
+--- @param conn_key string|nil
 function M.set_buf_conn(bufnr, conn_key)
   set_buf_conn(bufnr, conn_key)
 end
 
+--- Initialise config, highlights, gutter, and the connection-label autocmds.
+--- @param opts table|nil
 function M.setup(opts)
   config.setup(opts)
   hl.setup()
@@ -73,8 +97,9 @@ function M.setup(opts)
 end
 
 
--- Start the backend if it isn't already running.
--- Returns false (and notifies) if the process could not be spawned.
+--- Start the backend if it isn't already running.
+--- Returns false (and notifies) if the process could not be spawned.
+--- @return boolean
 local function start_backend()
   if client.is_running() then return true end
   local ok, err = pcall(client.start, config.options.server_cmd)
@@ -85,18 +110,24 @@ local function start_backend()
   return true
 end
 
--- Start the backend if needed, then deliver capabilities to `callback`.
--- Returns false if the backend could not be started.
+--- Start the backend if needed, then deliver capabilities to `callback`.
+--- Returns false if the backend could not be started.
+--- @param callback fun(caps: table)
+--- @return boolean
 function M.ensure_backend_with_caps(callback)
   if not start_backend() then return false end
   client.ensure_capabilities(callback)
   return true
 end
 
+--- Connect to the named connection, or open the picker when `name` is blank.
+--- @param name string  connection name or key (empty = open picker)
 function M.connect(name)
   local bufnr = vim.api.nvim_get_current_buf()
   local auto_assign = vim.bo[bufnr].buftype == ""
 
+  --- Associate the current buffer with the new connection if appropriate.
+  --- @param conn_name string
   local function after_connect(conn_name)
     if auto_assign and vim.api.nvim_buf_is_valid(bufnr) then
       set_buf_conn(bufnr, conn_name)
@@ -146,6 +177,10 @@ function M.connect(name)
   end
 end
 
+--- Set the loading indicator on the connections panel, start the backend, then send connect.
+--- @param name         string
+--- @param params       table
+--- @param after_connect fun(name: string)|nil
 function M._do_connect(name, params, after_connect)
   connections_panel.set_conn_loading(name)
   local ok = M.ensure_backend_with_caps(function()
@@ -157,6 +192,10 @@ end
 -- Fields in connection params that must not be forwarded to the server.
 local CLIENT_ONLY_FIELDS = { requires_password = true }
 
+--- Send the "connect" request to the backend and register the connection on success.
+--- @param name          string
+--- @param params        table
+--- @param after_connect fun(name: string)|nil
 function M._send_connect(name, params, after_connect)
   local _, driver, _, _ = connections.conn_parts(name)
   local server_params = { driver = driver }
@@ -186,6 +225,7 @@ function M._send_connect(name, params, after_connect)
   end)
 end
 
+--- Prompt the user to associate the current buffer with one of the open connections.
 function M.associate()
   local keys = vim.tbl_keys(state.conns)
   if #keys == 0 then
@@ -207,6 +247,8 @@ function M.associate()
   end)
 end
 
+--- Disconnect from `name` (or the current buffer's connection when `name` is empty).
+--- @param name string  connection key or display name, or "" for current buffer
 function M.disconnect(name)
   local key = name ~= "" and name or state.buf_conns[vim.api.nvim_get_current_buf()]
   if not key then
@@ -243,7 +285,8 @@ function M.disconnect(name)
   end)
 end
 
--- Return the display names of all currently-open connections (for tab completion).
+--- Return display names of all currently-open connections (for tab completion).
+--- @return string[]
 function M.active_names()
   local names = {}
   local seen = {}
@@ -255,19 +298,24 @@ function M.active_names()
   return names
 end
 
--- Return the storage keys of all currently-open connections.
+--- Return the storage keys of all currently-open connections.
+--- @return string[]
 function M.active_keys()
   local keys = vim.tbl_keys(state.conns)
   table.sort(keys)
   return keys
 end
 
--- Return the active conn record for a key, or nil.
+--- Return the active connection record for `key`, or nil.
+--- @param key string
+--- @return ConnSession|nil
 function M.get_conn(key)
   return state.conns[key]
 end
 
--- Return valid bufnrs whose associated connection matches {name}.
+--- Return valid bufnrs whose associated connection matches `name`.
+--- @param name string  connection key
+--- @return integer[]
 function M.buffers_for(name)
   local result = {}
   for bufnr, conn_name in pairs(state.buf_conns) do
@@ -279,6 +327,10 @@ function M.buffers_for(name)
 end
 
 
+--- Execute `sql` against the connection associated with `bufnr`, showing errors when none.
+--- @param sql        string
+--- @param bufnr      integer
+--- @param first_line integer  0-indexed first line of `sql` in `bufnr`
 local function execute_sql(sql, bufnr, first_line)
   if not sql or sql == "" then
     vim.notify("belvedere: no SQL to execute", vim.log.levels.WARN)
@@ -296,6 +348,7 @@ local function execute_sql(sql, bufnr, first_line)
   executor.run(conn, sql, bufnr, first_line)
 end
 
+--- Execute the visual selection, or the treesitter statement at cursor, or the current line.
 function M.execute()
   local bufnr = vim.api.nvim_get_current_buf()
 
@@ -341,16 +394,22 @@ function M.execute()
   end
 end
 
+--- Execute lines `line1`–`line2` (1-indexed, inclusive) in the current buffer.
+--- @param line1 integer
+--- @param line2 integer
 function M.execute_range(line1, line2)
   local bufnr = vim.api.nvim_get_current_buf()
   local lines = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
   execute_sql(table.concat(lines, "\n"), bufnr, line1 - 1)
 end
 
+--- Open the connections panel sidebar.
 function M.open_connections()
   connections_panel.open()
 end
 
+--- Open driver help for the connection associated with the current buffer.
+--- @param opts table|nil  passed through to open_driver_help
 function M.open_current_driver_help(opts)
   local conn = conn_for_buf(vim.api.nvim_get_current_buf())
   if not conn then
@@ -360,6 +419,9 @@ function M.open_current_driver_help(opts)
   M.open_driver_help(conn.driver, opts)
 end
 
+--- Fetch and display markdown help for `driver` in a floating or split window.
+--- @param driver string
+--- @param opts   table|nil  { position = "bottom" } for a split; otherwise a centred float
 function M.open_driver_help(driver, opts)
   opts = opts or {}
   if not start_backend() then return end
@@ -398,6 +460,8 @@ function M.open_driver_help(driver, opts)
   end)
 end
 
+--- Open the schema explorer for the connection registered under `name`.
+--- @param name string  connection key
 function M.open_explorer_for(name)
   local conn = state.conns[name]
   if not conn then
@@ -407,6 +471,7 @@ function M.open_explorer_for(name)
   explorer.open(conn.conn_id, connections.conn_display_name(name), conn.driver, name, conn.driver_label)
 end
 
+--- Open the schema explorer for the current buffer's connection (or any open connection).
 function M.open_explorer()
   -- The current buffer's connection, or else any open connection.
   local key = state.buf_conns[vim.api.nvim_get_current_buf()] or next(state.conns)
@@ -418,6 +483,7 @@ function M.open_explorer()
   explorer.open(conn.conn_id, connections.conn_display_name(key), conn.driver, key, conn.driver_label)
 end
 
+--- Stop the backend and clear all session state.
 local function teardown()
   client.stop()  -- also resets capabilities cache
   state.conns     = {}
@@ -426,11 +492,13 @@ local function teardown()
   explorer.reset()
 end
 
+--- Stop the backend process and notify the user.
 function M.stop()
   teardown()
   vim.notify("belvedere: backend stopped", vim.log.levels.INFO)
 end
 
+--- Restart the backend process (teardown then start).
 function M.restart()
   teardown()
   if start_backend() then
@@ -438,13 +506,16 @@ function M.restart()
   end
 end
 
+--- Open the save-query wizard for `content` in the context of `bufnr`.
+--- @param content string
+--- @param bufnr   integer
 local function open_save_query(content, bufnr)
   local ext = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":e")
   if ext == "" then ext = vim.bo[bufnr].filetype end
   require("belvedere.ui.save_query").open(content, state.buf_conns[bufnr], ext)
 end
 
--- Mode-aware: reads the visual selection or the current line.
+--- Save the visual selection or current line as a named query (mode-aware).
 function M.save_query()
   local bufnr = vim.api.nvim_get_current_buf()
   local content
@@ -464,7 +535,9 @@ function M.save_query()
   open_save_query(content, bufnr)
 end
 
--- For :[range]DbSaveQuery — range lines are already resolved by Neovim.
+--- Save lines `line1`–`line2` (1-indexed, already resolved by Neovim) as a named query.
+--- @param line1 integer
+--- @param line2 integer
 function M.save_query_range(line1, line2)
   local bufnr   = vim.api.nvim_get_current_buf()
   local lines   = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
@@ -476,6 +549,7 @@ function M.save_query_range(line1, line2)
   open_save_query(content, bufnr)
 end
 
+--- Cancel the running query whose gutter mark is on the cursor line.
 function M.cancel_query()
   local bufnr      = vim.api.nvim_get_current_buf()
   local line       = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
@@ -491,6 +565,8 @@ function M.cancel_query()
   end)
 end
 
+--- Open the saved-query picker for `conn_key` (defaults to the current buffer's connection).
+--- @param conn_key string|nil
 function M.load_query(conn_key)
   if not conn_key then
     conn_key = state.buf_conns[vim.api.nvim_get_current_buf()]
@@ -502,6 +578,8 @@ function M.load_query(conn_key)
   require("belvedere.ui.query_picker").open(conn_key)
 end
 
+--- Open the query log viewer for `conn_key` (defaults to the current buffer's connection).
+--- @param conn_key string|nil
 function M.query_log(conn_key)
   if not conn_key then
     conn_key = state.buf_conns[vim.api.nvim_get_current_buf()]

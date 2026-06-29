@@ -4,17 +4,34 @@
 local M = {}
 
 local hl         = require("belvedere.hl")
+
+--- Positional highlight entry: { group, 0-indexed-row, byte-col-start, byte-col-end }.
+--- Used in the `hls` accumulator arrays passed between section/tag_line/apply.
+--- @class DetailHlRule
+--- @field [1] string   highlight group name
+--- @field [2] integer  0-indexed buffer row
+--- @field [3] integer  byte start column
+--- @field [4] integer  byte end column  (-1 = end of line)
+
+--- Per-segment highlight spec returned by tag_line: { group, col_start, col_end }.
+--- @class TagSpec
+--- @field [1] string   highlight group name
+--- @field [2] integer  byte start column within the tag line
+--- @field [3] integer  byte end column within the tag line
+
 local SEP        = string.rep("─", 48)
 local TAG_SEP    = "  ·  "
 local TAG_PREFIX = "  "
 local NS         = vim.api.nvim_create_namespace("BelvedereDetailPane")
 
 --- True when v is nil or vim.NIL (JSON null decoded by Neovim).
+--- @param v any
+--- @return boolean
 function M.is_nil(v) return v == nil or v == vim.NIL end
 
 --- Append a bold section header + horizontal separator to the line/highlight accumulators.
 --- @param lines table  mutable string array being built
---- @param hls   table  mutable {group, row, col_s, col_e} array being built
+--- @param hls   DetailHlRule[]  mutable highlight-rule array being built
 --- @param title string
 function M.section(lines, hls, title)
   local row = #lines
@@ -27,7 +44,7 @@ end
 
 --- Build a "tag summary" line with per-segment highlight specs.
 --- @param tagged table  list of {text, hl_group} pairs (hl_group nil/false = no highlight)
---- @return string line, table specs  specs: list of {group, col_s, col_e}
+--- @return string line, TagSpec[] specs
 function M.tag_line(tagged)
   local texts = {}
   for _, t in ipairs(tagged) do texts[#texts + 1] = t[1] end
@@ -46,7 +63,7 @@ end
 --- Write lines + highlights into buf (replaces all existing content).
 --- @param buf   integer
 --- @param lines string[]
---- @param hls   table[]   each entry: {group, row, col_s, col_e}
+--- @param hls   DetailHlRule[]
 function M.apply(buf, lines, hls)
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -122,6 +139,7 @@ function M.open_two_pane(opts)
   vim.api.nvim_set_option_value("cursorline", true,  { win = lwin })
   vim.api.nvim_set_option_value("wrap",       false, { win = rwin })
 
+  --- Sync the right pane to reflect the left pane's current cursor row.
   local function sync()
     local row  = vim.api.nvim_win_get_cursor(lwin)[1]
     local item = items[row]
@@ -138,6 +156,7 @@ function M.open_two_pane(opts)
 
   local aug = vim.api.nvim_create_augroup("BelvedereDetailPane_" .. lbuf, { clear = true })
 
+  --- Close both panes.
   local function close()
     pcall(vim.api.nvim_win_close, lwin, true)
     pcall(vim.api.nvim_win_close, rwin, true)
@@ -161,12 +180,16 @@ function M.open_two_pane(opts)
     group = aug, buffer = lbuf, callback = sync,
   })
 
+  --- @param key string
+  --- @param fn  fun()
   local function lmap(key, fn) vim.keymap.set("n", key, fn, { buffer = lbuf, nowait = true, silent = true }) end
   lmap("q",     close)
   lmap("<Esc>", close)
   lmap("l",     function() vim.api.nvim_set_current_win(rwin) end)
   lmap("<Tab>", function() vim.api.nvim_set_current_win(rwin) end)
 
+  --- @param key string
+  --- @param fn  fun()
   local function rmap(key, fn) vim.keymap.set("n", key, fn, { buffer = rbuf, nowait = true, silent = true }) end
   rmap("q",       close)
   rmap("<Esc>",   close)
@@ -208,6 +231,7 @@ function M.open_single(opts)
   vim.api.nvim_win_set_hl_ns(win, hl.NS_ID)
   vim.api.nvim_set_option_value("wrap", false, { win = win })
 
+  --- Close the single-item float.
   local function close() pcall(vim.api.nvim_win_close, win, true) end
 
   local aug = vim.api.nvim_create_augroup("BelvedereDetailPane_" .. buf, { clear = true })

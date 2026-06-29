@@ -18,12 +18,22 @@ local BUFNAME = "belvedere://results"
 
 local render_table  -- forward declaration; defined after apply_highlights
 
+--- Return true when column arrays `a` and `b` are identical.
+--- @param a string[]
+--- @param b string[]
+--- @return boolean
 local function same_columns(a, b)
   if #a ~= #b then return false end
   for i, c in ipairs(a) do if c ~= b[i] then return false end end
   return true
 end
 
+--- Build the row-count label shown above the results table.
+--- @param rows_returned integer
+--- @param rows_total    integer
+--- @param page          integer  1-indexed current page
+--- @param page_size     integer
+--- @return string
 local function rows_label(rows_returned, rows_total, page, page_size)
   local total_pages = math.max(1, math.ceil(rows_returned / page_size))
   local first       = (page - 1) * page_size + 1
@@ -46,10 +56,17 @@ local function rows_label(rows_returned, rows_total, page, page_size)
   return count
 end
 
+--- Return the "N row(s) <verb>" message for a DML result.
+--- @param n    integer
+--- @param verb string
+--- @return string
 local function rows_affected_msg(n, verb)
   return n .. " row" .. (n == 1 and "" or "s") .. " " .. verb
 end
 
+--- Format a duration in milliseconds as a human-readable string ("1.234s", "2m 5s", etc.).
+--- @param ms number
+--- @return string
 local function format_duration(ms)
   local total_s = ms / 1000
   if total_s >= 3600 then
@@ -76,10 +93,15 @@ local state = {
   active_src = nil,  -- src_bufnr set by set_conn_name before each query
 }
 
+--- Return the buf_state for the currently active source buffer, or nil.
+--- @return table|nil
 local function active_bs()
   return state.active_src and state.buffers[state.active_src]
 end
 
+--- Return the buf_state whose Buffer.buf_id matches the buffer in `win_id`, or nil.
+--- @param win_id integer
+--- @return table|nil
 local function win_bs_for(win_id)
   if not win_id or not vim.api.nvim_win_is_valid(win_id) then return nil end
   local buf_id = vim.api.nvim_win_get_buf(win_id)
@@ -89,15 +111,21 @@ local function win_bs_for(win_id)
   return nil
 end
 
+--- Return the results window id for the current tab, or nil.
+--- @return integer|nil
 local function current_results_win()
   return state.win_ids[vim.api.nvim_get_current_tabpage()]
 end
 
+--- Return the buf_state for the results window in the current tab, or nil.
+--- @return table|nil
 local function win_bs()
   return win_bs_for(current_results_win())
 end
 
 
+--- Scroll the results window left (direction < 0) or right (direction > 0) by one column.
+--- @param direction integer  positive = right, negative = left
 local function scroll_columns(direction)
   local win_id = vim.api.nvim_get_current_win()
   local bs = win_bs_for(win_id)
@@ -139,6 +167,8 @@ local function scroll_columns(direction)
 end
 
 
+--- Redraw truncation indicator extmarks (◂/▸) based on the current scroll position.
+--- @param win_id integer|nil  defaults to the current tab's results window
 local function update_truncation_indicators(win_id)
   win_id = win_id or current_results_win()
   if not win_id or not vim.api.nvim_win_is_valid(win_id) then return end
@@ -177,6 +207,8 @@ local function update_truncation_indicators(win_id)
 end
 
 
+--- Remove autocmds and win_ids tracking for a closed results window.
+--- @param win_id integer
 local function teardown(win_id)
   local ac = state.autocmds[win_id]
   if ac then
@@ -188,6 +220,8 @@ local function teardown(win_id)
   end
 end
 
+--- Open a new results split/vsplit and register autocmds for scrolling and close tracking.
+--- @param buf_id integer
 local function open_win(buf_id)
   local opts     = config.options.results
   local cmd      = opts.split == "right"
@@ -221,7 +255,8 @@ local function open_win(buf_id)
   vim.api.nvim_set_current_win(prev_win)
 end
 
--- Open the results window for the current tab if closed; otherwise swap the buffer.
+--- Open the results window for the current tab if closed; otherwise swap the buffer.
+--- @param buf_id integer
 local function ensure_win(buf_id)
   local tab    = vim.api.nvim_get_current_tabpage()
   local win_id = state.win_ids[tab]
@@ -232,6 +267,9 @@ local function ensure_win(buf_id)
   end
 end
 
+--- Return a short suffix that identifies the source buffer (" [filename]" or " #N").
+--- @param src_bufnr integer|nil
+--- @return string
 local function src_buf_suffix(src_bufnr)
   if not src_bufnr then return "" end
   local name = vim.api.nvim_buf_get_name(src_bufnr)
@@ -241,6 +279,8 @@ local function src_buf_suffix(src_bufnr)
   return " #" .. src_bufnr
 end
 
+--- Open a float showing the SQL text that produced the current results.
+--- @param bs table  buf_state
 local function show_source_query(bs)
   if not bs.query then return end
   local lines = vim.split(bs.query, "\n", { plain = true })
@@ -278,6 +318,10 @@ local function show_source_query(bs)
   end
 end
 
+--- Return an existing valid buf_state for `src_bufnr`, or create and register a new one.
+--- @param src_bufnr integer
+--- @param buf_title string
+--- @return table
 local function get_or_create_buf_state(src_bufnr, buf_title)
   local existing = state.buffers[src_bufnr]
   if existing and existing.buffer:is_valid() then return existing end
@@ -338,8 +382,12 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
 end
 
 
--- label_line: 0-indexed buf line for the BelvedereRowCount highlight
--- tbl_offset: 0-indexed buf line where the table starts
+--- Apply header, row-count, and NULL highlight rules to `bs.buffer`.
+--- `label_line` and `tbl_offset` are 0-indexed buffer rows.
+--- @param bs         table   buf_state
+--- @param tbl        table   FormattedTable from table_fmt.from_structured_data
+--- @param label_line integer  0-indexed row for BelvedereRowCount
+--- @param tbl_offset integer  0-indexed row where the table starts
 local function apply_highlights(bs, tbl, label_line, tbl_offset)
   local rules = table_fmt.col_hl_rules("BelvedereHeaderRow", tbl_offset, 1, tbl)
   table.insert(rules, {
@@ -357,6 +405,8 @@ local function apply_highlights(bs, tbl, label_line, tbl_offset)
 end
 
 
+--- Re-render the results table for `bs`, respecting the current page and visible columns.
+--- @param bs table  buf_state
 render_table = function(bs)
   local page_size    = config.options.results.page_size
   local rows_ret     = bs.rows_returned or #bs.raw_rows
@@ -396,10 +446,16 @@ render_table = function(bs)
 end
 
 
+--- Return the batch header separator line for statement `idx` of `total`.
+--- @param idx   integer
+--- @param total integer
+--- @return string
 local function make_separator(idx, total)
   return ("── Query %d / %d "):format(idx, total) .. string.rep("─", 44)
 end
 
+--- Concatenate all batch segments into the results buffer.
+--- @param bs table  buf_state
 local function render_segments(bs)
   local all_lines, all_rules = {}, {}
   for _, seg in ipairs(bs.segments) do
@@ -424,8 +480,9 @@ local function render_segments(bs)
 end
 
 
--- Set the active source buffer for subsequent show calls. Creates the results
--- buffer if needed. src_bufnr is the number of the buffer the query was run from.
+--- Store the SQL and filetype on the active buf_state for the "source query" float.
+--- @param sql      string
+--- @param filetype string
 function M.set_query(sql, filetype)
   local bs = active_bs()
   if bs then
@@ -434,6 +491,10 @@ function M.set_query(sql, filetype)
   end
 end
 
+--- Create (if needed) the results buffer for `src_bufnr` and make it the active source.
+--- @param key        string|nil  connection key
+--- @param driver_label string|nil
+--- @param src_bufnr  integer|nil  source buffer number
 function M.set_conn_name(key, driver_label, src_bufnr)
   local display   = key and connections.conn_display_name(key) or nil
   local label     = display and (driver_label and (display .. " (" .. driver_label .. ")") or display)
@@ -444,6 +505,8 @@ function M.set_conn_name(key, driver_label, src_bufnr)
   state.active_src = buf_key
 end
 
+--- Prepare the results buffer for a batch of `n` statements.
+--- @param n integer
 function M.begin_batch(n)
   local bs = active_bs()
   ensure_win(bs.buffer.buf_id)
@@ -453,6 +516,14 @@ function M.begin_batch(n)
   bs.buffer:apply_highlight({})
 end
 
+--- Append the result of one SELECT-type statement to the batch view.
+--- @param idx           integer
+--- @param total         integer
+--- @param columns       string[]
+--- @param rows          table[]
+--- @param rows_returned integer
+--- @param rows_total    integer|nil
+--- @param duration_ms   number|nil
 function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total, duration_ms)
   local bs       = active_bs()
   local page_size = config.options.results.page_size
@@ -472,6 +543,10 @@ function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_to
   render_segments(bs)
 end
 
+--- Append an error message from one batch statement.
+--- @param idx   integer
+--- @param total integer
+--- @param msg   string
 function M.append_batch_error(idx, total, msg)
   local bs    = active_bs()
   local lines = vim.split(msg, "\n", { plain = true })
@@ -484,6 +559,12 @@ function M.append_batch_error(idx, total, msg)
   render_segments(bs)
 end
 
+--- Display the SELECT results, preserving column visibility when columns match the previous query.
+--- @param columns       string[]
+--- @param rows          table[]
+--- @param rows_returned integer
+--- @param rows_total    integer|nil
+--- @param duration_ms   number|nil
 function M.show_results(columns, rows, rows_returned, rows_total, duration_ms)
   local bs = active_bs()
   if not bs.raw_columns or not same_columns(bs.raw_columns, columns) then
@@ -499,6 +580,10 @@ function M.show_results(columns, rows, rows_returned, rows_total, duration_ms)
   render_table(bs)
 end
 
+--- Display a DML row-count message.
+--- @param n           integer
+--- @param verb        string
+--- @param duration_ms number|nil
 function M.show_rows_affected(n, verb, duration_ms)
   local bs = active_bs()
   bs.table_data = nil
@@ -511,6 +596,12 @@ function M.show_rows_affected(n, verb, duration_ms)
   })
 end
 
+--- Append a DML row-count message to the batch view.
+--- @param idx         integer
+--- @param total       integer
+--- @param n           integer
+--- @param verb        string
+--- @param duration_ms number|nil
 function M.append_batch_rows_affected(idx, total, n, verb, duration_ms)
   local bs = active_bs()
   local msg = rows_affected_msg(n, verb)
@@ -523,6 +614,8 @@ function M.append_batch_rows_affected(idx, total, n, verb, duration_ms)
   render_segments(bs)
 end
 
+--- Display an error message in the results window.
+--- @param msg string
 function M.show_error(msg)
   local bs    = active_bs()
   bs.table_data = nil
@@ -535,6 +628,8 @@ function M.show_error(msg)
   })
 end
 
+--- Display a plain text message in the results window (e.g. "Executing…").
+--- @param msg string
 function M.show_message(msg)
   local bs = active_bs()
   bs.table_data = nil

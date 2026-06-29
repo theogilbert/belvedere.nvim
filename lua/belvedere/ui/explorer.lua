@@ -39,6 +39,9 @@ local TYPE_ICONS = {
 local GROUP_ICON = { closed = " ", open = " " }
 local FIELD_ICON = "󰠵 "
 
+--- Return the icon glyph for `node`, based on its type and expansion state.
+--- @param node table
+--- @return string
 local function node_icon(node)
   if node.type == "group" then
     return node.expanded and GROUP_ICON.open or GROUP_ICON.closed
@@ -61,6 +64,7 @@ local render  -- forward declaration so the spinner callback can reference it
 
 local spinner = Spinner.new(function() render() end)
 
+--- Redraw the explorer buffer from state.tree.
 render = function()
   local buf = state.buffer.buf_id
   if state.root_loading then
@@ -72,10 +76,18 @@ render = function()
   local lines = {}
   local hls   = {}
 
+  --- Accumulate a highlight rule for a single buffer row.
+  --- @param row   integer  0-indexed
+  --- @param col_s integer  byte start column
+  --- @param col_e integer  byte end column
+  --- @param group string   highlight group name
   local function add_hl(row, col_s, col_e, group)
     hls[#hls + 1] = { row, col_s, col_e, group }
   end
 
+  --- Recursively append nodes at `indent` depth to `lines`/`hls`.
+  --- @param nodes  table[]
+  --- @param indent integer
   local function walk(nodes, indent)
     for _, node in ipairs(nodes) do
       local indent_s  = string.rep("  ", indent)
@@ -125,6 +137,10 @@ render = function()
   end
 end
 
+--- Construct a tree node from a server item and its absolute path.
+--- @param item table   { name, type, expandable }
+--- @param path string[]  absolute path from the root
+--- @return table
 local function make_node(item, path)
   return {
     name       = item.name,
@@ -136,6 +152,9 @@ local function make_node(item, path)
   }
 end
 
+--- Walk state.tree and return the node at `path`, or nil when not found.
+--- @param path string[]
+--- @return table|nil
 local function node_at_path(path)
   local nodes = state.tree
   local node
@@ -153,6 +172,9 @@ local function node_at_path(path)
   return node
 end
 
+--- Return the node that occupies 1-indexed `line` in the current rendering, or nil.
+--- @param line integer  1-indexed
+--- @return table|nil
 local function node_at_line(line)
   local idx = 0
   local function walk(nodes)
@@ -168,6 +190,10 @@ local function node_at_line(line)
   return walk(state.tree)
 end
 
+--- Send an explore.list request for `node`, populate its children, and re-render.
+--- `reset_cache` = true instructs the server to discard its cache.
+--- @param node        table
+--- @param reset_cache boolean|nil
 local function load_children(node, reset_cache)
   node.loading = true
   spinner:start()
@@ -194,6 +220,7 @@ local function load_children(node, reset_cache)
   end)
 end
 
+--- Handle <CR>: toggle expansion of the node under the cursor.
 local function on_enter()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
@@ -206,6 +233,9 @@ local function on_enter()
   end
 end
 
+--- Open a floating window showing the describe details returned by the server for a node.
+--- @param details table|nil  decoded server response details
+--- @param node    table
 local function open_describe_float(details, node)
   if not details or details == vim.NIL then
     vim.notify("belvedere: nothing to describe for this node", vim.log.levels.WARN)
@@ -215,12 +245,24 @@ local function open_describe_float(details, node)
   local lines    = {}
   local hl_rules = {}
 
+  --- Append a highlight rule.
+  --- @param group    string
+  --- @param line_idx integer  0-indexed
+  --- @param col_s    integer
+  --- @param col_e    integer
   local function add_hl(group, line_idx, col_s, col_e)
     table.insert(hl_rules, { group, line_idx, col_s, col_e })
   end
 
+  --- Return true when `v` is nil or vim.NIL.
+  --- @param v any
+  --- @return boolean
   local function is_nil_val(v) return v == nil or v == vim.NIL end
 
+  --- Right-pad `s` with spaces to display width `n`.
+  --- @param s string
+  --- @param n integer
+  --- @return string
   local function rpad(s, n) return s .. string.rep(" ", math.max(0, n - vim.fn.strdisplaywidth(s))) end
 
   local win_title = (not is_nil_val(details.schema) and details.schema and details.schema .. "." or "")
@@ -276,6 +318,9 @@ local function open_describe_float(details, node)
         local row_idx  = #lines
         local parts    = {}
         local pos      = 0
+        --- Append segment `s` to the current row, optionally applying highlight `grp`.
+        --- @param s    string
+        --- @param grp  string|nil
         local function seg(s, grp)
           if grp then add_hl(grp, row_idx, pos, pos + #s) end
           parts[#parts + 1] = s
@@ -337,6 +382,7 @@ local function open_describe_float(details, node)
   end
 end
 
+--- Handle the hover key: request explore.describe for the node under the cursor.
 local function on_describe()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
@@ -380,8 +426,8 @@ local function on_describe()
   end)
 end
 
--- Fetch the root node list from the server and repopulate state.tree.
--- @param reset_cache boolean|nil  pass true to discard the server-side cache
+--- Fetch the root node list from the server and repopulate state.tree.
+--- @param reset_cache boolean|nil  pass true to discard the server-side cache
 local function load_root(reset_cache)
   local params = { connection_id = state.conn_id, path = {} }
   if reset_cache then params.reset_cache = true end
@@ -408,6 +454,7 @@ end
 
 local PREVIEWABLE_TYPES = { table = true, ["base table"] = true, view = true, collection = true }
 
+--- Handle the "p" keymap: request a row preview for the node under the cursor.
 local function on_preview_rows()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
@@ -431,6 +478,7 @@ local function on_preview_rows()
     end)
 end
 
+--- Create the explorer Buffer (with keymaps) if it doesn't exist or has been wiped.
 local function get_or_create_buffer()
   if state.buffer and state.buffer:is_valid() then return end
   state.buffer = Buffer:new(BUFNAME, "belvedere_explorer", false, "nofile")
@@ -465,10 +513,11 @@ local function get_or_create_buffer()
   end, { nowait = true, silent = true, desc = "Close explorer" })
 end
 
---- @param conn_id any
---- @param conn_name string
---- @param driver string
---- @param conn_key string
+--- Open (or focus) the explorer sidebar for the given connection.
+--- @param conn_id      any
+--- @param conn_name    string
+--- @param driver       string
+--- @param conn_key     string
 --- @param driver_label string
 function M.open(conn_id, conn_name, driver, conn_key, driver_label)
   get_or_create_buffer()
@@ -504,6 +553,7 @@ function M.open(conn_id, conn_name, driver, conn_key, driver_label)
   end
 end
 
+--- Clear the explorer tree and stop the spinner (called on backend teardown).
 function M.reset()
   state.tree         = {}
   state.root_loading = false

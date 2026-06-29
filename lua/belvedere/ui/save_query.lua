@@ -20,6 +20,11 @@ local PROMPT_LEN = #PROMPT
 --
 -- on_confirm(name) is called on <CR> with a non-empty name.
 -- on_cancel() is called on <Esc> / <C-c> / empty <CR>.
+--- @param content    string
+--- @param filetype   string
+--- @param hint       string|nil  pre-filled name text after the prompt
+--- @param on_confirm fun(name: string)
+--- @param on_cancel  fun()
 local function prompt_name(content, filetype, hint, on_confirm, on_cancel)
   local preview_lines = vim.split(content, "\n", { plain = true })
   local width  = math.min(math.floor(vim.o.columns * 0.7), 90)
@@ -100,6 +105,7 @@ local function prompt_name(content, filetype, hint, on_confirm, on_cancel)
   })
 
   -- ── Keymaps and lifecycle ───────────────────────────────────────────────────
+  --- Close both floats and stop insert mode.
   local function close()
     pcall(vim.api.nvim_del_augroup_by_id, aug)
     vim.cmd("stopinsert")
@@ -112,6 +118,7 @@ local function prompt_name(content, filetype, hint, on_confirm, on_cancel)
     end
   end
 
+  --- Read the name from the input buffer and call on_confirm or on_cancel.
   local function confirm()
     local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
     local name = vim.trim(line:sub(PROMPT_LEN + 1))
@@ -119,6 +126,7 @@ local function prompt_name(content, filetype, hint, on_confirm, on_cancel)
     if name ~= "" then on_confirm(name) else on_cancel() end
   end
 
+  --- Close and call on_cancel.
   local function cancel()
     close()
     on_cancel()
@@ -135,6 +143,9 @@ end
 
 -- ── Scope pickers ─────────────────────────────────────────────────────────────
 
+--- Ask the user to pick a save scope for a known connection.
+--- @param conn_key string
+--- @param callback fun(scope_key: string|nil)
 local function pick_scope_for_conn(conn_key, callback)
   local _, driver, group, name = connections.conn_parts(conn_key)
   local group_label = group ~= "" and group or "[no group]"
@@ -152,6 +163,8 @@ local function pick_scope_for_conn(conn_key, callback)
   end)
 end
 
+--- Return a flat list of all connection entries across all configured servers.
+--- @return table[]
 local function all_conn_entries()
   local entries = {}
   for server, server_data in pairs(connections.load_all()) do
@@ -167,6 +180,9 @@ local function all_conn_entries()
   return entries
 end
 
+--- Ask the user to pick a save scope when there is no active connection.
+--- Prompts scope type → driver → (group or connection), then calls callback.
+--- @param callback fun(scope_key: string|nil)
 local function pick_scope_no_conn(callback)
   vim.ui.select({ "Driver", "Group", "Connection" }, { prompt = "Save at scope:" }, function(scope_type)
     if not scope_type then callback(nil) return end
@@ -251,9 +267,16 @@ end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
+--- Open the save-query wizard.
+--- Prompts for a name and scope, then persists the query via `queries.save`.
+--- @param content  string       query text to save
+--- @param conn_key string|nil   active connection key (used to seed the scope picker)
+--- @param ext      string|nil   file extension hint (e.g. "sql", "cypher")
 function M.open(content, conn_key, ext)
   ext = ext or ""
 
+  --- Delegate to conn or no-conn scope picker.
+  --- @param callback fun(scope_key: string|nil)
   local function pick_scope(callback)
     if conn_key then pick_scope_for_conn(conn_key, callback)
     else             pick_scope_no_conn(callback)
@@ -261,6 +284,8 @@ function M.open(content, conn_key, ext)
   end
 
   -- Called when a duplicate is detected: re-opens the name float (scope already known).
+  --- @param scope_key string
+  --- @param name_hint string
   local function do_save(scope_key, name_hint)
     prompt_name(content, ext, name_hint, function(name)
       local ok = queries.save(scope_key, name, content, ext)

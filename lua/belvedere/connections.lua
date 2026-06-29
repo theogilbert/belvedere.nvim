@@ -21,12 +21,19 @@ local config = require("belvedere.config")
 
 local _cache = nil  -- cached parsed file contents; nil means not yet loaded
 
--- Internal key: server\0driver\0group\0name  (NUL as separator, never in user strings).
+--- Build the internal NUL-separated composite key for a connection.
+--- @param server string
+--- @param driver string
+--- @param group  string
+--- @param name   string
+--- @return string
 function M.conn_key(server, driver, group, name)
   return (server or "") .. "\0" .. (driver or "") .. "\0" .. (group or "") .. "\0" .. name
 end
 
--- Split a key into (server, driver, group, name).
+--- Split a composite key into (server, driver, group, name).
+--- @param key string
+--- @return string, string, string, string
 function M.conn_parts(key)
   local parts = {}
   local s = 1
@@ -41,19 +48,28 @@ function M.conn_parts(key)
   return parts[1], parts[2], parts[3], parts[4]
 end
 
--- User-visible connection name: "group/name" when a group exists, else just "name".
+--- Return the user-visible connection name: "group/name" when a group exists, else just "name".
+--- @param key string
+--- @return string
 function M.conn_display_name(key)
   local _, _, group, name = M.conn_parts(key)
   local display = name ~= "" and name or key
   return group ~= "" and (group .. "/" .. display) or display
 end
 
--- vim.json.decode maps JSON null to vim.NIL, a truthy userdata sentinel.
+--- Return `v` when it is not nil/vim.NIL, otherwise return `default`.
+--- @param v       any
+--- @param default any
+--- @return any
 local function jval(v, default)
   if v == nil or v == vim.NIL then return default end
   return v
 end
 
+--- If `params.requires_password` is set, prompt the user and inject the password.
+--- Calls `callback(params_with_pw)` on success, or `callback(nil)` on cancel.
+--- @param params   table
+--- @param callback fun(params: table|nil)
 local function prompt_password(params, callback)
   if not params.requires_password then callback(params) return end
   vim.ui.input({ prompt = "Password: ", secret = true }, function(val)
@@ -63,8 +79,13 @@ local function prompt_password(params, callback)
 end
 M.prompt_password = prompt_password
 
+--- Return the path to the connections JSON file.
+--- @return string
 local function file_path() return config.options.connections_file end
 
+--- Read and parse the connections file, caching the result.
+--- Returns nil (and notifies) when the file is corrupted.
+--- @return table|nil
 local function read_data()
   if _cache then return _cache end
   local path = file_path()
@@ -84,6 +105,8 @@ local function read_data()
   return _cache
 end
 
+--- Serialise `data` to the connections file and update the cache.
+--- @param data table
 local function write_data(data)
   local path = file_path()
   vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
@@ -92,28 +115,41 @@ local function write_data(data)
   _cache = data
 end
 
+--- Invalidate the in-memory cache so the next read re-parses the file.
 function M.invalidate()
   _cache = nil
 end
 
--- Return the full file data.
+--- Return the full parsed connections file, or an empty table on error.
+--- @return table
 function M.load_all()
   return read_data() or {}
 end
 
--- Return the driver map for a server: { driver -> { label, groups -> { group -> { name -> params } } } }.
+--- Return the driver map for `server`: { driver → { label, groups → { group → { name → params } } } }.
+--- @param server string
+--- @return table
 function M.load(server)
   return ((read_data() or {})[server] or {})
 end
 
--- Return the params for a specific 4-part key, or nil.
+--- Return the params for a specific 4-part key, or nil when not found.
+--- @param key string
+--- @return table|nil
 function M.get(key)
   local server, driver, group, name = M.conn_parts(key)
   local d = (((read_data() or {})[server] or {})[driver] or {})
   return ((d.groups or {})[group] or {})[name]
 end
 
--- Ensure the server → driver → group path exists in data and write the connection.
+--- Ensure the server → driver → group path exists in `data` and write the connection params.
+--- @param data         table   mutable file-data table
+--- @param server       string
+--- @param driver       string
+--- @param driver_label string|nil
+--- @param group        string
+--- @param name         string
+--- @param params       table
 local function upsert(data, server, driver, driver_label, group, name, params)
   data[server] = data[server] or {}
   if not data[server][driver] then
@@ -127,6 +163,8 @@ local function upsert(data, server, driver, driver_label, group, name, params)
   d.groups[group][name] = params
 end
 
+--- Delete the connection identified by `key` and write the updated file.
+--- @param key string
 function M.delete(key)
   local server, driver, group, name = M.conn_parts(key)
   local data = read_data()
@@ -142,6 +180,10 @@ function M.delete(key)
   vim.notify(("belvedere: deleted connection %q"):format(name), vim.log.levels.INFO)
 end
 
+--- Delete an entire group and all its connections.
+--- @param server string
+--- @param driver string
+--- @param group  string
 function M.delete_group(server, driver, group)
   local data = read_data()
   if not data then return end
@@ -157,7 +199,13 @@ function M.delete_group(server, driver, group)
   vim.notify(("belvedere: deleted group %q and %d connection(s)"):format(label, count), vim.log.levels.INFO)
 end
 
--- Create an empty named group for a driver.  Returns false if it already exists.
+--- Create an empty named group for a driver.
+--- Returns false and notifies when the group already exists.
+--- @param server       string
+--- @param driver       string
+--- @param driver_label string
+--- @param group_name   string
+--- @return boolean
 function M.create_group(server, driver, driver_label, group_name)
   local data = read_data()
   if not data then return false end
@@ -176,7 +224,11 @@ function M.create_group(server, driver, driver_label, group_name)
   return true
 end
 
--- Return the {fields, pw_param} for a given driver from capabilities.
+--- Return the {fields, pw_param} for `driver` from capabilities.
+--- `pw_param` is the secret field descriptor (or nil); `fields` are the non-secret ones.
+--- @param caps   table
+--- @param driver string
+--- @return table[], table|nil
 local function driver_fields(caps, driver)
   for _, tech in ipairs(caps.drivers or {}) do
     if tech.driver == driver then
@@ -190,6 +242,9 @@ local function driver_fields(caps, driver)
   return {}, nil
 end
 
+--- Coerce string values for integer-typed fields back to numbers.
+--- @param fields table[]  field descriptors
+--- @param values table    mutable key→value map
 local function coerce_integer_fields(fields, values)
   for _, p in ipairs(fields) do
     if p.type == "integer" and values[p.key] then
@@ -198,7 +253,10 @@ local function coerce_integer_fields(fields, values)
   end
 end
 
--- Copy driver fields and pre-populate .default from an existing connection's values.
+--- Copy driver fields and pre-populate `.default` from an existing connection's values.
+--- @param fields  table[]  field descriptors
+--- @param current table    existing params
+--- @return table[]  new field descriptor array with `.default` filled in
 local function fields_with_defaults(fields, current)
   local out = {}
   for _, p in ipairs(fields) do
@@ -210,7 +268,11 @@ local function fields_with_defaults(fields, current)
   return out
 end
 
--- Resolve the human-readable label for `driver`, preferring capabilities over the stored file.
+--- Return the human-readable label for `driver`, preferring capabilities over the stored file.
+--- @param caps   table
+--- @param server string
+--- @param driver string
+--- @return string
 local function resolve_driver_label(caps, server, driver)
   for _, d in ipairs(caps.drivers or {}) do
     if d.driver == driver then return d.label or driver end
@@ -218,12 +280,17 @@ local function resolve_driver_label(caps, server, driver)
   return (M.load(server)[driver] or {}).label or driver
 end
 
--- Prompt for a password and optionally ask whether to remember it.
--- `prompt_suffix` is appended to pw_param.label for the input prompt.
--- `pw_if_empty`   is passed to finish_fn when the user enters an empty string.
---   nil  → edit/clone: empty means "keep current password", no confirmation needed.
---   ""   → create: empty means "no password"; confirm to guard against silent paste failures.
--- finish_fn(pw, remember) is called on success; cancel_fn() on any cancel.
+--- Prompt for a password and optionally ask whether to remember it.
+--- `prompt_suffix` is appended to `pw_param.label` for the input prompt.
+--- `pw_if_empty` is passed to `finish_fn` when the user enters an empty string:
+---   nil → edit/clone: empty means "keep current password", no confirmation needed.
+---   ""  → create: empty means "no password"; confirm to guard against silent paste failures.
+--- `finish_fn(pw, remember)` is called on success; `cancel_fn()` on any cancel.
+--- @param pw_param      table|nil
+--- @param prompt_suffix string
+--- @param pw_if_empty   string|nil
+--- @param finish_fn     fun(pw: string|nil, remember: boolean)
+--- @param cancel_fn     fun()
 local function prompt_password_and_remember(pw_param, prompt_suffix, pw_if_empty, finish_fn, cancel_fn)
   if not pw_param then finish_fn(nil, false) return end
   vim.ui.input({ prompt = pw_param.label .. prompt_suffix, secret = true }, function(pw)
@@ -259,6 +326,11 @@ local function prompt_password_and_remember(pw_param, prompt_suffix, pw_if_empty
   end)
 end
 
+--- Walk through `fields` sequentially via `vim.ui.input`/`vim.ui.select`,
+--- collecting values into a table, then call `done(results)`.
+--- Calls `done(nil)` if the user cancels any step.
+--- @param fields table[]           field descriptors from capabilities
+--- @param done   fun(results: table|nil)
 local function prompt_sequence(fields, done)
   local results = {}
   local function step(i, err_prefix)
@@ -292,8 +364,11 @@ local function prompt_sequence(fields, done)
   step(1)
 end
 
--- Present a group picker for (server, driver).
--- Calls callback("") for no group, callback(name) for a named group, callback(nil) on cancel.
+--- Present a group picker for (server, driver).
+--- Calls `callback("")` for no group, `callback(name)` for a named group, `callback(nil)` on cancel.
+--- @param server   string
+--- @param driver   string
+--- @param callback fun(group: string|nil)
 local function pick_group(server, driver, callback)
   local driver_data = (M.load(server)[driver] or {})
   local existing    = {}
@@ -333,6 +408,13 @@ local LANGUAGE_TO_FT = {
   cypher = "cypher",
 }
 
+--- Interactively pick a connection from `caps` and call `callback(key, params)`.
+--- Skips driver and/or group steps when there is only one choice.
+--- Calls `callback(nil)` on cancel.
+--- @param caps       table   server capabilities (from client.ensure_capabilities)
+--- @param active_set table   { [conn_key] = true } for all currently open connections
+--- @param filetype   string  current buffer filetype, used to rank drivers
+--- @param callback   fun(key: string|nil, params: table|nil)
 function M.pick(caps, active_set, filetype, callback)
   local server      = caps.server or ""
   local server_data = M.load(server)
@@ -377,6 +459,9 @@ function M.pick(caps, active_set, filetype, callback)
     return a < b
   end)
 
+  --- Show the connection list for (driver_id, group) and call callback on selection.
+  --- @param driver_id string
+  --- @param group     string
   local function do_pick_conn(driver_id, group)
     local driver_data = server_data[driver_id] or {}
     local group_conns = ((driver_data.groups or {})[group]) or {}
@@ -409,6 +494,9 @@ function M.pick(caps, active_set, filetype, callback)
     end)
   end
 
+  --- Show the group picker for `driver_id`, then delegate to do_pick_conn.
+  --- Uses a flat list when the total connection count is at or below the threshold.
+  --- @param driver_id string
   local function do_pick_group(driver_id)
     local driver_data = server_data[driver_id] or {}
     local groups = {}
@@ -497,6 +585,10 @@ function M.pick(caps, active_set, filetype, callback)
   end)
 end
 
+--- Interactively create a new connection via a wizard, save it, and call `callback(key, params)`.
+--- Calls `callback(nil)` on cancel.
+--- @param caps     table
+--- @param callback fun(key: string|nil, params: table|nil)
 function M.create(caps, callback)
   caps = caps or { server = "", drivers = {} }
   local server = caps.server or ""
@@ -536,6 +628,9 @@ function M.create(caps, callback)
                 local params = vim.tbl_extend("force", values, { requires_password = false })
                 local key    = M.conn_key(server, driver, group, name)
 
+                --- Finalise the connection record and write it to disk.
+                --- @param pw      string|nil  plaintext password (nil = no password)
+                --- @param remember boolean
                 local function finish(pw, remember)
                   if remember then
                     params.password          = pw
@@ -563,6 +658,11 @@ function M.create(caps, callback)
   end)
 end
 
+--- Interactively edit an existing connection and call `callback(new_key, params)`.
+--- Calls `callback(nil)` on cancel or error.
+--- @param key      string
+--- @param caps     table
+--- @param callback fun(new_key: string|nil, params: table|nil)
 function M.edit(key, caps, callback)
   caps = caps or { server = "", drivers = {} }
   local server, driver, group, name = M.conn_parts(key)
@@ -603,6 +703,9 @@ function M.edit(key, caps, callback)
               requires_password = current.requires_password or false,
             })
 
+            --- Apply the password decision and write the updated record.
+            --- @param pw      string|nil
+            --- @param remember boolean
             local function finish(pw, remember)
               if pw ~= nil and pw ~= "" then
                 if remember then
@@ -640,6 +743,12 @@ function M.edit(key, caps, callback)
   end)
 end
 
+--- Clone `source_key` under `new_name`, prompting for group and driver fields.
+--- Calls `callback(new_key, params)` on success, `callback(nil)` on cancel.
+--- @param source_key string
+--- @param new_name   string
+--- @param caps       table
+--- @param callback   fun(new_key: string|nil, params: table|nil)
 function M.clone(source_key, new_name, caps, callback)
   caps = caps or { server = "", drivers = {} }
   local server, driver = M.conn_parts(source_key)
@@ -676,6 +785,9 @@ function M.clone(source_key, new_name, caps, callback)
             requires_password = current.requires_password or false,
           })
 
+          --- Apply the password decision and write the cloned record.
+          --- @param pw      string|nil
+          --- @param remember boolean
           local function finish(pw, remember)
             if pw ~= nil and pw ~= "" then
               if remember then

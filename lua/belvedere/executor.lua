@@ -15,15 +15,24 @@ local DML_VERBS = {
   merge  = "merged",
 }
 
+--- Return the past-tense verb for a SQL statement (e.g. "inserted", "affected").
+--- @param sql string
+--- @return string
 local function detect_operation(sql)
   local word = (vim.trim(sql):match("^(%a+)") or ""):lower()
   return DML_VERBS[word] or "affected"
 end
 
+--- Return true when `driver` is a MongoDB driver identifier.
+--- @param driver string
+--- @return boolean
 local function is_mongo(driver)
   return driver == "mongodb" or driver == "mongo"
 end
 
+--- Route a single-query result to the results panel.
+--- @param result table  server execute response
+--- @param sql    string  the original query text
 local function dispatch_result(result, sql)
   if result.rows_affected ~= nil then
     results.show_rows_affected(result.rows_affected, detect_operation(sql), result.duration_ms)
@@ -33,6 +42,11 @@ local function dispatch_result(result, sql)
   end
 end
 
+--- Route one statement's result to the batch results panel.
+--- @param idx    integer  1-indexed position in the batch
+--- @param total  integer  total statements in the batch
+--- @param result table    server execute response
+--- @param sql    string   the statement text
 local function dispatch_batch_result(idx, total, result, sql)
   if result.rows_affected ~= nil then
     results.append_batch_rows_affected(idx, total, result.rows_affected, detect_operation(sql), result.duration_ms)
@@ -42,6 +56,12 @@ local function dispatch_batch_result(idx, total, result, sql)
   end
 end
 
+--- Send a single execute request to the backend and return its request id.
+--- @param conn        ConnSession
+--- @param sql         string
+--- @param on_done     fun(err: string|nil, result: any)
+--- @param on_progress fun(progress: table)|nil
+--- @return integer|nil
 local function execute(conn, sql, on_done, on_progress)
   return client.request(
     "execute",
@@ -50,8 +70,14 @@ local function execute(conn, sql, on_done, on_progress)
     on_progress)
 end
 
--- Run statements one after another, each appended to the batch view.
--- Each statement gets its own gutter mark and log entry created as it starts.
+--- Run statements one after another, each appended to the batch view.
+--- Each statement gets its own gutter mark and log entry created as it starts.
+--- @param queries    {sql: string, line: integer}[]  statements to run
+--- @param conn       ConnSession
+--- @param idx        integer  1-indexed position of the current statement
+--- @param bufnr      integer|nil
+--- @param first_line integer|nil  0-indexed first line of the batch in bufnr
+--- @param had_error  boolean      true if any earlier statement already failed
 local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
   local q           = queries[idx]
   local source_line = (bufnr and first_line ~= nil) and (first_line + q.line) or nil
@@ -94,6 +120,12 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
   gutter.register_request(gh, req_id)
 end
 
+--- Execute a single SQL statement, updating the results panel and gutter on completion.
+--- @param conn     ConnSession
+--- @param sql      string
+--- @param gh       GutterHandle|nil
+--- @param conn_key string
+--- @param log_id   string
 local function run_single(conn, sql, gh, conn_key, log_id)
   results.show_message("Executing…")
   local req_id = execute(conn, sql,
@@ -137,10 +169,10 @@ end
 --- Execute `query` against `conn`.
 --- When treesitter is available and multiple statements are found in the buffer
 --- range, they are run as a labelled batch.  MongoDB is always single-statement.
---- @param conn table             { conn_id, driver }
---- @param query string
---- @param bufnr integer|nil      source buffer (for gutter marks and splitting)
---- @param first_line integer|nil 0-indexed first line of the query in bufnr
+--- @param conn       ConnSession
+--- @param query      string
+--- @param bufnr      integer|nil       source buffer (for gutter marks and splitting)
+--- @param first_line integer|nil       0-indexed first line of the query in bufnr
 function M.run(conn, query, bufnr, first_line)
   results.set_conn_name(conn.key, conn.driver_label, bufnr)
   local ft = (bufnr and vim.api.nvim_buf_is_valid(bufnr)) and vim.bo[bufnr].filetype or ""

@@ -1,10 +1,14 @@
 local M = {}
 
+--- Return true when Neovim is currently in any visual mode (char, line, or block).
+--- @return boolean
 function M.is_in_visual_mode()
   local mode = vim.fn.mode()
   return mode == "v" or mode == "V" or mode == "\22"
 end
 
+--- Return the current visual selection as a trimmed string, or nil if not in visual mode.
+--- @return string|nil
 function M.get_selection()
   if not M.is_in_visual_mode() then return nil end
 

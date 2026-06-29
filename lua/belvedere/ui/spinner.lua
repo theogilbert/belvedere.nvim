@@ -13,7 +13,9 @@ local INTERVAL_MS = 80
 local Spinner = {}
 Spinner.__index = Spinner
 
---- @param on_tick fun()  called (on the main loop) each time the frame advances
+--- Create and return a new Spinner instance.
+--- @param on_tick fun()  called on the main loop each time the frame advances
+--- @return table
 function M.new(on_tick)
   return setmetatable({
     _frame   = 1,
@@ -23,11 +25,14 @@ function M.new(on_tick)
   }, Spinner)
 end
 
---- The current frame glyph, e.g. for embedding in rendered lines.
+--- Return the current frame glyph, e.g. for embedding in rendered lines.
+--- @return string
 function Spinner:glyph()
   return M.FRAMES[self._frame]
 end
 
+--- Stop and close the libuv timer, if one is running.
+--- @param self table
 local function dispose(self)
   if self._timer then
     self._timer:stop()
@@ -36,7 +41,7 @@ local function dispose(self)
   end
 end
 
---- Begin (or join) the animation.
+--- Increment the refcount and start the timer when this is the first start.
 function Spinner:start()
   self._refs = self._refs + 1
   if self._timer then return end
@@ -48,7 +53,7 @@ function Spinner:start()
   end))
 end
 
---- Release one start; the timer stops once the last start is released.
+--- Decrement the refcount; stop the timer once the last start is released.
 function Spinner:stop()
   self._refs = math.max(0, self._refs - 1)
   if self._refs == 0 then dispose(self) end

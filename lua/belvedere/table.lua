@@ -2,28 +2,46 @@
 -- Adapted from utilities/table.lua (nvim-dap-df project) — CSV parsing removed.
 local M = {}
 
+--- @class FormattedTable
+--- @field lines         any[][]    raw row arrays (first row is the header)
+--- @field columns_width integer[]  display-column widths per column
+--- @field text          string[]   rendered lines ready to set into a buffer
+
 M.COL_SEPARATOR = "│"
 
 -- Display string for JSON null values (vim.NIL sentinel).
 local NULL_TEXT = "NULL"
 
+--- Return the display string for a cell value, mapping vim.NIL → "NULL".
+--- @param cell any
+--- @return string
 local function cell_display(cell)
   if cell == vim.NIL then return NULL_TEXT end
   if cell == nil     then return "" end
   return tostring(cell)
 end
 
+--- Center `text` within `width` display columns using space padding.
+--- @param text  string
+--- @param width integer
+--- @return string
 local function center(text, width)
   local space = (width - vim.api.nvim_strwidth(text)) / 2
   return string.rep(" ", math.floor(space)) .. text .. string.rep(" ", math.ceil(space))
 end
 
+--- Expand `widths[i]` to fit the display width of each cell in `cols` (with 1-space padding each side).
+--- @param cols   table    array of cell values
+--- @param widths integer[]  mutable column-width array
 local function update_col_widths(cols, widths)
   for i, cell in ipairs(cols) do
     widths[i] = math.max(widths[i] or 2, vim.api.nvim_strwidth(cell_display(cell)) + 2)
   end
 end
 
+--- Build the ├──┼──┤ separator row for the given column widths.
+--- @param widths integer[]
+--- @return string
 local function build_separator(widths)
   local parts = {}
   for i, w in ipairs(widths) do parts[i] = string.rep("─", w) end
@@ -33,7 +51,7 @@ end
 --- Build a FormattedTable from a list of row arrays.
 --- @param lines table    rows, each an array of cell values
 --- @param header_lines integer|nil  rows to treat as header (default 1)
---- @return table  { lines, columns_width, text }
+--- @return FormattedTable
 function M.from_structured_data(lines, header_lines)
   header_lines = header_lines or 1
   local widths = {}
@@ -111,7 +129,7 @@ end
 --- @param higroup string
 --- @param buf_line integer   0-indexed buffer row
 --- @param data_line integer  1-indexed into tbl.lines
---- @param tbl table          FormattedTable from from_structured_data
+--- @param tbl FormattedTable
 --- @return table   list of { higroup, start, finish } rules
 function M.col_hl_rules(higroup, buf_line, data_line, tbl)
   if not tbl then return {} end
@@ -126,7 +144,7 @@ function M.col_hl_rules(higroup, buf_line, data_line, tbl)
 end
 
 --- Return highlight rules for all NULL (vim.NIL) cells in the data rows.
---- @param tbl table  FormattedTable from from_structured_data (header_lines = 1)
+--- @param tbl FormattedTable
 --- @return table   list of { higroup, start, finish } rules
 function M.null_hl_rules(tbl)
   local rules = {}

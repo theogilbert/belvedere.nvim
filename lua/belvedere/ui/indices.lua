@@ -7,8 +7,13 @@ local M = {}
 local pane = require("belvedere.ui.detail_pane")
 local ICON = "󰒻 "
 
+--- @param v any
+--- @return boolean
 local function is_nil(v) return pane.is_nil(v) end
 
+--- Return the estimated rendered line count for a single index detail view.
+--- @param idx table  IndexDescription
+--- @return integer
 local function estimate_lines(idx)
   local n       = 2  -- one-liner + blank
   local tables   = type(idx.tables)           == "table" and idx.tables           or {}
@@ -24,6 +29,9 @@ local function estimate_lines(idx)
   return n
 end
 
+--- Populate `buf` with the detail view for a single index.
+--- @param buf integer
+--- @param idx table  IndexDescription
 local function render(buf, idx)
   local lines = {}
   local hls   = {}

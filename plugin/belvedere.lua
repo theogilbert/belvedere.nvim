@@ -3,7 +3,8 @@ vim.g.loaded_belvedere = true
 
 local db = require("belvedere")
 
--- Names of all saved connections, sorted — used for command completion.
+--- Return a sorted list of all saved connection names for command completion.
+--- @return string[]
 local function saved_connection_names()
   local ok, data = pcall(require("belvedere.connections").load_all)
   if not ok then return {} end

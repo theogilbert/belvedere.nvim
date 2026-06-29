@@ -7,8 +7,13 @@ local M = {}
 local pane = require("belvedere.ui.detail_pane")
 local ICON = "󰠵 "
 
+--- @param v any
+--- @return boolean
 local function is_nil(v) return pane.is_nil(v) end
 
+--- Return the estimated rendered line count for a single column detail view.
+--- @param col table  ColumnDescription
+--- @return integer
 local function estimate_lines(col)
   local n = 2  -- header + blank
   if not is_nil(col.default) and col.default ~= "" then n = n + 4 end
@@ -22,6 +27,9 @@ local function estimate_lines(col)
   return n
 end
 
+--- Populate `buf` with the detail view for a single column.
+--- @param buf integer
+--- @param col table  ColumnDescription
 local function render(buf, col)
   local lines = {}
   local hls   = {}
