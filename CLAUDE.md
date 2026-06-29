@@ -70,6 +70,13 @@ Connection keys are **NUL-separated composite strings**: `server\0driver\0group\
 
 `init.lua` requires `ui/connections.lua` at the top level, and `ui/connections.lua` in turn needs `require("belvedere")` in almost every handler. To avoid a circular-require error, `ui/connections.lua` does all of those requires **lazily** (inside function bodies), not at the top of the file. Preserve this pattern when adding new cross-module calls between these two files.
 
+### Documentation
+
+All public and private functions must have LuaDoc annotations (`---` comments). This includes:
+- `@param` for every parameter, including table-typed params whose fields must be listed inline (e.g. `--- @param conn { conn_id: any, driver: string, key: string }`)
+- `@return` for every return value
+- A one-line description above the annotations
+
 ### Buffer abstraction
 
 All sidebar and log panels use the `Buffer` class (`lua/belvedere/buffer.lua`). It wraps a scratch buffer, tracks registered keymaps, and provides a `g?` help float automatically. Register keymaps via `buffer:set_keymap(mode, key, fn, opts)` rather than `vim.keymap.set` directly so they appear in the help float. Pass `opts.group` (a string) to group related keys under a section header in the help float.
