@@ -22,7 +22,6 @@ local function estimate_lines(idx)
   if #tables > 1 then n = n + 4 end
   if #fields   > 0 then n = n + 3 + #fields end
   if #included > 0 then n = n + 4 end
-  if not is_nil(idx.condition) and idx.condition ~= "" then n = n + 4 end
   if not is_nil(idx.ddl) and idx.ddl ~= "" then
     n = n + 2 + #vim.split(idx.ddl, "\n", { plain = true })
   end
@@ -83,12 +82,6 @@ local function render(buf, idx)
   if #included > 0 then
     pane.section(lines, hls, "Included columns")
     lines[#lines + 1] = "  " .. table.concat(included, ", ")
-    lines[#lines + 1] = ""
-  end
-
-  if not is_nil(idx.condition) and idx.condition ~= "" then
-    pane.section(lines, hls, "Condition")
-    lines[#lines + 1] = "  " .. idx.condition
     lines[#lines + 1] = ""
   end
 

@@ -442,8 +442,7 @@ Returned as `details` by `explore.describe` for index nodes, and embedded inside
 | `clustered`         | boolean                                  | Whether the index defines the physical row order of the table (default `false`)                          |
 | `visible`           | boolean                                  | Whether the query optimiser considers this index (default `true`); `false` for Oracle `INVISIBLE` or SQL Server `DISABLED` indexes |
 | `included_columns`  | array of strings                         | Non-key columns stored in index leaf pages for covering queries (PostgreSQL / SQL Server `INCLUDE`); empty when not supported |
-| `condition`         | string or null                           | Partial/filtered index predicate in the driver's native syntax; `null` if the index covers all rows      |
-| `ddl`               | string or null                           | `CREATE INDEX` statement as stored by the database; `null` when the driver cannot produce it             |
+| `ddl`               | string or null                           | `CREATE INDEX` statement as stored by the database, or the partial filter expression for drivers without DDL (e.g. MongoDB); `null` when the driver cannot produce it |
 
 ---
 
