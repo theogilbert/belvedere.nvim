@@ -510,7 +510,8 @@ function M.set_conn_name(key, driver_label, src_bufnr)
   local buf_title = (label and (BUFNAME .. " [" .. label .. "]") or BUFNAME)
                     .. src_buf_suffix(src_bufnr)
   local buf_key   = src_bufnr or 0
-  get_or_create_buf_state(buf_key, buf_title)
+  local bs        = get_or_create_buf_state(buf_key, buf_title)
+  bs.conn_key     = key
   state.active_src = buf_key
 end
 
@@ -649,6 +650,22 @@ function M.show_message(msg)
   bs.buffer:set_content({ msg })
   bs.buffer:apply_highlight({})
   reset_cursor()
+end
+
+--- Return true when `buf_id` is a belvedere results buffer.
+--- @param buf_id integer
+--- @return boolean
+function M.is_results_buf(buf_id)
+  return vim.startswith(vim.api.nvim_buf_get_name(buf_id), BUFNAME)
+end
+
+--- Return the connection key associated with a results buffer, or nil.
+--- @param buf_id integer
+--- @return string|nil
+function M.conn_key_for_buf(buf_id)
+  for _, bs in pairs(state.buffers) do
+    if bs.buffer.buf_id == buf_id then return bs.conn_key end
+  end
 end
 
 return M

@@ -653,7 +653,13 @@ end
 --- @param conn_key string|nil
 function M.query_log(conn_key)
   if not conn_key then
-    conn_key = state.buf_conns[vim.api.nvim_get_current_buf()]
+    local cur = vim.api.nvim_get_current_buf()
+    local results_ui = require("belvedere.ui.results")
+    if results_ui.is_results_buf(cur) then
+      conn_key = results_ui.conn_key_for_buf(cur)
+    else
+      conn_key = state.buf_conns[cur]
+    end
   end
   if not conn_key then
     vim.notify("belvedere: no connection associated with current buffer", vim.log.levels.WARN)
