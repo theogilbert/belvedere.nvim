@@ -178,6 +178,11 @@ function M.connect(name)
       for _, k in ipairs(M.active_keys()) do active_set[k] = true end
       connections.pick(caps, active_set, ft, function(picked_name, params)
         if not picked_name then return end
+        if not params then
+          -- Picked an already-open connection: associate, don't reconnect.
+          after_connect(picked_name)
+          return
+        end
         M._do_connect(picked_name, params, after_connect)
       end)
     end)

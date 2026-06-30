@@ -422,6 +422,10 @@ local LANGUAGE_TO_FT = {
 }
 
 --- Interactively pick a connection from `caps` and call `callback(key, params)`.
+--- Proposes already-open connections first; selecting one calls back with `params = nil`
+--- (the caller should associate rather than reconnect). Falls through to the
+--- driver/group/connection wizard when there are no open connections, or when
+--- "[+ New connection]" is chosen.
 --- Skips driver and/or group steps when there is only one choice.
 --- Calls `callback(nil)` on cancel.
 --- @param caps       table   server capabilities (from client.ensure_capabilities)
@@ -431,6 +435,9 @@ local LANGUAGE_TO_FT = {
 function M.pick(caps, active_set, filetype, callback)
   local server      = caps.server or ""
   local server_data = M.load(server)
+
+  --- Show the driver/group/connection wizard (the original, full `pick` flow).
+  local function pick_driver()
 
   -- Build a rank map from caps so driver ordering is data-driven, not hardcoded.
   -- rank 1 = one of the driver's languages maps to the current filetype,
@@ -595,6 +602,31 @@ function M.pick(caps, active_set, filetype, callback)
   }, function(choice)
     if not choice then callback(nil) return end
     vim.schedule(function() do_pick_group(choice.driver_id) end)
+  end)
+  end
+
+  local active_keys = vim.tbl_keys(active_set)
+  if #active_keys == 0 then
+    pick_driver()
+    return
+  end
+
+  table.sort(active_keys, function(a, b) return M.conn_display_name(a) < M.conn_display_name(b) end)
+  local active_items = {}
+  for _, key in ipairs(active_keys) do
+    local _, driver = M.conn_parts(key)
+    local label = M.conn_display_name(key) .. " (" .. resolve_driver_label(caps, server, driver) .. ")"
+    table.insert(active_items, { key = key, label = label })
+  end
+  table.insert(active_items, { key = nil, label = "[+ New connection]" })
+
+  vim.ui.select(active_items, {
+    prompt      = "Connection:",
+    format_item = function(item) return item.label end,
+  }, function(choice)
+    if not choice then callback(nil) return end
+    if not choice.key then pick_driver() return end
+    callback(choice.key, nil)
   end)
 end
 
