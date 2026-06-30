@@ -478,10 +478,9 @@ function M.open_explorer_for(name)
   explorer.open(conn.conn_id, connections.conn_display_name(name), conn.driver, name, conn.driver_label)
 end
 
---- Open the schema explorer for the current buffer's connection (or any open connection).
+--- Open the schema explorer for the current buffer's connection.
 function M.open_explorer()
-  -- The current buffer's connection, or else any open connection.
-  local key = state.buf_conns[vim.api.nvim_get_current_buf()] or next(state.conns)
+  local key = state.buf_conns[vim.api.nvim_get_current_buf()]
   local conn = key and state.conns[key]
   if not conn then
     vim.notify("belvedere: no active connection — run :DbConnect first", vim.log.levels.WARN)
