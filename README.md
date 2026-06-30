@@ -261,6 +261,18 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 
 Connections are stored in `~/.config/belvedere/connections.json` (XDG-compliant). The file is created automatically on first save. Passwords are not stored — you are prompted at connect time.
 
+### Write protection
+
+By default, belvedere detects write operations (DML and DDL) in SQL and Cypher buffers before executing and prompts for confirmation. The prompt offers three choices:
+
+- **Abort** — cancel the execution
+- **Execute** — run this time, keep prompting on future writes
+- **Always allow writes** — run and permanently disable the prompt for this connection
+
+The per-connection `allow_writes` flag is stored in `connections.json`. When set to `true`, no prompt is shown. This can be toggled via the edit-connection wizard in the connections panel (planned).
+
+### File format
+
 ```json
 {
   "belvedere": {
@@ -276,7 +288,7 @@ Connections are stored in `~/.config/belvedere/connections.json` (XDG-compliant)
       "label": "SQL Server",
       "groups": {
         "": {
-          "prod-mssql": { "host": "db.example.com", "port": 1433, "database": "myapp", "user": "readonly" }
+          "prod-mssql": { "host": "db.example.com", "port": 1433, "database": "myapp", "user": "readonly", "allow_writes": true }
         }
       }
     }

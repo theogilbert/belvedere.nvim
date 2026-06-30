@@ -1,11 +1,12 @@
 local M = {}
 
-local client    = require("belvedere.client")
-local config    = require("belvedere.config")
-local results   = require("belvedere.ui.results")
-local gutter    = require("belvedere.ui.gutter")
-local log       = require("belvedere.log")
-local ts_queries = require("belvedere.ts_queries")
+local client      = require("belvedere.client")
+local config      = require("belvedere.config")
+local connections = require("belvedere.connections")
+local results     = require("belvedere.ui.results")
+local gutter      = require("belvedere.ui.gutter")
+local log         = require("belvedere.log")
+local ts_queries  = require("belvedere.ts_queries")
 
 -- Past-tense verb shown for DML statements, keyed by leading keyword.
 local DML_VERBS = {
@@ -70,6 +71,8 @@ local function execute(conn, sql, on_done, on_progress)
     on_progress)
 end
 
+local update_log_from_result  -- forward declaration; defined below run_batch / run_single
+
 --- Run statements one after another, each appended to the batch view.
 --- Each statement gets its own gutter mark and log entry created as it starts.
 --- @param queries    {sql: string, line: integer}[]  statements to run
@@ -110,7 +113,7 @@ end
 --- @param log_id   string
 --- @param result   table   server execute response
 --- @param sql      string  original query text
-local function update_log_from_result(conn_key, log_id, result, sql)
+update_log_from_result = function(conn_key, log_id, result, sql)
   if result.rows_affected ~= nil then
     log.update(conn_key, log_id, {
       rows_affected = result.rows_affected,
@@ -160,6 +163,36 @@ local function run_single(conn, sql, gh, conn_key, log_id)
   gutter.register_request(gh, req_id)
 end
 
+--- Prompt the user when the query range contains write operations and `confirm_writes`
+--- is not explicitly disabled for the connection.  Calls `callback(true)` to proceed
+--- or `callback(false)` to abort.  Resolves synchronously when no prompt is needed.
+--- @param conn       ConnSession
+--- @param bufnr      integer|nil
+--- @param first_line integer|nil  0-indexed
+--- @param query      string
+--- @param callback   fun(proceed: boolean)
+local function check_confirm_writes(conn, bufnr, first_line, query, callback)
+  local params = connections.get(conn.key) or {}
+  if params.allow_writes then callback(true) return end
+  if not bufnr or first_line == nil then callback(true) return end
+  local nlines   = select(2, query:gsub("\n", ""))
+  local has_write = ts_queries.has_write_statement(bufnr, first_line, first_line + nlines)
+  if not has_write then callback(true) return end
+
+  local choices = { "Abort", "Execute", "Always allow writes" }
+  vim.ui.select(choices, { prompt = "Write operation detected:" }, function(choice)
+    if not choice or choice == "Abort" then
+      vim.notify("belvedere: execution aborted", vim.log.levels.WARN)
+      callback(false)
+    elseif choice == "Always allow writes" then
+      connections.set_allow_writes(conn.key)
+      callback(true)
+    else
+      callback(true)
+    end
+  end)
+end
+
 --- Execute `query` against `conn`.
 --- When treesitter is available and multiple statements are found in the buffer
 --- range, they are run as a labelled batch.  MongoDB is always single-statement.
@@ -168,38 +201,42 @@ end
 --- @param bufnr      integer|nil       source buffer (for gutter marks and splitting)
 --- @param first_line integer|nil       0-indexed first line of the query in bufnr
 function M.run(conn, query, bufnr, first_line)
-  results.set_conn_name(conn.key, conn.driver_label, bufnr)
-  local ft = (bufnr and vim.api.nvim_buf_is_valid(bufnr)) and vim.bo[bufnr].filetype or ""
-  results.set_query(query, ft)
+  check_confirm_writes(conn, bufnr, first_line, query, function(proceed)
+    if not proceed then return end
 
-  local queries
-  if not is_mongo(conn.driver) and bufnr and first_line ~= nil then
-    local nlines   = select(2, query:gsub("\n", ""))
-    local end_row  = first_line + nlines
-    local stmts    = ts_queries.statements_in_range(bufnr, first_line, end_row)
-    if stmts and #stmts > 1 then
-      local first_s = stmts[1]
-      local last_s  = stmts[#stmts]
-      -- Only split when all statements are fully contained in the queried range.
-      -- end_row is exclusive in treesitter, so allow off-by-one vs end_row.
-      if first_s.start_row >= first_line and last_s.end_row <= end_row + 1 then
-        queries = {}
-        for _, s in ipairs(stmts) do
-          table.insert(queries, { sql = s.text, line = s.start_row - first_line })
+    results.set_conn_name(conn.key, conn.driver_label, bufnr)
+    local ft = (bufnr and vim.api.nvim_buf_is_valid(bufnr)) and vim.bo[bufnr].filetype or ""
+    results.set_query(query, ft)
+
+    local queries
+    if not is_mongo(conn.driver) and bufnr and first_line ~= nil then
+      local nlines   = select(2, query:gsub("\n", ""))
+      local end_row  = first_line + nlines
+      local stmts    = ts_queries.statements_in_range(bufnr, first_line, end_row)
+      if stmts and #stmts > 1 then
+        local first_s = stmts[1]
+        local last_s  = stmts[#stmts]
+        -- Only split when all statements are fully contained in the queried range.
+        -- end_row is exclusive in treesitter, so allow off-by-one vs end_row.
+        if first_s.start_row >= first_line and last_s.end_row <= end_row + 1 then
+          queries = {}
+          for _, s in ipairs(stmts) do
+            table.insert(queries, { sql = s.text, line = s.start_row - first_line })
+          end
         end
       end
     end
-  end
 
-  if queries and #queries > 1 then
-    results.begin_batch(#queries)
-    run_batch(queries, conn, 1, bufnr, first_line, false)
-  else
-    local sql    = query
-    local log_id = log.add(conn.key, bufnr, first_line, sql)
-    local gh     = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
-    run_single(conn, sql, gh, conn.key, log_id)
-  end
+    if queries and #queries > 1 then
+      results.begin_batch(#queries)
+      run_batch(queries, conn, 1, bufnr, first_line, false)
+    else
+      local sql    = query
+      local log_id = log.add(conn.key, bufnr, first_line, sql)
+      local gh     = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
+      run_single(conn, sql, gh, conn.key, log_id)
+    end
+  end)
 end
 
 return M

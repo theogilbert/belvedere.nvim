@@ -64,6 +64,29 @@ The default location is: >
 The directory and file are created automatically when you save your first
 connection. You can edit the file directly, or use the panel keymaps below.
 
+WRITE PROTECTION ~                                  *belvedere-write-protection*
+
+For SQL and Cypher buffers, belvedere uses treesitter to detect write
+operations (DML and DDL statements) before dispatching a query. When a write
+is detected and the connection has not been permanently allowed, a prompt
+offers three choices:
+
+  Abort               Cancel the execution.
+  Execute             Run this time; keep prompting on future writes.
+  Always allow writes Run and permanently disable the prompt for this
+                      connection.
+
+Choosing "Always allow writes" sets `allow_writes: true` in the connections
+file for that connection, taking effect immediately and persisting across
+sessions.
+
+This flag can also be changed via the edit-connection wizard (`e` in the
+connections panel). The wizard includes an "Always allow write operations?"
+step that shows the current value and lets you toggle it.
+
+Note: detection relies on treesitter parsers. Buffers without a treesitter
+parser (e.g. MongoDB query buffers) are always executed without a prompt.
+
 PANEL KEYMAPS ~
 
   <CR>    Expand/collapse a driver group, or connect to the database under
@@ -491,6 +514,12 @@ require("belvedere.connections").clone({key}, {new_name}, {caps}, {callback})
     Clones the connection identified by {key} as {new_name}, running the
     field-edit wizard with all values pre-filled. {callback} is called as
     `callback(new_key, params)` on completion, or `callback(nil)` on cancel.
+
+require("belvedere.connections").set_allow_writes({key})
+    Sets `allow_writes = true` for the connection identified by {key} and
+    persists the change to the connections file immediately. This suppresses
+    all future write-protection prompts for that connection. See
+    |belvedere-write-protection|.
 
 ================================================================================
 CONFIGURATION                                                 *belvedere-config*

@@ -1,5 +1,31 @@
 local M = {}
 
+-- Node types that represent write operations across SQL and Cypher grammars.
+local WRITE_NODE_TYPES = {
+  insert_statement     = true, update_statement      = true,
+  delete_statement     = true, merge_statement        = true,
+  create_statement     = true, create_table           = true,
+  create_table_as      = true, create_index           = true,
+  create_view          = true, drop_statement         = true,
+  drop_table           = true, drop_index             = true,
+  drop_view            = true, alter_statement        = true,
+  alter_table          = true, truncate_statement     = true,
+  create_clause        = true, merge_clause           = true,
+  delete_clause        = true, detach_delete_clause   = true,
+  set_clause           = true, remove_clause          = true,
+}
+
+--- Recursively check whether `node` or any descendant is a write operation.
+--- @param node userdata
+--- @return boolean
+local function node_has_write(node)
+  if WRITE_NODE_TYPES[node:type()] then return true end
+  for child in node:iter_children() do
+    if node_has_write(child) then return true end
+  end
+  return false
+end
+
 --- @class SqlStatement
 --- @field text      string   query text with trailing semicolons stripped
 --- @field start_row integer  0-indexed start row
@@ -22,6 +48,28 @@ end
 local function node_text(node, bufnr)
   local text = vim.treesitter.get_node_text(node, bufnr) or ""
   return vim.trim(text:gsub(";%s*$", ""))
+end
+
+--- Return true when any statement overlapping [start_row, end_row] contains a write node.
+--- Returns false when treesitter is unavailable or no write is found.
+--- @param bufnr     integer
+--- @param start_row integer  0-indexed
+--- @param end_row   integer  0-indexed
+--- @return boolean
+function M.has_write_statement(bufnr, start_row, end_row)
+  local parser = get_parser(bufnr)
+  if not parser then return false end
+  local tree = parser:parse()[1]
+  if not tree then return false end
+  for node in tree:root():iter_children() do
+    if node:type() == "statement" then
+      local sr, _, er, _ = node:range()
+      if sr <= end_row and er >= start_row then
+        if node_has_write(node) then return true end
+      end
+    end
+  end
+  return false
 end
 
 --- Return the outermost statement node containing the cursor, or nil.

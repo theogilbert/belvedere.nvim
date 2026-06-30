@@ -120,6 +120,19 @@ function M.invalidate()
   _cache = nil
 end
 
+--- Persist the `allow_writes` flag for the connection identified by `key`.
+--- When true, the write-detection prompt is skipped for this connection.
+--- @param key string
+function M.set_allow_writes(key)
+  local server, driver, group, name = M.conn_parts(key)
+  local data = read_data()
+  if not data then return end
+  local params = ((((data[server] or {})[driver] or {}).groups or {})[group] or {})[name]
+  if not params then return end
+  params.allow_writes = true
+  write_data(data)
+end
+
 --- Return the full parsed connections file, or an empty table on error.
 --- @return table
 function M.load_all()
@@ -735,7 +748,14 @@ function M.edit(key, caps, callback)
               callback(new_key, final)
             end
 
-            prompt_password_and_remember(pw_param, " (empty = keep current): ", nil, finish, function() callback(nil) end)
+            local allow_items = current.allow_writes and { "Yes", "No" } or { "No", "Yes" }
+            vim.ui.select(allow_items, { prompt = "Always allow write operations:" }, function(choice)
+              if choice == nil then callback(nil) return end
+              params.allow_writes = (choice == "Yes") and true or nil
+              vim.schedule(function()
+                prompt_password_and_remember(pw_param, " (empty = keep current): ", nil, finish, function() callback(nil) end)
+              end)
+            end)
           end)
         end)
       end)
@@ -783,6 +803,7 @@ function M.clone(source_key, new_name, caps, callback)
 
           local params = vim.tbl_extend("force", values, {
             requires_password = current.requires_password or false,
+            allow_writes      = current.allow_writes,
           })
 
           --- Apply the password decision and write the cloned record.
