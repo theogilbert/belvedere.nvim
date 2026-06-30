@@ -622,13 +622,13 @@ render_query_info = function(entry)
   return lines
 end
 
---- Cancel the running query whose gutter mark is on the cursor line.
+--- Cancel the running query that covers the cursor line.
 function M.cancel_query()
   local bufnr      = vim.api.nvim_get_current_buf()
   local line       = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
-  local request_id = gutter.find_request_at_line(bufnr, line)
+  local request_id = gutter.find_request_covering_line(bufnr, line)
   if not request_id then
-    vim.notify("belvedere: cursor must be over a running query", vim.log.levels.WARN)
+    vim.notify("belvedere: no running query covers the cursor", vim.log.levels.WARN)
     return
   end
   client.cancel(request_id, function(err, _)

@@ -72,10 +72,11 @@ end
 --- Associate a backend request id with a gutter mark handle.
 --- @param handle     GutterHandle|nil
 --- @param request_id integer|nil
-function M.register_request(handle, request_id)
+--- @param end_line   integer|nil  0-indexed last line of the query in the source buffer
+function M.register_request(handle, request_id, end_line)
   if not handle or not request_id then return end
   running[handle.bufnr] = running[handle.bufnr] or {}
-  running[handle.bufnr][handle.mark_id] = request_id
+  running[handle.bufnr][handle.mark_id] = { id = request_id, end_line = end_line }
 end
 
 --- Remove the request-id association for a gutter mark handle.
@@ -86,17 +87,20 @@ function M.unregister_request(handle)
   if by_buf then by_buf[handle.mark_id] = nil end
 end
 
---- Return the request_id of a running query whose gutter mark sits on `line` (0-indexed), or nil.
---- @param bufnr integer
---- @param line  integer  0-indexed
+--- Return the request_id of a running query whose range covers `cursor_line` (0-indexed), or nil.
+--- @param bufnr        integer
+--- @param cursor_line  integer  0-indexed
 --- @return integer|nil
-function M.find_request_at_line(bufnr, line)
+function M.find_request_covering_line(bufnr, cursor_line)
   local by_buf = running[bufnr]
   if not by_buf then return nil end
-  local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, { line, 0 }, { line, -1 }, {})
-  for _, m in ipairs(marks) do
-    local req_id = by_buf[m[1]]
-    if req_id then return req_id end
+  for mark_id, entry in pairs(by_buf) do
+    local start_line = get_mark_row(bufnr, mark_id)
+    if start_line and start_line <= cursor_line then
+      if not entry.end_line or cursor_line <= entry.end_line then
+        return entry.id
+      end
+    end
   end
   return nil
 end

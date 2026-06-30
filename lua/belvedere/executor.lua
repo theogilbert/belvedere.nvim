@@ -105,7 +105,9 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
       end
     end)
   end)
-  gutter.register_request(gh, req_id)
+  local stmt_nlines = select(2, q.sql:gsub("\n", ""))
+  local stmt_end    = (first_line ~= nil) and (first_line + q.line + stmt_nlines) or nil
+  gutter.register_request(gh, req_id, stmt_end)
 end
 
 --- Persist a completed execution result into the query log.
@@ -138,7 +140,8 @@ end
 --- @param gh       GutterHandle|nil
 --- @param conn_key string
 --- @param log_id   string
-local function run_single(conn, sql, gh, conn_key, log_id)
+--- @param end_line integer|nil  0-indexed last line of the query in the source buffer
+local function run_single(conn, sql, gh, conn_key, log_id, end_line)
   results.show_message("Executing…")
   local req_id = execute(conn, sql,
     function(err, result)
@@ -160,7 +163,7 @@ local function run_single(conn, sql, gh, conn_key, log_id)
         results.show_message(progress.message or progress.status or "…")
       end)
     end)
-  gutter.register_request(gh, req_id)
+  gutter.register_request(gh, req_id, end_line)
 end
 
 --- Prompt the user when the query range contains write operations and `confirm_writes`
@@ -231,10 +234,12 @@ function M.run(conn, query, bufnr, first_line)
       results.begin_batch(#queries)
       run_batch(queries, conn, 1, bufnr, first_line, false)
     else
-      local sql    = query
-      local log_id = log.add(conn.key, bufnr, first_line, sql)
-      local gh     = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
-      run_single(conn, sql, gh, conn.key, log_id)
+      local sql      = query
+      local log_id   = log.add(conn.key, bufnr, first_line, sql)
+      local gh       = (bufnr and first_line ~= nil) and gutter.show_running(bufnr, first_line) or nil
+      local nlines   = select(2, sql:gsub("\n", ""))
+      local end_line = (first_line ~= nil) and (first_line + nlines) or nil
+      run_single(conn, sql, gh, conn.key, log_id, end_line)
     end
   end)
 end
