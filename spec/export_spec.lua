@@ -1,0 +1,74 @@
+local export = require("belvedere.export")
+
+describe("export.to_json", function()
+  it("renders rows as a pretty-printed array of objects in column order", function()
+    local out = export.render("json", { "id", "name" }, { { 1, "a" }, { 2, "b" } })
+    assert.equals([==[[
+  {
+    "id": 1,
+    "name": "a"
+  },
+  {
+    "id": 2,
+    "name": "b"
+  }
+]]==], out)
+  end)
+
+  it("maps NULL to json null", function()
+    local out = export.render("json", { "id", "name" }, { { 1, vim.NIL } })
+    assert.equals([==[[
+  {
+    "id": 1,
+    "name": null
+  }
+]]==], out)
+  end)
+
+  it("renders an empty row set as []", function()
+    assert.equals("[]", export.render("json", { "id" }, {}))
+  end)
+end)
+
+describe("export.to_csv", function()
+  it("renders a header row and data rows", function()
+    local out = export.render("csv", { "id", "name" }, { { 1, "a" }, { 2, "b" } })
+    assert.equals("id,name\n1,a\n2,b", out)
+  end)
+
+  it("maps NULL to an empty field", function()
+    local out = export.render("csv", { "id", "name" }, { { 1, vim.NIL } })
+    assert.equals("id,name\n1,", out)
+  end)
+
+  it("quotes fields containing commas, quotes, or newlines", function()
+    local out = export.render("csv", { "name" }, { { 'a,b "c"\nd' } })
+    assert.equals('name\n"a,b ""c""\nd"', out)
+  end)
+end)
+
+describe("export.to_markdown", function()
+  it("renders a header, separator, and column-aligned data rows", function()
+    local out = export.render("markdown", { "id", "name" }, { { 1, "a" } })
+    assert.equals("| id  | name |\n| --- | ---- |\n| 1   | a    |", out)
+  end)
+
+  it("escapes pipes and strips newlines from cells, widening the column to fit", function()
+    local out = export.render("markdown", { "name" }, { { "a|b\nc" } })
+    assert.equals("| name   |\n| ------ |\n| a\\|b c |", out)
+  end)
+
+  it("maps NULL to an empty cell padded to the column width", function()
+    local out = export.render("markdown", { "name" }, { { vim.NIL } })
+    assert.equals("| name |\n| ---- |\n|      |", out)
+  end)
+end)
+
+describe("export.to_pretty", function()
+  it("renders the same box-drawing table as the results pane", function()
+    local out = export.render("pretty", { "id", "name" }, { { 1, "a" } })
+    assert.is_true(out:find("id", 1, true) ~= nil)
+    assert.is_true(out:find("name", 1, true) ~= nil)
+    assert.is_true(out:find("│", 1, true) ~= nil)
+  end)
+end)

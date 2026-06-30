@@ -11,12 +11,14 @@ local hl          = require("belvedere.hl")
 local config      = require("belvedere.config")
 local col_picker  = require("belvedere.ui.col_picker")
 local connections = require("belvedere.connections")
+local export      = require("belvedere.export")
 
 local M = {}
 
 local BUFNAME = "belvedere://results"
 
-local render_table  -- forward declaration; defined after apply_highlights
+local render_table     -- forward declaration; defined after apply_highlights
+local export_results   -- forward declaration; defined after open_export_buffer
 
 --- Return true when column arrays `a` and `b` are identical.
 --- @param a string[]
@@ -26,6 +28,19 @@ local function same_columns(a, b)
   if #a ~= #b then return false end
   for i, c in ipairs(a) do if c ~= b[i] then return false end end
   return true
+end
+
+--- Return the `bs.raw_columns` indices for `bs.vis_columns`, in display order.
+--- @param bs table  buf_state
+--- @return integer[]
+local function visible_col_indices(bs)
+  local indices = {}
+  for _, vc in ipairs(bs.vis_columns) do
+    for i, rc in ipairs(bs.raw_columns) do
+      if rc == vc then table.insert(indices, i); break end
+    end
+  end
+  return indices
 end
 
 --- Build the row-count label shown above the results table.
@@ -326,6 +341,35 @@ local function show_source_query(bs)
   end
 end
 
+--- Open `content` in a new unnamed, listed buffer in a new tab so the user can inspect or :w it.
+--- @param content  string  newline-joined export text
+--- @param filetype string  Neovim filetype to assign, or "" for none
+local function open_export_buffer(content, filetype)
+  local lines = vim.split(content, "\n", { plain = true })
+  local buf   = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  if filetype ~= "" then vim.bo[buf].filetype = filetype end
+  vim.cmd("tab sbuffer " .. buf)
+end
+
+--- Prompt for an export format and open the full (unpaginated) result set in a scratch buffer.
+--- @param bs table  buf_state
+export_results = function(bs)
+  if not bs.raw_columns or not bs.raw_rows then return end
+  vim.ui.select(export.FORMATS, { prompt = "Export results as:" }, function(format)
+    if not format then return end
+    local indices = visible_col_indices(bs)
+    local rows = {}
+    for _, row in ipairs(bs.raw_rows) do
+      local r = {}
+      for _, idx in ipairs(indices) do table.insert(r, row[idx]) end
+      table.insert(rows, r)
+    end
+    local content = export.render(format, bs.vis_columns, rows)
+    open_export_buffer(content, export.FILETYPES[format])
+  end)
+end
+
 --- Return an existing valid buf_state for `src_bufnr`, or create and register a new one.
 --- @param src_bufnr integer
 --- @param buf_title string
@@ -386,6 +430,8 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
   end, { desc = "Previous page", silent = true })
   buf:set_keymap("n", "gq", function() show_source_query(bs) end,
     { desc = "Show source query", silent = true })
+  buf:set_keymap("n", "e", function() export_results(bs) end,
+    { desc = "Export results", silent = true })
   return bs
 end
 
@@ -425,12 +471,7 @@ render_table = function(bs)
   local first = (bs.page - 1) * page_size + 1
   local last  = math.min(rows_ret, bs.page * page_size)
 
-  local col_indices = {}
-  for _, vc in ipairs(bs.vis_columns) do
-    for i, rc in ipairs(bs.raw_columns) do
-      if rc == vc then table.insert(col_indices, i); break end
-    end
-  end
+  local col_indices = visible_col_indices(bs)
 
   local display = { bs.vis_columns }
   for i = first, last do
