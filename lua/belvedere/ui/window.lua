@@ -16,6 +16,7 @@ function M.open_sidebar(buf, side)
   vim.api.nvim_set_option_value("signcolumn", "no",    { win = win })
   vim.api.nvim_set_option_value("fillchars",  "eob: ", { win = win })
   vim.api.nvim_set_option_value("wrap",       false,   { win = win })
+  vim.api.nvim_set_option_value("winfixwidth", true,  { win = win })
   return win
 end
 
