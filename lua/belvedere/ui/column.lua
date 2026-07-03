@@ -18,12 +18,12 @@ local function estimate_lines(col)
   local n = 2  -- header + blank
   if not is_nil(col.comment) and col.comment ~= "" then n = n + 1 end
   if not is_nil(col.default) and col.default ~= "" then n = n + 4 end
-  local sample = type(col.sample) == "table" and col.sample or {}
-  if #sample > 0 then n = n + 3 + #sample end
   local excl = type(col.exclusive_indices) == "table" and col.exclusive_indices or {}
   if #excl > 0 then n = n + 3 + #excl end
   local comp = type(col.composite_indices) == "table" and col.composite_indices or {}
   if #comp > 0 then n = n + 3 + #comp end
+  local sample = type(col.sample) == "table" and col.sample or {}
+  if #sample > 0 then n = n + 3 + #sample end
   return n
 end
 
@@ -64,15 +64,6 @@ local function render(buf, col)
     lines[#lines + 1] = ""
   end
 
-  local sample = type(col.sample) == "table" and col.sample or {}
-  if #sample > 0 then
-    pane.section(lines, hls, "Sample values")
-    for _, v in ipairs(sample) do
-      lines[#lines + 1] = "  " .. tostring(v)
-    end
-    lines[#lines + 1] = ""
-  end
-
   local excl = type(col.exclusive_indices) == "table" and col.exclusive_indices or {}
   if #excl > 0 then
     pane.section(lines, hls, "Exclusive indices")
@@ -93,6 +84,15 @@ local function render(buf, col)
       local irow = #lines
       lines[#lines + 1] = "  " .. name
       hls[#hls + 1] = { "BelvedereExplorerIndex", irow, 2, 2 + #name }
+    end
+    lines[#lines + 1] = ""
+  end
+
+  local sample = type(col.sample) == "table" and col.sample or {}
+  if #sample > 0 then
+    pane.section(lines, hls, "Sample values")
+    for _, v in ipairs(sample) do
+      lines[#lines + 1] = "  " .. tostring(v)
     end
     lines[#lines + 1] = ""
   end
