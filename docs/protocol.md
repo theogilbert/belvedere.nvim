@@ -400,6 +400,7 @@ Column metadata object used inside [TableDescription](#tabledescription):
 | `default`  | string or null   | Default expression, or null if not set            |
 | `exclusive_index` | boolean | `true` if this column is covered by at least one index that spans only this column |
 | `composite_index` | boolean | `true` if this column is covered by at least one index that also spans other columns |
+| `comment` | string or null | Column comment as stored in the database; null if unsupported or not set |
 
 ---
 
