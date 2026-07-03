@@ -256,7 +256,6 @@ end
 --- @field default         any
 --- @field exclusive_index boolean|nil
 --- @field composite_index boolean|nil
---- @field comment         string|nil
 
 --- @class TableDetails
 --- @field table   string|nil
@@ -319,14 +318,12 @@ render_describe = function(details, node)
 
   local cols = details.columns
   if cols and #cols > 0 then
-    local w_name, w_type, w_default, w_comment = 4, 4, 7, 7  -- "Name", "Type", "Default", "Comment"
+    local w_name, w_type, w_default = 4, 4, 7  -- "Name", "Type", "Default"
     for _, col in ipairs(cols) do
       w_name    = math.max(w_name,    vim.fn.strdisplaywidth(col.name))
       w_type    = math.max(w_type,    vim.fn.strdisplaywidth(col.type))
       local ds  = not is_nil_val(col.default) and tostring(col.default) or "—"
       w_default = math.max(w_default, vim.fn.strdisplaywidth(ds))
-      local cs  = not is_nil_val(col.comment) and col.comment ~= "" and tostring(col.comment) or "—"
-      w_comment = math.max(w_comment, vim.fn.strdisplaywidth(cs))
     end
 
     local idx_hdr  = "  Excl.  Comp."   -- 14 display chars
@@ -343,7 +340,6 @@ render_describe = function(details, node)
              .. "  Null  PK  "
              .. rpad("Default", w_default)
              .. idx_hdr
-             .. "  " .. rpad("Comment", w_comment)
     table.insert(lines, hdr)
     add_hl("BelvedereHeaderRow", #lines - 1, 0, #hdr)
 
@@ -357,7 +353,6 @@ render_describe = function(details, node)
       local default_s = not is_nil_val(col.default) and tostring(col.default) or "—"
       local excl_s    = col.exclusive_index and "✓" or " "
       local comp_s    = col.composite_index and "✓" or " "
-      local comment_s = not is_nil_val(col.comment) and col.comment ~= "" and tostring(col.comment) or "—"
 
       local row_idx = #lines
       local parts   = {}
@@ -382,8 +377,6 @@ render_describe = function(details, node)
       seg(excl_s,  excl_s == "✓" and "BelvedereExplorerIndex" or nil)
       seg("      ")
       seg(comp_s,  comp_s == "✓"  and "BelvedereExplorerIndex" or nil)
-      seg("  ")
-      seg(comment_s, "BelvedereExplorerDim")
 
       table.insert(lines, table.concat(parts))
     end
