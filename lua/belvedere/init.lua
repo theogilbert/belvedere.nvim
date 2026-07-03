@@ -642,6 +642,27 @@ function M.cancel_query()
   end)
 end
 
+--- Ensure `conn_key` has an active connection, connecting first (prompting for a password
+--- if needed) when it does not, then invoke `callback(conn_key)`. Does nothing further if
+--- the user cancels the password prompt or the connect attempt fails.
+--- @param conn_key string
+--- @param callback fun(conn_key: string)
+function M.ensure_connected(conn_key, callback)
+  if state.conns[conn_key] then
+    callback(conn_key)
+    return
+  end
+  local params = connections.get(conn_key)
+  if not params then
+    vim.notify(("belvedere: connection %q not found"):format(conn_key), vim.log.levels.ERROR)
+    return
+  end
+  connections.prompt_password(params, function(params_with_pw)
+    if not params_with_pw then return end
+    M._do_connect(conn_key, params_with_pw, callback)
+  end)
+end
+
 --- Open the saved-query picker for `conn_key` (defaults to the current buffer's connection).
 --- @param conn_key string|nil
 function M.load_query(conn_key)

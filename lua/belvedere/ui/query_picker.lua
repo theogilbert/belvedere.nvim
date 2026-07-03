@@ -83,6 +83,22 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
   vim.api.nvim_set_current_buf(bufnr)
 end
 
+--- Resolve `conn_key` to an active connection (connecting first if needed) and, on success,
+--- open the buffer for (scope_key, name). No-op when `conn_key` is nil (group-scoped picker).
+--- @param scope_key   string
+--- @param name        string
+--- @param data_by_key table<string, table>
+--- @param conn_key    string|nil
+local function select_query(scope_key, name, data_by_key, conn_key)
+  if not conn_key then
+    open_query_buffer(scope_key, name, data_by_key, nil)
+    return
+  end
+  require("belvedere").ensure_connected(conn_key, function(key)
+    open_query_buffer(scope_key, name, data_by_key, key)
+  end)
+end
+
 --- Open fzf-lua (or fallback vim.ui.select) to pick from `entries_data`.
 --- @param entries_data table[]  list of { scope_key, name, content, ext, path, ... }
 --- @param conn_key     string|nil  associated connection for the opened buffer
@@ -121,7 +137,7 @@ local function show_picker(entries_data, conn_key)
           if not selected or not selected[1] then return end
           local sk, name = decode_entry(selected[1])
           if not sk then return end
-          vim.schedule(function() open_query_buffer(sk, name, data_by_key, conn_key) end)
+          vim.schedule(function() select_query(sk, name, data_by_key, conn_key) end)
         end,
         ["ctrl-d"] = function(selected)
           if not selected or not selected[1] then return end
@@ -151,7 +167,7 @@ local function show_picker(entries_data, conn_key)
   vim.ui.select(labels, { prompt = "Saved queries:" }, function(_, idx)
     if not idx then return end
     local e = entries_data[idx]
-    vim.schedule(function() open_query_buffer(e.scope_key, e.name, data_by_key, conn_key) end)
+    vim.schedule(function() select_query(e.scope_key, e.name, data_by_key, conn_key) end)
   end)
 end
 
