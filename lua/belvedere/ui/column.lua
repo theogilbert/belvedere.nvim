@@ -16,8 +16,8 @@ local function is_nil(v) return pane.is_nil(v) end
 --- @return integer
 local function estimate_lines(col)
   local n = 2  -- header + blank
+  if not is_nil(col.comment) and col.comment ~= "" then n = n + 1 end
   if not is_nil(col.default) and col.default ~= "" then n = n + 4 end
-  if not is_nil(col.comment) and col.comment ~= "" then n = n + 4 end
   local sample = type(col.sample) == "table" and col.sample or {}
   if #sample > 0 then n = n + 3 + #sample end
   local excl = type(col.exclusive_indices) == "table" and col.exclusive_indices or {}
@@ -48,17 +48,19 @@ local function render(buf, col)
   local line, specs = pane.tag_line(tagged)
   lines[#lines + 1] = line
   for _, s in ipairs(specs) do hls[#hls + 1] = { s[1], row0, s[2], s[3] } end
+
+  if not is_nil(col.comment) and col.comment ~= "" then
+    local comment_row  = #lines
+    local comment_line = "  " .. tostring(col.comment)
+    lines[#lines + 1] = comment_line
+    hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
+  end
+
   lines[#lines + 1] = ""
 
   if not is_nil(col.default) and col.default ~= "" then
     pane.section(lines, hls, "Default")
     lines[#lines + 1] = "  " .. tostring(col.default)
-    lines[#lines + 1] = ""
-  end
-
-  if not is_nil(col.comment) and col.comment ~= "" then
-    pane.section(lines, hls, "Comment")
-    lines[#lines + 1] = "  " .. tostring(col.comment)
     lines[#lines + 1] = ""
   end
 

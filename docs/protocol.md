@@ -414,6 +414,7 @@ Returned as `details` by `explore.describe` for table/view nodes:
 | `table`   | string                  | Table name                                               |
 | `schema`  | string or null          | Schema name, or null for databases without schema support |
 | `columns` | array of [ColumnInfo](#columninfo) | Ordered column metadata                     |
+| `comment` | string or null         | Table comment as stored in the database; null if unsupported or not set |
 
 ---
 

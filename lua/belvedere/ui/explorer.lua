@@ -262,6 +262,7 @@ end
 --- @field table   string|nil
 --- @field schema  string|nil
 --- @field columns TableColumn[]|nil
+--- @field comment string|nil
 
 --- @class HlRule
 --- @field [1] string   highlight group name
@@ -307,6 +308,13 @@ render_describe = function(details, node)
 
   table.insert(lines, "  " .. hdr_title)
   add_hl("BelvedereHeaderRow", 0, 2, 2 + #hdr_title)
+
+  if not is_nil_val(details.comment) and details.comment ~= "" then
+    local comment_line = "  " .. details.comment
+    table.insert(lines, comment_line)
+    add_hl("BelvedereExplorerDim", #lines - 1, 0, #comment_line)
+  end
+
   table.insert(lines, "")
 
   local cols = details.columns
