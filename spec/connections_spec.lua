@@ -52,6 +52,7 @@ describe("connections uniqueness (M.get)", function()
   before_each(function()
     tmp = vim.fn.tempname() .. ".json"
     config.setup({ connections_file = tmp })
+    connections.invalidate()
   end)
 
   after_each(function()
