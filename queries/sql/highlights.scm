@@ -216,6 +216,25 @@
 "ON"      @keyword
 "USING"   @keyword
 
+; ─── MSSQL table hints ───────────────────────────────────────────────────────
+
+"NOLOCK"              @keyword
+"READUNCOMMITTED"     @keyword
+"READCOMMITTED"       @keyword
+"READCOMMITTEDLOCK"   @keyword
+"REPEATABLEREAD"      @keyword
+"SNAPSHOT"            @keyword
+"UPDLOCK"             @keyword
+"XLOCK"               @keyword
+"TABLOCK"             @keyword
+"TABLOCKX"            @keyword
+"PAGLOCK"             @keyword
+"ROWLOCK"             @keyword
+"NOWAIT"              @keyword
+"READPAST"            @keyword
+"FORCESEEK"           @keyword
+"HOLDLOCK"            @keyword
+
 ; ─── Transaction keywords ────────────────────────────────────────────────────
 
 "BEGIN"        @keyword
