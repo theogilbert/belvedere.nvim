@@ -239,6 +239,7 @@ local function teardown(win_id)
   local ac = state.autocmds[win_id]
   if ac then
     pcall(vim.api.nvim_del_autocmd, ac.scroll)
+    pcall(vim.api.nvim_del_autocmd, ac.close)
     state.autocmds[win_id] = nil
   end
   for tab, wid in pairs(state.win_ids) do
@@ -246,7 +247,45 @@ local function teardown(win_id)
   end
 end
 
---- Open a new results split/vsplit and register autocmds for scrolling and close tracking.
+--- Set the display options and highlight namespace any window showing a results
+--- buffer should have, regardless of how it was opened.
+--- @param win_id integer
+local function configure_win_chrome(win_id)
+  vim.api.nvim_set_option_value("number",       false, { win = win_id })
+  vim.api.nvim_set_option_value("signcolumn",   "no",  { win = win_id })
+  vim.api.nvim_set_option_value("winfixheight", true,  { win = win_id })
+  vim.api.nvim_set_option_value("winfixwidth",  true,  { win = win_id })
+  vim.api.nvim_set_option_value("wrap",         false, { win = win_id })
+  vim.api.nvim_win_set_hl_ns(win_id, hl.NS_ID)
+end
+
+--- Ensure chrome, scroll tracking, and close-cleanup are wired up for any window
+--- displaying a results buffer — whether it was opened by running a query or by
+--- the user navigating there directly (`:sb`, `:b`, buffer list, etc.).
+--- @param win_id integer
+local function ensure_win_setup(win_id)
+  configure_win_chrome(win_id)
+  update_truncation_indicators(win_id)
+  if state.autocmds[win_id] then return end
+  state.autocmds[win_id] = {
+    scroll = vim.api.nvim_create_autocmd("WinScrolled", {
+      pattern  = tostring(win_id),
+      callback = function() update_truncation_indicators(win_id) end,
+    }),
+    close = vim.api.nvim_create_autocmd("WinClosed", {
+      pattern  = tostring(win_id),
+      once     = true,
+      callback = function() teardown(win_id) end,
+    }),
+  }
+end
+
+vim.api.nvim_create_autocmd("BufWinEnter", {
+  pattern  = BUFNAME .. "*",
+  callback = function() ensure_win_setup(vim.api.nvim_get_current_win()) end,
+})
+
+--- Open a new results split/vsplit for the current tab.
 --- @param buf_id integer
 local function open_win(buf_id)
   local opts     = config.options.results
@@ -259,25 +298,6 @@ local function open_win(buf_id)
   local win_id = vim.api.nvim_get_current_win()
   state.win_ids[tab] = win_id
   vim.api.nvim_win_set_buf(win_id, buf_id)
-
-  vim.api.nvim_set_option_value("number",       false, { win = win_id })
-  vim.api.nvim_set_option_value("signcolumn",   "no",  { win = win_id })
-  vim.api.nvim_set_option_value("winfixheight", true,  { win = win_id })
-  vim.api.nvim_set_option_value("winfixwidth",  true,  { win = win_id })
-  vim.api.nvim_set_option_value("wrap",         false, { win = win_id })
-  vim.api.nvim_win_set_hl_ns(win_id, hl.NS_ID)
-
-  state.autocmds[win_id] = {
-    scroll = vim.api.nvim_create_autocmd("WinScrolled", {
-      pattern  = tostring(win_id),
-      callback = function() update_truncation_indicators(win_id) end,
-    }),
-    close = vim.api.nvim_create_autocmd("WinClosed", {
-      pattern  = tostring(win_id),
-      once     = true,
-      callback = function() teardown(win_id) end,
-    }),
-  }
   vim.api.nvim_set_current_win(prev_win)
 end
 
