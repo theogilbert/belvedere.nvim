@@ -558,6 +558,15 @@ local function load_root(reset_cache)
 end
 
 local PREVIEWABLE_TYPES = { table = true, ["base table"] = true, view = true, collection = true }
+local DIAGRAM_TYPES     = { table = true, ["base table"] = true, view = true }
+
+--- Handle the "D" keymap: request an ASCII diagram for the table under the cursor.
+local function on_diagram()
+  local line = vim.api.nvim_win_get_cursor(0)[1]
+  local node = node_at_line(line)
+  if not node or not DIAGRAM_TYPES[node.type] then return end
+  require("belvedere.ui.diagram").open(state.conn_id, node.path, node.name)
+end
 
 --- Handle the "p" keymap: request a row preview for the node under the cursor.
 local function on_preview_rows()
@@ -613,6 +622,8 @@ local function get_or_create_buffer()
   end, { nowait = true, silent = true, desc = "Refresh explorer" })
   state.buffer:set_keymap("n", "p", on_preview_rows,
     { nowait = true, silent = true, desc = "Preview rows" })
+  state.buffer:set_keymap("n", "D", on_diagram,
+    { nowait = true, silent = true, desc = "Show table diagram" })
   state.buffer:set_keymap("n", "q", function()
     local win = vim.fn.bufwinid(state.buffer.buf_id)
     if win ~= -1 then vim.api.nvim_win_close(win, true) end
