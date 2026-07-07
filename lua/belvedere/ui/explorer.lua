@@ -257,11 +257,19 @@ end
 --- @field exclusive_index boolean|nil
 --- @field composite_index boolean|nil
 
+--- @class TableReference
+--- @field column     string       local column participating in the relationship
+--- @field table      string       name of the other table
+--- @field ref_column string       column on the other table
+--- @field schema     string|nil   schema of the other table, or nil for databases without schema support
+
 --- @class TableDetails
---- @field table   string|nil
---- @field schema  string|nil
---- @field columns TableColumn[]|nil
---- @field comment string|nil
+--- @field table                string|nil
+--- @field schema               string|nil
+--- @field columns              TableColumn[]|nil
+--- @field comment              string|nil
+--- @field outgoing_references  TableReference[]|nil  foreign keys on this table referencing other tables
+--- @field incoming_references  TableReference[]|nil  foreign keys on other tables referencing this table
 
 --- @class HlRule
 --- @field [1] string   highlight group name
@@ -381,6 +389,52 @@ render_describe = function(details, node)
       table.insert(lines, table.concat(parts))
     end
   end
+
+  local ARROW = "  →  "
+
+  --- Render one references section ("Foreign keys" / "Incoming references").
+  --- Table names use BelvedereExplorerTable; column names use BelvedereExplorerColumn.
+  --- @param label   string
+  --- @param refs    TableReference[]|nil
+  --- @param reverse boolean  true to draw the arrow from the other table into `column`
+  local function render_refs(label, refs, reverse)
+    if type(refs) ~= "table" or #refs == 0 then return end
+
+    table.insert(lines, "")
+    local hdr = "  " .. label
+    table.insert(lines, hdr)
+    add_hl("BelvedereHeaderRow", #lines - 1, 2, 2 + #label)
+
+    for _, r in ipairs(refs) do
+      local other_table = (not is_nil_val(r.schema) and r.schema .. "." or "") .. r.table .. "."
+
+      local row_idx  = #lines
+      local parts, pos = {}, 0
+      local function seg(s, grp)
+        if grp then add_hl(grp, row_idx, pos, pos + #s) end
+        parts[#parts + 1] = s
+        pos = pos + #s
+      end
+
+      seg("  ")
+      if reverse then
+        seg(other_table,  "BelvedereExplorerTable")
+        seg(r.ref_column, "BelvedereExplorerColumn")
+        seg(ARROW)
+        seg(r.column,     "BelvedereExplorerColumn")
+      else
+        seg(r.column,      "BelvedereExplorerColumn")
+        seg(ARROW)
+        seg(other_table,  "BelvedereExplorerTable")
+        seg(r.ref_column, "BelvedereExplorerColumn")
+      end
+
+      table.insert(lines, table.concat(parts))
+    end
+  end
+
+  render_refs("Foreign keys",         details.outgoing_references, false)
+  render_refs("Incoming references",  details.incoming_references, true)
 
   return lines, hl_rules, win_title
 end

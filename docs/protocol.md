@@ -403,6 +403,19 @@ Column metadata object used inside [TableDescription](#tabledescription):
 
 ---
 
+## TableReference
+
+One column-level leg of a foreign key relating a table to another table, used inside [TableDescription](#tabledescription):
+
+| Field        | Type            | Description                                                |
+|--------------|-----------------|-------------------------------------------------------------|
+| `column`     | string          | Local column participating in the relationship             |
+| `table`      | string          | Name of the other table                                    |
+| `ref_column` | string          | Column on the other table                                  |
+| `schema`     | string or null  | Schema of the other table, or null for databases without schema support |
+
+---
+
 ## TableDescription
 
 Returned as `details` by `explore.describe` for table/view nodes:
@@ -414,6 +427,8 @@ Returned as `details` by `explore.describe` for table/view nodes:
 | `schema`  | string or null          | Schema name, or null for databases without schema support |
 | `columns` | array of [ColumnInfo](#columninfo) | Ordered column metadata                     |
 | `comment` | string or null         | Table comment as stored in the database; null if unsupported or not set |
+| `outgoing_references` | array of [TableReference](#tablereference) | Foreign keys defined on this table that reference other tables in the same schema |
+| `incoming_references` | array of [TableReference](#tablereference) | Foreign keys on other tables in the same schema that reference this table |
 
 ---
 
