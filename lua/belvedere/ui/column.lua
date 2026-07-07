@@ -27,14 +27,10 @@ local function estimate_lines(col)
   return n
 end
 
---- Populate `buf` with the detail view for a single column.
---- @param buf integer
+--- Build the tagged type-summary segments for a column: data_type · nullable/not null · primary key.
 --- @param col table  ColumnDescription
-local function render(buf, col)
-  local lines = {}
-  local hls   = {}
-
-  -- One-liner: data_type · [nullable/not null] · [primary key]
+--- @return table  tagged list consumed by detail_pane.tag_line
+local function type_tags(col)
   local data_type = (not is_nil(col.data_type) and col.data_type ~= "") and col.data_type or "?"
   local tagged = { { data_type, "BelvedereExplorerTable" } }
   if col.nullable == true then
@@ -43,9 +39,18 @@ local function render(buf, col)
     tagged[#tagged + 1] = { "not null", "BelvedereExplorerDim" }
   end
   if col.pk then tagged[#tagged + 1] = { "primary key", "BelvedereExplorerSchema" } end
+  return tagged
+end
+
+--- Populate `buf` with the detail view for a single column.
+--- @param buf integer
+--- @param col table  ColumnDescription
+local function render(buf, col)
+  local lines = {}
+  local hls   = {}
 
   local row0 = #lines
-  local line, specs = pane.tag_line(tagged)
+  local line, specs = pane.tag_line(type_tags(col))
   lines[#lines + 1] = line
   for _, s in ipairs(specs) do hls[#hls + 1] = { s[1], row0, s[2], s[3] } end
 
@@ -117,6 +122,33 @@ function M.open(details, title)
     render     = render,
     estimate   = estimate_lines,
   })
+end
+
+--- Build condensed hover lines for a column: name, type/constraints, comment.
+--- A shorter view than `render()`, which also lists defaults, indices, and samples.
+--- @param col table  ColumnDescription
+--- @return string[] lines
+--- @return DetailHlRule[] hls
+function M.hover_lines(col)
+  local lines, hls = {}, {}
+
+  local name_row = #lines
+  lines[#lines + 1] = col.name
+  hls[#hls + 1] = { "BelvedereHeaderRow", name_row, 0, #col.name }
+
+  local tag_row = #lines
+  local line, specs = pane.tag_line(type_tags(col))
+  lines[#lines + 1] = line
+  for _, s in ipairs(specs) do hls[#hls + 1] = { s[1], tag_row, s[2], s[3] } end
+
+  if not is_nil(col.comment) and col.comment ~= "" then
+    local comment_row  = #lines
+    local comment_line = "  " .. tostring(col.comment)
+    lines[#lines + 1] = comment_line
+    hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
+  end
+
+  return lines, hls
 end
 
 --- Open a single-column detail float.

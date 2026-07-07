@@ -563,6 +563,7 @@ local function on_preview_rows()
   local node = node_at_line(line)
   if not node or not PREVIEWABLE_TYPES[node.type] then return end
   results.set_conn_name(state.conn_key, state.conn_driver_label)
+  results.set_source_table(node.path)
   results.show_message("Loading…")
   client.request("explore.preview", { connection_id = state.conn_id, path = node.path },
     function(err, result)

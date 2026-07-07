@@ -1,6 +1,7 @@
 local M = {}
 
 local state = { win = nil }
+local NS    = vim.api.nvim_create_namespace("BelvedereHover")
 
 --- Close the current hover float if one is open.
 function M.close()
@@ -20,26 +21,42 @@ end
 --- The float closes automatically when the cursor moves or `source_bufnr` is left.
 --- @param lines        string[]  lines to display
 --- @param source_bufnr integer   buffer to attach the autoclose autocmd to
-function M.open(lines, source_bufnr)
+--- @param opts table|nil
+---   .hls   DetailHlRule[]|nil  positional highlights: { group, row, col_start, col_end }
+---   .above boolean|nil         anchor the float above the cursor line (default: below)
+function M.open(lines, source_bufnr, opts)
+  opts = opts or {}
   M.close()
 
   local width = 0
-  for _, l in ipairs(lines) do width = math.max(width, #l) end
+  for _, l in ipairs(lines) do width = math.max(width, vim.api.nvim_strwidth(l)) end
 
   local float_buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(float_buf, 0, -1, false, lines)
   vim.bo[float_buf].modifiable = false
+  if opts.hls then
+    for _, h in ipairs(opts.hls) do
+      vim.api.nvim_buf_add_highlight(float_buf, NS, h[1], h[2], h[3], h[4])
+    end
+  end
 
-  local win = vim.api.nvim_open_win(float_buf, false, {
+  local win_opts = {
     relative  = "cursor",
-    row       = 1,
     col       = 0,
     width     = width,
     height    = #lines,
     style     = "minimal",
     border    = "rounded",
     focusable = false,
-  })
+  }
+  if opts.above then
+    win_opts.anchor = "SW"
+    win_opts.row    = 0
+  else
+    win_opts.row = 1
+  end
+
+  local win = vim.api.nvim_open_win(float_buf, false, win_opts)
   state.win = win
 
   vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufLeave" }, {

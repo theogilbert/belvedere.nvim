@@ -12,6 +12,9 @@ local config      = require("belvedere.config")
 local col_picker  = require("belvedere.ui.col_picker")
 local connections = require("belvedere.connections")
 local export      = require("belvedere.export")
+local client      = require("belvedere.client")
+local hover       = require("belvedere.ui.hover")
+local column_ui   = require("belvedere.ui.column")
 
 local M = {}
 
@@ -370,6 +373,39 @@ export_results = function(bs)
   end)
 end
 
+--- Show a condensed column-description hover float for the column under the cursor.
+--- Only available when the current results came from an explorer table preview
+--- (`bs.table_path` set); a no-op otherwise, since arbitrary query results have
+--- no reliable way to resolve which table a column came from.
+--- @param bs table  buf_state
+local function show_column_hover(bs)
+  if not bs.table_path or not bs.table_data or not bs.vis_columns then return end
+  local col_idx  = table_fmt.get_column_at_cursor(bs.table_data.columns_width, vim.fn.virtcol("."))
+  local col_name = col_idx and bs.vis_columns[col_idx]
+  if not col_name then return end
+
+  local conn = bs.conn_key and require("belvedere").get_conn(bs.conn_key)
+  if not conn then return end
+
+  local function show(details)
+    local lines, hls = column_ui.hover_lines(details)
+    hover.open(lines, bs.buffer.buf_id, { hls = hls, above = true })
+  end
+
+  bs.column_cache = bs.column_cache or {}
+  local cached = bs.column_cache[col_name]
+  if cached then show(cached) return end
+
+  local path = vim.list_extend(vim.list_slice(bs.table_path), { "columns", col_name })
+  client.request("explore.describe", { connection_id = conn.conn_id, path = path }, function(err, result)
+    vim.schedule(function()
+      if err or not result or not result.details then return end
+      bs.column_cache[col_name] = result.details
+      show(result.details)
+    end)
+  end)
+end
+
 --- Return an existing valid buf_state for `src_bufnr`, or create and register a new one.
 --- @param src_bufnr integer
 --- @param buf_title string
@@ -396,6 +432,8 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
     query         = nil,
     query_ft      = nil,
     conn_key      = nil,
+    table_path    = nil,  -- explore-tree path to the source table, if known
+    column_cache  = nil,  -- column name -> ColumnDescription, reset with table_path
   }
   state.buffers[src_bufnr] = bs
 
@@ -432,6 +470,8 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
     { desc = "Show source query", silent = true })
   buf:set_keymap("n", "e", function() export_results(bs) end,
     { desc = "Export results", silent = true })
+  buf:set_keymap("n", config.options.keymaps.hover_key, function() show_column_hover(bs) end,
+    { desc = "Show column info", silent = true })
   return bs
 end
 
@@ -558,8 +598,22 @@ function M.set_conn_name(key, driver_label, src_bufnr)
                     .. src_buf_suffix(src_bufnr)
   local buf_key   = src_bufnr or 0
   local bs        = get_or_create_buf_state(buf_key, buf_title)
-  bs.conn_key     = key
+  bs.conn_key      = key
+  bs.table_path    = nil
+  bs.column_cache  = nil
   state.active_src = buf_key
+end
+
+--- Record the explore-tree path to the table backing the current results, enabling
+--- the column-hover float (`K`) to resolve columns via `explore.describe`.
+--- Cleared by `set_conn_name` at the start of every new query context.
+--- @param path string[]  explore-tree path to the table (e.g. {"public", "users"})
+function M.set_source_table(path)
+  local bs = active_bs()
+  if bs then
+    bs.table_path   = path
+    bs.column_cache = {}
+  end
 end
 
 --- Prepare the results buffer for a batch of `n` statements.
