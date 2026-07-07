@@ -309,6 +309,44 @@ Returns a sample of up to 10 rows from the node at the given path. Only supporte
 
 ---
 
+### `explore.diagram`
+
+Returns an ASCII diagram of the table at the given path and every table connected to it, recursively, via foreign keys (both outgoing and incoming). Connected tables that are themselves connected to further tables are expanded too, so the diagram can cover an entire connected region of the schema, not just the immediate neighbours of `path`.
+
+The diagram is rendered as a vertical tree: the root table's box is printed first, and each related table is nested underneath it, indented, and connected to its parent by a line naming the join columns. A table that is reachable by more than one path (a cycle, or a table referenced from two places) is only drawn once — later references to it appear as a plain text pointer instead of a duplicate box. The text has no line-wrap applied and assumes the client will render it without wrapping; boxes are sized to their content and the tree aims for roughly 120 columns wide, but width is not capped.
+
+Only supported for table/view nodes; if `path` does not resolve to a table, the request returns an error.
+
+**params**
+
+| Field           | Type             | Description            |
+|-----------------|------------------|-------------------------|
+| `connection_id` | string           | Connection to query     |
+| `path`          | array of strings | Path to the table       |
+
+**result**
+
+| Field     | Type   | Description                                   |
+|-----------|--------|------------------------------------------------|
+| `diagram` | string | ASCII diagram, as a multi-line string          |
+
+**example**
+
+```json
+{"id":7,"method":"explore.diagram","params":{"connection_id":"0","path":["users"]}}
+```
+```json
+{
+  "id": 7,
+  "result": {
+    "diagram": "┌─ users ───────────┐\n│ id    INTEGER  PK │\n│ name  TEXT        │\n└───────────────────┘\n└── orders.user_id → id\n    ┌─ orders ─────────────┐\n    │ id       INTEGER  PK │\n    │ user_id  INTEGER  FK │\n    │ total    REAL        │\n    └──────────────────────┘"
+  },
+  "error": null
+}
+```
+
+---
+
 ### `driver.help`
 
 Returns documentation for a specific driver as a markdown string. Clients should display this in a help buffer when the user requests driver-specific documentation.
