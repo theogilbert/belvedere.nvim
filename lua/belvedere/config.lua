@@ -39,6 +39,14 @@ M.defaults = {
     split     = "below",  -- "below" | "right"
     height    = 15,
     page_size = 500,
+
+    -- Character inserted between digit groups in numeric cells (e.g. "1_234_567").
+    -- Set to false or "" to disable.
+    thousands_separator = "_",
+
+    -- Character used as the decimal point in numeric cells (e.g. "1234.56").
+    -- Set to false or "" to display numbers with a literal "." decimal point.
+    decimal_separator = ".",
   },
 }
 

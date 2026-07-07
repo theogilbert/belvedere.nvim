@@ -534,7 +534,13 @@ All keys are optional.
     keymaps = {
       hover_key = "K",
     },
-    results = { split = "below", height = 15, page_size = 500 },
+    results = {
+      split               = "below",
+      height              = 15,
+      page_size           = 500,
+      thousands_separator = "_",
+      decimal_separator   = ".",
+    },
   })
 <
 
@@ -584,6 +590,27 @@ results.page_size ~
 
   Number of rows per page in the results window. Use `[` and `]` to
   navigate between pages.
+
+                                              *belvedere-thousands_separator*
+results.thousands_separator ~
+  Type: `string|false`   Default: `"_"`
+
+  Character inserted between digit groups in numeric cells (e.g.
+  `"1_234_567"`). Set to `false` or `""` to disable grouping.
+
+                                                *belvedere-decimal_separator*
+results.decimal_separator ~
+  Type: `string|false`   Default: `"."`
+
+  Character used as the decimal point in numeric cells (e.g. `"1234.56"`).
+  Set to `false` or `""` to display numbers with a literal `.` decimal point
+  instead (equivalent to the default). For European-style numbers, set
+  `thousands_separator = "."` and `decimal_separator = ","` (e.g.
+  `"1.234.567,89"`).
+
+  The thousands separator is highlighted slightly dimmer than the digits
+  (`BelvedereThousandsSeparator`); the decimal separator is always
+  highlighted the same as the surrounding digits.
 
 ================================================================================
 SUPPORTED DATABASES                                          *belvedere-drivers*

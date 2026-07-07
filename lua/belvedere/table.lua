@@ -6,18 +6,61 @@ local M = {}
 --- @field lines         any[][]    raw row arrays (first row is the header)
 --- @field columns_width integer[]  display-column widths per column
 --- @field text          string[]   rendered lines ready to set into a buffer
+--- @field sep           string|nil thousands-separator used for numeric cells, if any
+--- @field decimal_sep   string|nil decimal-point separator used for numeric cells, if any
 
 M.COL_SEPARATOR = "│"
 
 -- Display string for JSON null values (vim.NIL sentinel).
 local NULL_TEXT = "NULL"
 
---- Return the display string for a cell value, mapping vim.NIL → "NULL".
---- @param cell any
+--- Insert `sep` between digit groups in the integer part of a number's decimal
+--- representation, and swap in `decimal_sep` for the decimal point, if set.
+--- @param n           number
+--- @param sep         string|nil  separator to insert between digit groups (e.g. ","), or nil to disable
+--- @param decimal_sep string|nil  decimal-point character (e.g. "," or "."), or nil for "."
+--- @return string display  the formatted number
+--- @return integer int_len  byte length of the sign + grouped integer part (excludes the decimal point and fraction)
+local function format_number(n, sep, decimal_sep)
+  local s = tostring(n)
+  local sign, rest      = s:match("^(%-?)(.*)$")
+  local int_part, frac  = rest:match("^(%d+)(.*)$")
+  if not int_part then return s, #s end
+
+  local grouped = int_part
+  if sep and #int_part > 3 then
+    local sep_rev  = sep:reverse()
+    local sep_repl = sep_rev:gsub("%%", "%%%%")
+    grouped = int_part:reverse():gsub("(%d%d%d)", "%1" .. sep_repl)
+    if grouped:sub(-#sep_rev) == sep_rev then
+      grouped = grouped:sub(1, -#sep_rev - 1)
+    end
+    grouped = grouped:reverse()
+  end
+
+  if decimal_sep and decimal_sep ~= "." and frac:sub(1, 1) == "." then
+    frac = decimal_sep .. frac:sub(2)
+  end
+
+  local int_str = sign .. grouped
+  return int_str .. frac, #int_str
+end
+
+--- Return the display string for a cell value, mapping vim.NIL → "NULL" and
+--- formatting numeric cells with the configured thousands/decimal separators.
+--- @param cell        any
+--- @param sep         string|nil  thousands-separator character, or nil/"" to disable
+--- @param decimal_sep string|nil  decimal-point character, or nil/"" for "."
 --- @return string
-local function cell_display(cell)
+local function cell_display(cell, sep, decimal_sep)
   if cell == vim.NIL then return NULL_TEXT end
   if cell == nil     then return "" end
+  sep         = (sep and sep ~= "") and sep or nil
+  decimal_sep = (decimal_sep and decimal_sep ~= "") and decimal_sep or nil
+  if type(cell) == "number" and (sep or decimal_sep) then
+    local s = format_number(cell, sep, decimal_sep)
+    return s
+  end
   return tostring(cell)
 end
 
@@ -31,11 +74,13 @@ local function center(text, width)
 end
 
 --- Expand `widths[i]` to fit the display width of each cell in `cols` (with 1-space padding each side).
---- @param cols   table    array of cell values
---- @param widths integer[]  mutable column-width array
-local function update_col_widths(cols, widths)
+--- @param cols        table    array of cell values
+--- @param widths      integer[]  mutable column-width array
+--- @param sep         string|nil thousands-separator, or nil to disable
+--- @param decimal_sep string|nil decimal-point separator, or nil for "."
+local function update_col_widths(cols, widths, sep, decimal_sep)
   for i, cell in ipairs(cols) do
-    widths[i] = math.max(widths[i] or 2, vim.api.nvim_strwidth(cell_display(cell)) + 2)
+    widths[i] = math.max(widths[i] or 2, vim.api.nvim_strwidth(cell_display(cell, sep, decimal_sep)) + 2)
   end
 end
 
@@ -51,17 +96,21 @@ end
 --- Build a FormattedTable from a list of row arrays.
 --- @param lines table    rows, each an array of cell values
 --- @param header_lines integer|nil  rows to treat as header (default 1)
+--- @param sep string|boolean|nil  thousands-separator for numeric cells, or nil/false/"" to disable
+--- @param decimal_sep string|boolean|nil  decimal-point separator for numeric cells, or nil/false/"" for "."
 --- @return FormattedTable
-function M.from_structured_data(lines, header_lines)
+function M.from_structured_data(lines, header_lines, sep, decimal_sep)
   header_lines = header_lines or 1
+  sep         = (sep and sep ~= "") and sep or nil
+  decimal_sep = (decimal_sep and decimal_sep ~= "") and decimal_sep or nil
   local widths = {}
-  for _, row in ipairs(lines) do update_col_widths(row, widths) end
+  for _, row in ipairs(lines) do update_col_widths(row, widths, sep, decimal_sep) end
 
   local formatted = {}
   for _, row in ipairs(lines) do
     local cells = {}
     for i, cell in ipairs(row) do
-      cells[i] = center(cell_display(cell), widths[i])
+      cells[i] = center(cell_display(cell, sep, decimal_sep), widths[i])
     end
     table.insert(formatted, M.COL_SEPARATOR .. table.concat(cells, M.COL_SEPARATOR) .. M.COL_SEPARATOR)
   end
@@ -70,7 +119,7 @@ function M.from_structured_data(lines, header_lines)
     table.insert(formatted, header_lines + 1, build_separator(widths))
   end
 
-  return { lines = lines, columns_width = widths, text = formatted }
+  return { lines = lines, columns_width = widths, text = formatted, sep = sep, decimal_sep = decimal_sep }
 end
 
 --- Return the 1-indexed column at a virtual cursor position,
@@ -107,14 +156,16 @@ end
 --- Accounts for multi-byte cell content so positions are valid for vim.hl.range.
 --- @param row table|nil   raw cell values for this row
 --- @param cols_width integer[]
+--- @param sep string|nil  thousands-separator in effect, or nil
+--- @param decimal_sep string|nil  decimal-point separator in effect, or nil
 --- @return table   list of {byte_start, byte_end} per column
-function M.column_byte_positions(row, cols_width)
+function M.column_byte_positions(row, cols_width, sep, decimal_sep)
   local positions = {}
   local byte_pos  = SEP_BYTES  -- skip leading │
   for i, width in ipairs(cols_width) do
     local cell_bytes
     if row then
-      local s    = cell_display(row[i])
+      local s    = cell_display(row[i], sep, decimal_sep)
       cell_bytes = width - vim.api.nvim_strwidth(s) + #s
     else
       cell_bytes = width
@@ -133,7 +184,7 @@ end
 --- @return table   list of { higroup, start, finish } rules
 function M.col_hl_rules(higroup, buf_line, data_line, tbl)
   if not tbl then return {} end
-  local positions = M.column_byte_positions(tbl.lines[data_line], tbl.columns_width)
+  local positions = M.column_byte_positions(tbl.lines[data_line], tbl.columns_width, tbl.sep, tbl.decimal_sep)
   local rules     = {}
   for i, pos in ipairs(positions) do
     rules[i] = { higroup = higroup,
@@ -153,7 +204,7 @@ function M.null_hl_rules(tbl)
   for i = 2, #tbl.lines do
     local row      = tbl.lines[i]
     local buf_line = i
-    local positions = M.column_byte_positions(row, tbl.columns_width)
+    local positions = M.column_byte_positions(row, tbl.columns_width, tbl.sep, tbl.decimal_sep)
     for j, cell in ipairs(row) do
       if cell == vim.NIL then
         rules[#rules + 1] = {
@@ -161,6 +212,41 @@ function M.null_hl_rules(tbl)
           start   = { buf_line, positions[j][1] },
           finish  = { buf_line, positions[j][2] },
         }
+      end
+    end
+  end
+  return rules
+end
+
+--- Return highlight rules for the thousands-separator characters within numeric cells.
+--- Only matches within the grouped integer part, so a decimal separator that happens
+--- to share the same character as the thousands separator is never dimmed.
+--- @param tbl FormattedTable
+--- @return table   list of { higroup, start, finish } rules
+function M.thousands_hl_rules(tbl)
+  local rules = {}
+  if not tbl.sep then return rules end
+  -- tbl.lines[1] = header; data rows start at tbl.lines[2], mapping to 0-indexed buffer line i.
+  for i = 2, #tbl.lines do
+    local row       = tbl.lines[i]
+    local buf_line  = i
+    local positions = M.column_byte_positions(row, tbl.columns_width, tbl.sep, tbl.decimal_sep)
+    for j, cell in ipairs(row) do
+      if type(cell) == "number" then
+        local s, int_len = format_number(cell, tbl.sep, tbl.decimal_sep)
+        local base  = positions[j][1] + math.floor((tbl.columns_width[j] - vim.api.nvim_strwidth(s)) / 2)
+        local int_s = s:sub(1, int_len)
+        local from  = 1
+        while true do
+          local a, b = int_s:find(tbl.sep, from, true)
+          if not a then break end
+          rules[#rules + 1] = {
+            higroup = "BelvedereThousandsSeparator",
+            start   = { buf_line, base + a - 1 },
+            finish  = { buf_line, base + b },
+          }
+          from = b + 1
+        end
       end
     end
   end

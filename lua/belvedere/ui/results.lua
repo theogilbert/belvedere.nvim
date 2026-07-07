@@ -455,6 +455,12 @@ local function apply_highlights(bs, tbl, label_line, tbl_offset)
     r.finish[1] = r.finish[1] + tbl_offset
   end
   vim.list_extend(rules, null_rules)
+  local sep_rules = table_fmt.thousands_hl_rules(tbl)
+  for _, r in ipairs(sep_rules) do
+    r.start[1]  = r.start[1]  + tbl_offset
+    r.finish[1] = r.finish[1] + tbl_offset
+  end
+  vim.list_extend(rules, sep_rules)
   bs.buffer:apply_highlight(rules)
 end
 
@@ -480,7 +486,7 @@ render_table = function(bs)
     table.insert(display, row)
   end
 
-  local tbl = table_fmt.from_structured_data(display, 1)
+  local tbl = table_fmt.from_structured_data(display, 1, config.options.results.thousands_separator, config.options.results.decimal_separator)
   bs.table_data = tbl
 
   local label = rows_label(rows_ret, rows_tot, bs.page, page_size)
@@ -582,7 +588,7 @@ function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_to
   rows_total      = rows_total    or rows_returned
   local display   = { columns }
   for i = 1, math.min(rows_returned, page_size) do table.insert(display, rows[i]) end
-  local tbl   = table_fmt.from_structured_data(display, 1)
+  local tbl   = table_fmt.from_structured_data(display, 1, config.options.results.thousands_separator, config.options.results.decimal_separator)
   local label = rows_label(rows_returned, rows_total, 1, page_size)
   if duration_ms then label = label .. "  ·  " .. format_duration(duration_ms) end
   local content = { label, "" }
@@ -590,6 +596,13 @@ function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_to
   local rules = table_fmt.col_hl_rules("BelvedereHeaderRow", 2, 1, tbl)
   table.insert(rules, { higroup = "BelvedereRowCount",
     start = { 0, 0 }, finish = { 0, -1 } })
+  for _, r in ipairs(table_fmt.thousands_hl_rules(tbl)) do
+    table.insert(rules, {
+      higroup = r.higroup,
+      start   = { r.start[1]  + 2, r.start[2] },
+      finish  = { r.finish[1] + 2, r.finish[2] },
+    })
+  end
   table.insert(bs.segments, { header = make_separator(idx, total), lines = content, hl_rules = rules })
   render_segments(bs)
 end

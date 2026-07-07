@@ -10,6 +10,7 @@ local ROW_COUNT_FG = "#7F8490"
 local CONN_FG      = "#7DB88A"
 local NULL_FG      = "#6B7280"
 local HELP_FG      = "#4B9CD3"
+local THOUSANDS_FG = "#767676"
 
 --- Build the table of highlight group definitions.
 --- @return table<string, table>
@@ -22,6 +23,7 @@ local function build_highlights()
     BelvedereRowCount  = { fg = ROW_COUNT_FG },
     BelvedereNull      = { fg = NULL_FG, italic = true },
     BelvedereHelp      = { fg = HELP_FG, italic = true },
+    BelvedereThousandsSeparator = { fg = THOUSANDS_FG },
   }
 end
 

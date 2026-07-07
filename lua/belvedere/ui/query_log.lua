@@ -8,6 +8,7 @@ local M = {}
 local log       = require("belvedere.log")
 local table_fmt = require("belvedere.table")
 local hl        = require("belvedere.hl")
+local config    = require("belvedere.config")
 
 local SEARCH_PROMPT     = "/ "
 local SEARCH_PROMPT_LEN = #SEARCH_PROMPT
@@ -263,7 +264,7 @@ function M.open(conn_key, conn)
       if #cols > 0 then
         local display = { cols }
         for i = 1, math.min(#rows, 50) do table.insert(display, rows[i]) end
-        local tbl        = table_fmt.from_structured_data(display, 1)
+        local tbl        = table_fmt.from_structured_data(display, 1, config.options.results.thousands_separator, config.options.results.decimal_separator)
         local tbl_offset = 2
 
         for _, l in ipairs(tbl.text) do table.insert(res_lines, l) end
@@ -271,6 +272,13 @@ function M.open(conn_key, conn)
           table.insert(res_rules, r)
         end
         for _, r in ipairs(table_fmt.null_hl_rules(tbl)) do
+          table.insert(res_rules, {
+            higroup = r.higroup,
+            start   = { r.start[1]  + tbl_offset, r.start[2] },
+            finish  = { r.finish[1] + tbl_offset, r.finish[2] },
+          })
+        end
+        for _, r in ipairs(table_fmt.thousands_hl_rules(tbl)) do
           table.insert(res_rules, {
             higroup = r.higroup,
             start   = { r.start[1]  + tbl_offset, r.start[2] },
