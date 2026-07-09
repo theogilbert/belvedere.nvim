@@ -326,9 +326,10 @@ Only supported for table/view nodes; if `path` does not resolve to a table, the 
 
 **result**
 
-| Field     | Type   | Description                                   |
-|-----------|--------|------------------------------------------------|
-| `diagram` | string | ASCII diagram, as a multi-line string          |
+| Field     | Type                                    | Description                                                     |
+|-----------|------------------------------------------|-------------------------------------------------------------------|
+| `diagram` | string                                   | ASCII diagram, as a multi-line string                             |
+| `regions` | array of [DiagramRegion](#diagramregion) | Byte-offset spans identifying the table/column named at each point in `diagram`, so a client can resolve a cursor position to an `explore.describe` path without parsing the diagram text itself |
 
 **example**
 
@@ -339,11 +340,18 @@ Only supported for table/view nodes; if `path` does not resolve to a table, the 
 {
   "id": 7,
   "result": {
-    "diagram": "┌─ users ───────────┐\n│ id    INTEGER  PK │\n│ name  TEXT        │\n└───────────────────┘\n└── orders.user_id → id\n    ┌─ orders ─────────────┐\n    │ id       INTEGER  PK │\n    │ user_id  INTEGER  FK │\n    │ total    REAL        │\n    └──────────────────────┘"
+    "diagram": "┌─ users ───────────┐\n│ id    INTEGER  PK │\n│ name  TEXT        │\n└───────────────────┘\n└── orders.user_id → id\n    ┌─ orders ─────────────┐\n    │ id       INTEGER  PK │\n    │ user_id  INTEGER  FK │\n    │ total    REAL        │\n    └──────────────────────┘",
+    "regions": [
+      { "row": 0, "col_start": 7,  "col_end": 12, "path": ["users"] },
+      { "row": 1, "col_start": 4,  "col_end": 6,  "path": ["users", "columns", "id"] },
+      { "row": 4, "col_start": 10, "col_end": 16, "path": ["orders"] }
+    ]
   },
   "error": null
 }
 ```
+
+(truncated — in practice every table and column name drawn anywhere in `diagram` gets a region)
 
 ---
 
@@ -562,6 +570,18 @@ string value on the wire, instead of pattern-matching cell contents.
 ```json
 {"type": "lob", "text": "CLOB (3423 chars)"}
 ```
+## DiagramRegion
+
+One span in the `diagram` string returned by [`explore.diagram`](#explorediagram) that names a table or column — in a box header, a join-label line, or a plain-text pointer. Lets a client resolve a cursor position to an `explore.describe` path without parsing the diagram text itself.
+
+`row` and `col_start`/`col_end` are all **0-indexed**. `row` counts lines of `diagram` as split on `\n`, starting from `0`. `col_start`/`col_end` are byte offsets into that line (not codepoints or display columns), also starting from `0`; `col_end` is exclusive. Note this differs from `nvim_win_get_cursor()`, whose row is 1-indexed — clients must subtract 1 from the cursor row before comparing against `row`.
+
+| Field       | Type             | Description                                                                 |
+|-------------|------------------|-------------------------------------------------------------------------------|
+| `row`       | integer          | 0-indexed line number within `diagram`                                       |
+| `col_start` | integer          | 0-indexed byte offset where the span starts                                  |
+| `col_end`   | integer          | 0-indexed byte offset where the span ends (exclusive)                        |
+| `path`      | array of strings | Path to pass as `explore.describe`'s `path` param to describe this table or column |
 
 ---
 
