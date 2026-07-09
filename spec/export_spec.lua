@@ -45,6 +45,11 @@ describe("export.to_csv", function()
     local out = export.render("csv", { "name" }, { { 'a,b "c"\nd' } })
     assert.equals('name\n"a,b ""c""\nd"', out)
   end)
+
+  it("renders a LobPlaceholder cell as its placeholder text", function()
+    local out = export.render("csv", { "body" }, { { { type = "lob", text = "CLOB (3423 chars)" } } })
+    assert.equals("body\nCLOB (3423 chars)", out)
+  end)
 end)
 
 describe("export.to_markdown", function()
@@ -61,6 +66,11 @@ describe("export.to_markdown", function()
   it("maps NULL to an empty cell padded to the column width", function()
     local out = export.render("markdown", { "name" }, { { vim.NIL } })
     assert.equals("| name |\n| ---- |\n|      |", out)
+  end)
+
+  it("renders a LobPlaceholder cell as its placeholder text", function()
+    local out = export.render("markdown", { "body" }, { { { type = "lob", text = "CLOB" } } })
+    assert.equals("| body |\n| ---- |\n| CLOB |", out)
   end)
 end)
 

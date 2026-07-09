@@ -67,6 +67,18 @@ describe("table.from_structured_data NULL handling", function()
   end)
 end)
 
+describe("table.from_structured_data LOB handling", function()
+  it("renders LobPlaceholder cells as their text and flags them via lob_hl_rules", function()
+    local cell = { type = "lob", text = "CLOB (3423 chars)" }
+    local tbl = table_fmt.from_structured_data({ { "body" }, { cell } }, 1, nil, ".")
+    local text = table.concat(tbl.text, "\n")
+    assert.is_not_nil(text:find("CLOB (3423 chars)", 1, true))
+    local rules = table_fmt.lob_hl_rules(tbl)
+    assert.equals(1, #rules)
+    assert.equals("BelvedereLob", rules[1].higroup)
+  end)
+end)
+
 describe("table.get_column_at_cursor", function()
   it("resolves the column at a given virtual cursor position, and nil on separators", function()
     local widths = { 5, 4 }  -- │<5 cols>│<4 cols>│

@@ -531,7 +531,7 @@ local function get_or_create_buf_state(buf_key, buf_title)
 end
 
 
---- Apply header, row-count, and NULL highlight rules to `bs.buffer`.
+--- Apply header, row-count, NULL, and LobPlaceholder highlight rules to `bs.buffer`.
 --- `label_line` and `tbl_offset` are 0-indexed buffer rows.
 --- @param bs         table   buf_state
 --- @param tbl        table   FormattedTable from table_fmt.from_structured_data
@@ -550,6 +550,12 @@ local function apply_highlights(bs, tbl, label_line, tbl_offset)
     r.finish[1] = r.finish[1] + tbl_offset
   end
   vim.list_extend(rules, null_rules)
+  local lob_rules = table_fmt.lob_hl_rules(tbl)
+  for _, r in ipairs(lob_rules) do
+    r.start[1]  = r.start[1]  + tbl_offset
+    r.finish[1] = r.finish[1] + tbl_offset
+  end
+  vim.list_extend(rules, lob_rules)
   local sep_rules = table_fmt.thousands_hl_rules(tbl)
   for _, r in ipairs(sep_rules) do
     r.start[1]  = r.start[1]  + tbl_offset

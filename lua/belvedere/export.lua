@@ -33,11 +33,13 @@ function M.render(format, columns, rows)
   error("unknown export format: " .. tostring(format))
 end
 
---- Return the display string for a cell value, mapping NULL (nil/vim.NIL) to "".
+--- Return the display string for a cell value, mapping NULL (nil/vim.NIL) to ""
+--- and a LobPlaceholder object to its server-formatted `text`.
 --- @param cell any
 --- @return string
 local function plain_cell(cell)
   if cell == nil or cell == vim.NIL then return "" end
+  if type(cell) == "table" and cell.type == "lob" then return cell.text end
   return tostring(cell)
 end
 

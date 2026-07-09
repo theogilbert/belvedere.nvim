@@ -195,6 +195,12 @@ The query language and bind parameter syntax depend on the driver — see [Drive
 {"id":3,"result":{"rows_affected":4,"duration_ms":1.05},"error":null}
 ```
 
+#### Cell values
+
+Each entry in a `rows` array is a plain JSON scalar (string, number, boolean), JSON `null` for
+SQL `NULL`, or a [LobPlaceholder](#lobplaceholder) object standing in for a large object value
+(CLOB/BLOB/etc.) the server did not inline into the result set.
+
 ---
 
 ### `cancel`
@@ -500,6 +506,24 @@ Returned as `details` by `explore.describe` when the path resolves to a columns 
 |-----------|--------------------------------------------------|-----------------------------------------------------------------|
 | `type`    | string                                           | Always `"columns"` — use to discriminate description types      |
 | `columns` | array of [ColumnDescription](#columndescription) | All columns in this table, in declaration order                 |
+
+---
+
+## LobPlaceholder
+
+Stands in for a large object value (CLOB, BLOB, etc.) inside a `rows` cell when the server elects
+not to inline the full value into the result set. Tagging the value with an object — rather than
+returning a formatted string like `"CLOB (3423 chars)"` — lets clients distinguish it from a real
+string value on the wire, instead of pattern-matching cell contents.
+
+| Field  | Type   | Description                                                              |
+|--------|--------|---------------------------------------------------------------------------|
+| `type` | string | Always `"lob"` — discriminates this value from a plain string cell       |
+| `text` | string | Server-formatted placeholder text to display (e.g. `"CLOB (3423 chars)"`) |
+
+```json
+{"type": "lob", "text": "CLOB (3423 chars)"}
+```
 
 ---
 
