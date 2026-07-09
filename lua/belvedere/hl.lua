@@ -12,6 +12,7 @@ local NULL_FG      = "#6B7280"
 local LOB_FG       = "#6B7280"
 local HELP_FG      = "#4B9CD3"
 local THOUSANDS_FG = "#767676"
+local SCROLLBAR_FG = "#888888"
 
 --- Build the table of highlight group definitions.
 --- @return table<string, table>
@@ -26,6 +27,7 @@ local function build_highlights()
     BelvedereLob       = { fg = LOB_FG, italic = true },
     BelvedereHelp      = { fg = HELP_FG, italic = true },
     BelvedereThousandsSeparator = { fg = THOUSANDS_FG },
+    BelvedereScrollbarThumb     = { fg = SCROLLBAR_FG },
   }
 end
 

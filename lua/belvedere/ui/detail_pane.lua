@@ -76,6 +76,41 @@ end
 
 local SEARCH_PROMPT     = "/ "
 local SEARCH_PROMPT_LEN = #SEARCH_PROMPT
+local SCROLLBAR_NS      = vim.api.nvim_create_namespace("BelvedereScrollbar")
+
+--- Draw a proportional scrollbar thumb along the right edge of `win`, as virtual
+--- text anchored to the buffer lines it currently overlaps. A no-op (and clears
+--- any previous thumb) when all of `buf` already fits within the window.
+--- @param win        integer
+--- @param buf        integer
+--- @param win_height integer
+local function draw_scrollbar(win, buf, win_height)
+  vim.api.nvim_buf_clear_namespace(buf, SCROLLBAR_NS, 0, -1)
+  local total_lines = vim.api.nvim_buf_line_count(buf)
+  if total_lines <= win_height or not vim.api.nvim_win_is_valid(win) then return end
+
+  local info    = vim.fn.getwininfo(win)[1]
+  local topline = info and info.topline or 1
+
+  local thumb_size   = math.max(1, math.min(win_height, math.floor(win_height * win_height / total_lines + 0.5)))
+  local max_offset   = win_height - thumb_size
+  local scroll_range = total_lines - win_height
+  local thumb_offset = scroll_range > 0
+    and math.floor((topline - 1) / scroll_range * max_offset + 0.5)
+    or 0
+  thumb_offset = math.max(0, math.min(max_offset, thumb_offset))
+
+  for i = 0, thumb_size - 1 do
+    local line = topline - 1 + thumb_offset + i  -- 0-indexed buffer line
+    if line >= 0 and line < total_lines then
+      vim.api.nvim_buf_set_extmark(buf, SCROLLBAR_NS, line, 0, {
+        virt_text      = { { "▐", "BelvedereScrollbarThumb" } },
+        virt_text_pos  = "right_align",
+        hl_mode        = "combine",
+      })
+    end
+  end
+end
 
 --- Build the search-input + filtered-list left pane shared by browsing floats: a
 --- one-line search box stitched above a scrollable, cursorline-highlighted list.
@@ -220,6 +255,7 @@ function M.open_search_list(opts)
       local ok, cur     = pcall(vim.api.nvim_win_get_cursor, list_win)
       local row         = ok and math.min(cur[1], line_count) or 1
       pcall(vim.api.nvim_win_set_cursor, list_win, { row, 0 })
+      draw_scrollbar(list_win, list_buf, opts.list_height)
       opts.on_change(line_map[row])
     end
   end
@@ -255,8 +291,17 @@ function M.open_search_list(opts)
     callback = function()
       if not vim.api.nvim_win_is_valid(list_win) then return end
       local row = vim.api.nvim_win_get_cursor(list_win)[1]
+      draw_scrollbar(list_win, list_buf, opts.list_height)
       opts.on_change(line_map[row])
     end,
+  })
+
+  -- Catch-all for scrolling that doesn't move the cursor (e.g. mouse wheel,
+  -- <C-e>/<C-y> while focused directly on the list).
+  vim.api.nvim_create_autocmd("WinScrolled", {
+    group    = aug,
+    pattern  = tostring(list_win),
+    callback = function() draw_scrollbar(list_win, list_buf, opts.list_height) end,
   })
 
   -- Close when focus leaves the float entirely (e.g. <C-w>l).
@@ -283,6 +328,7 @@ function M.open_search_list(opts)
     local new   = math.max(1, math.min(count, row + delta))
     if new ~= row then
       vim.api.nvim_win_set_cursor(list_win, { new, 0 })
+      draw_scrollbar(list_win, list_buf, opts.list_height)
       opts.on_change(line_map[new])
     end
   end
@@ -389,7 +435,11 @@ function M.open_searchable_two_pane(opts)
   local right_h = math.min(max_content, max_h)
   local total   = left_w + 2 + 1 + right_w + 2
   local col0    = math.max(0, math.floor((ew - total) / 2))
-  local row0    = math.max(0, math.floor((eh - right_h - 2) / 2))
+  -- Left visual height = search box(1) + stitched list(list_h) + 4 border rows.
+  -- Right visual height = right_h + 2 border rows. Center on whichever is taller
+  -- so neither side overflows past the bottom of the screen.
+  local vis_h   = math.max(list_h + 4, right_h + 2)
+  local row0    = math.max(0, math.floor((eh - vis_h) / 2))
 
   local rbuf = vim.api.nvim_create_buf(false, true)
   vim.bo[rbuf].bufhidden  = "wipe"
