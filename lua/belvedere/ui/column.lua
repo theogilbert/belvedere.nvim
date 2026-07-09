@@ -118,7 +118,7 @@ function M.open(details, title)
     vim.notify("belvedere: no columns found", vim.log.levels.WARN)
     return
   end
-  pane.open_two_pane({
+  pane.open_searchable_two_pane({
     items      = columns,
     left_title = title or " Columns ",
     get_label  = function(col) return col.name end,

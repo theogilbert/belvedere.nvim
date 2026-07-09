@@ -106,7 +106,7 @@ function M.open(details, title)
     vim.notify("belvedere: no indices found for this table", vim.log.levels.WARN)
     return
   end
-  pane.open_two_pane({
+  pane.open_searchable_two_pane({
     items      = indices,
     left_title = title or " Indices ",
     get_label  = function(idx) return idx.index end,

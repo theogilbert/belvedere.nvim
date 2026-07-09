@@ -74,18 +74,302 @@ function M.apply(buf, lines, hls)
   end
 end
 
---- Open a two-pane browsing float.
---- Left pane: navigable list. Right pane: detail view that updates on cursor move.
---- Keymaps: j/k navigate · l/<Tab> focus right · h/<S-Tab>/<Tab> back · q/<Esc> close.
+local SEARCH_PROMPT     = "/ "
+local SEARCH_PROMPT_LEN = #SEARCH_PROMPT
+
+--- Build the search-input + filtered-list left pane shared by browsing floats: a
+--- one-line search box stitched above a scrollable, cursorline-highlighted list.
+--- The caller supplies the item set and is notified whenever the selected item
+--- changes (cursor move or re-filter); it owns and positions any other windows
+--- belonging to the same float (e.g. a detail pane) and registers them via
+--- `register_win` so they share this pane's close/WinLeave lifecycle.
+---
+--- @param opts table
+---   .items       array                     items to browse (must be non-empty)
+---   .title       string                    left window title (with surrounding spaces)
+---   .row0        integer                   screen row for the top of the input window
+---   .col0        integer                   screen col for the left edge
+---   .width       integer                   content width of the left pane
+---   .list_height integer                   height of the list window
+---   .get_label   fn(item)→string           label shown for each row
+---   .matches     fn(item, text)→boolean|nil   filter predicate; text is trimmed and
+---                non-empty. Defaults to a case-insensitive substring match on get_label.
+---   .get_row_hl  fn(item)→string|nil|nil   optional highlight group applied to a row
+---   .empty_msg   fn(text)→string|nil       message shown when filtering yields no rows
+---                (default: "(no matches)")
+---   .on_change   fn(item|nil)              called with the newly-selected item
+---   .on_submit   fn(item|nil)|nil          called when <CR> is pressed in the search box
+--- @return table  { input_win, list_win, close = fun(), register_win = fun(winid) }
+function M.open_search_list(opts)
+  local items       = opts.items
+  local matches     = opts.matches or function(item, text)
+    local ok, m = pcall(vim.fn.match, opts.get_label(item), "\\c" .. text)
+    return ok and m >= 0
+  end
+  local empty_msg = opts.empty_msg or function() return "(no matches)" end
+
+  local input_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[input_buf].bufhidden = "wipe"
+  vim.bo[input_buf].complete  = ""   -- disable completion so <C-n>/<C-p> don't open a popup
+  vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { SEARCH_PROMPT })
+
+  local list_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[list_buf].bufhidden  = "wipe"
+  vim.bo[list_buf].modifiable = false
+
+  local input_win = vim.api.nvim_open_win(input_buf, true, {
+    relative  = "editor",
+    row       = opts.row0, col = opts.col0,
+    width     = opts.width, height = 1,
+    style     = "minimal",
+    border    = { "╭", "─", "╮", "│", "┤", "─", "├", "│" },
+    title     = opts.title, title_pos = "center",
+  })
+  vim.api.nvim_set_option_value("number", false, { win = input_win })
+  vim.api.nvim_set_option_value("wrap",   false, { win = input_win })
+  vim.api.nvim_win_set_hl_ns(input_win, hl.NS_ID)
+
+  local list_win = vim.api.nvim_open_win(list_buf, false, {
+    relative  = "editor",
+    row       = opts.row0 + 2,  -- same screen row as input_win's bottom border
+    col       = opts.col0,
+    width     = opts.width, height = opts.list_height,
+    style     = "minimal",
+    border    = { "├", "─", "┤", "│", "╯", "─", "╰", "│" },
+    zindex    = 51,
+  })
+  vim.api.nvim_set_option_value("cursorline", true,  { win = list_win })
+  vim.api.nvim_set_option_value("number",     false, { win = list_win })
+  vim.api.nvim_set_option_value("wrap",       false, { win = list_win })
+  vim.api.nvim_win_set_hl_ns(list_win, hl.NS_ID)
+
+  local all_wins     = { input_win, list_win }
+  local all_wins_set = { [input_win] = true, [list_win] = true }
+  local closed       = false
+  local aug = vim.api.nvim_create_augroup("BelvedereSearchList_" .. list_buf, { clear = true })
+
+  --- Close every window registered with this pane.
+  local function close()
+    if closed then return end
+    closed = true
+    vim.schedule(function() pcall(vim.api.nvim_del_augroup_by_id, aug) end)
+    for _, w in ipairs(all_wins) do
+      if vim.api.nvim_win_is_valid(w) then pcall(vim.api.nvim_win_close, w, true) end
+    end
+  end
+
+  --- Register another float window (e.g. a detail pane) as part of this group:
+  --- closing it closes the whole group, and it won't trigger the leave-to-close check.
+  --- @param winid integer
+  local function register_win(winid)
+    all_wins[#all_wins + 1] = winid
+    all_wins_set[winid]     = true
+    vim.api.nvim_create_autocmd("WinClosed", {
+      group = aug, pattern = tostring(winid), once = true,
+      callback = function() close() end,
+    })
+  end
+
+  for _, w in ipairs(all_wins) do
+    vim.api.nvim_create_autocmd("WinClosed", {
+      group = aug, pattern = tostring(w), once = true,
+      callback = function() close() end,
+    })
+  end
+
+  local line_map = {}  -- [1-indexed row] → item; reassigned by update_list
+
+  --- Repopulate the list, applying `filter_text` as a filter, and notify on_change.
+  --- @param filter_text string
+  local function update_list(filter_text)
+    local filtered = {}
+    if filter_text == "" then
+      filtered = items
+    else
+      for _, item in ipairs(items) do
+        if matches(item, filter_text) then table.insert(filtered, item) end
+      end
+    end
+
+    line_map = {}
+    local list_lines, list_rules = {}, {}
+
+    if #filtered == 0 then
+      list_lines = { empty_msg(filter_text) }
+    else
+      for i, item in ipairs(filtered) do
+        list_lines[i] = "  " .. opts.get_label(item)
+        line_map[i]   = item
+        local g = opts.get_row_hl and opts.get_row_hl(item)
+        if g then
+          table.insert(list_rules, { higroup = g, start = { i - 1, 0 }, finish = { i - 1, -1 } })
+        end
+      end
+    end
+
+    vim.bo[list_buf].modifiable = true
+    vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, list_lines)
+    vim.bo[list_buf].modifiable = false
+    vim.api.nvim_buf_clear_namespace(list_buf, hl.NS_ID, 0, -1)
+    for _, rule in ipairs(list_rules) do
+      vim.hl.range(list_buf, hl.NS_ID, rule.higroup, rule.start, rule.finish)
+    end
+
+    if vim.api.nvim_win_is_valid(list_win) then
+      local line_count = math.max(1, vim.api.nvim_buf_line_count(list_buf))
+      local ok, cur     = pcall(vim.api.nvim_win_get_cursor, list_win)
+      local row         = ok and math.min(cur[1], line_count) or 1
+      pcall(vim.api.nvim_win_set_cursor, list_win, { row, 0 })
+      opts.on_change(line_map[row])
+    end
+  end
+
+  update_list("")
+
+  -- Keep cursor inside the search prompt in the input window.
+  vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+    group    = aug,
+    buffer   = input_buf,
+    callback = function()
+      local col = vim.api.nvim_win_get_cursor(0)[2]
+      if col < SEARCH_PROMPT_LEN then
+        vim.api.nvim_win_set_cursor(0, { 1, SEARCH_PROMPT_LEN })
+      end
+    end,
+  })
+
+  -- Re-filter the list whenever the search text changes.
+  vim.api.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {
+    group    = aug,
+    buffer   = input_buf,
+    callback = function()
+      local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
+      update_list(vim.trim(line:sub(SEARCH_PROMPT_LEN + 1)))
+    end,
+  })
+
+  -- Notify on_change when the list cursor moves.
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    group    = aug,
+    buffer   = list_buf,
+    callback = function()
+      if not vim.api.nvim_win_is_valid(list_win) then return end
+      local row = vim.api.nvim_win_get_cursor(list_win)[1]
+      opts.on_change(line_map[row])
+    end,
+  })
+
+  -- Close when focus leaves the float entirely (e.g. <C-w>l).
+  -- WinLeave fires before the new window is entered, so schedule the check.
+  for _, buf in ipairs({ input_buf, list_buf }) do
+    vim.api.nvim_create_autocmd("WinLeave", {
+      group    = aug,
+      buffer   = buf,
+      callback = function()
+        vim.schedule(function()
+          if closed then return end
+          if not all_wins_set[vim.api.nvim_get_current_win()] then close() end
+        end)
+      end,
+    })
+  end
+
+  --- Move the list cursor by `delta` rows from the input window.
+  --- @param delta integer
+  local function list_move(delta)
+    if not vim.api.nvim_win_is_valid(list_win) then return end
+    local count = math.max(1, vim.api.nvim_buf_line_count(list_buf))
+    local row   = vim.api.nvim_win_get_cursor(list_win)[1]
+    local new   = math.max(1, math.min(count, row + delta))
+    if new ~= row then
+      vim.api.nvim_win_set_cursor(list_win, { new, 0 })
+      opts.on_change(line_map[new])
+    end
+  end
+
+  --- Register <Down>/<C-n> and <Up>/<C-p> keymaps on the input buffer.
+  local function register_nav_keymaps()
+    if not vim.api.nvim_buf_is_valid(input_buf) then return end
+    for _, key in ipairs({ "<Down>", "<C-n>" }) do
+      vim.keymap.set({ "i", "n" }, key, function() list_move(1)  end,
+        { buffer = input_buf, nowait = true, silent = true })
+    end
+    for _, key in ipairs({ "<Up>", "<C-p>" }) do
+      vim.keymap.set({ "i", "n" }, key, function() list_move(-1) end,
+        { buffer = input_buf, nowait = true, silent = true })
+    end
+  end
+
+  -- Register now (overrides BufEnter-based plugins like nvim-cmp).
+  register_nav_keymaps()
+
+  -- Re-register after InsertEnter so any InsertEnter-based plugin that sets
+  -- buffer-local <C-n>/<C-p> keymaps gets overridden. vim.schedule defers
+  -- until all InsertEnter handlers have completed.
+  vim.api.nvim_create_autocmd("InsertEnter", {
+    group    = aug,
+    buffer   = input_buf,
+    once     = true,
+    callback = function() vim.schedule(register_nav_keymaps) end,
+  })
+
+  -- Block <BS> from eating the "/ " prompt.
+  vim.keymap.set("i", "<BS>", function()
+    if vim.api.nvim_win_get_cursor(0)[2] <= SEARCH_PROMPT_LEN then return end
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<BS>", true, false, true), "n", false)
+  end, { buffer = input_buf, nowait = true })
+
+  -- <CR> in input: hand the selected item to on_submit, if the caller wants one.
+  vim.keymap.set({ "i", "n" }, "<CR>", function()
+    if not opts.on_submit or not vim.api.nvim_win_is_valid(list_win) then return end
+    local row = vim.api.nvim_win_get_cursor(list_win)[1]
+    opts.on_submit(line_map[row])
+  end, { buffer = input_buf, nowait = true, silent = true })
+
+  -- <Esc> in input: if filter is non-empty, clear it; otherwise close.
+  -- Insert mode: no `nowait` so that terminal arrow-key sequences (e.g. \x1b[A for
+  -- <Up> over SSH) are not immediately consumed by the \x1b prefix before the rest
+  -- of the sequence arrives. Normal mode: nowait is safe.
+  --- Clear the search text on first press; close the viewer on second press.
+  local function esc_action()
+    vim.cmd("stopinsert")  -- always leave insert mode; keymap suppresses the default <Esc> behaviour
+    local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
+    local text = vim.trim(line:sub(SEARCH_PROMPT_LEN + 1))
+    if text ~= "" then
+      vim.api.nvim_buf_set_lines(input_buf, 0, 1, false, { SEARCH_PROMPT })
+      vim.api.nvim_win_set_cursor(input_win, { 1, SEARCH_PROMPT_LEN })
+      update_list("")
+    else
+      close()
+    end
+  end
+  vim.keymap.set("i", "<Esc>", esc_action, { buffer = input_buf, silent = true })
+  vim.keymap.set("n", "<Esc>", esc_action, { buffer = input_buf, nowait = true, silent = true })
+
+  -- Fallback close if the user somehow focuses the list (e.g. mouse click).
+  vim.keymap.set("n", "q",     close, { buffer = list_buf, nowait = true, silent = true })
+  vim.keymap.set("n", "<Esc>", close, { buffer = list_buf, nowait = true, silent = true })
+
+  -- Start in search mode.
+  vim.schedule(function() vim.cmd("startinsert!") end)
+
+  return { input_win = input_win, list_win = list_win, close = close, register_win = register_win }
+end
+
+--- Open a two-pane browsing float with a search box filtering the left-hand list.
+--- Left: search input + filtered list (see open_search_list). Right: detail view
+--- that updates to match the selected item. q/<Esc> closes from either pane;
+--- h/<Tab>/<S-Tab> from the right pane jumps back to the search box.
 ---
 --- @param opts table
 ---   .items      array             items to browse (must be non-empty)
 ---   .left_title string            left window title (with surrounding spaces)
 ---   .get_label  fn(item)→string   label shown for each row in the left pane
+---   .matches    fn(item, text)→boolean|nil   optional filter predicate (see open_search_list)
 ---   .get_title  fn(item)→string   right window title for the focused item (no surrounding spaces)
 ---   .render     fn(buf, item)     populate the right buffer for the focused item
 ---   .estimate   fn(item)→number   estimated rendered line count (for window sizing)
-function M.open_two_pane(opts)
+function M.open_searchable_two_pane(opts)
   local items = opts.items
   if #items == 0 then
     vim.notify("belvedere: nothing to display", vim.log.levels.WARN)
@@ -97,7 +381,7 @@ function M.open_two_pane(opts)
   local left_w  = math.min(36, math.max(24, math.floor(ew * 0.22)))
   local right_w = math.min(math.floor(ew * 0.60), 110)
   local max_h   = math.max(math.floor(eh * 0.72), 8)
-  local left_h  = math.min(math.max(#items + 2, 8), max_h)
+  local list_h  = math.min(math.max(#items + 2, 8), max_h)
   local max_content = 8
   for _, item in ipairs(items) do
     max_content = math.max(max_content, opts.estimate(item))
@@ -107,42 +391,22 @@ function M.open_two_pane(opts)
   local col0    = math.max(0, math.floor((ew - total) / 2))
   local row0    = math.max(0, math.floor((eh - right_h - 2) / 2))
 
-  local lbuf = vim.api.nvim_create_buf(false, true)
   local rbuf = vim.api.nvim_create_buf(false, true)
-  vim.bo[lbuf].bufhidden = "wipe"
-  vim.bo[rbuf].bufhidden = "wipe"
-
-  local llines = {}
-  for _, item in ipairs(items) do
-    llines[#llines + 1] = "  " .. opts.get_label(item)
-  end
-  vim.api.nvim_buf_set_lines(lbuf, 0, -1, false, llines)
-  vim.bo[lbuf].modifiable = false
+  vim.bo[rbuf].bufhidden  = "wipe"
   vim.bo[rbuf].modifiable = false
 
-  local lwin = vim.api.nvim_open_win(lbuf, true, {
-    relative  = "editor",
-    row       = row0, col = col0,
-    width     = left_w, height = left_h,
-    style     = "minimal", border = "rounded",
-    title     = opts.left_title, title_pos = "center",
-  })
   local rwin = vim.api.nvim_open_win(rbuf, false, {
     relative  = "editor",
     row       = row0, col = col0 + left_w + 3,
     width     = right_w, height = right_h,
     style     = "minimal", border = "rounded",
   })
-
-  vim.api.nvim_win_set_hl_ns(lwin, hl.NS_ID)
   vim.api.nvim_win_set_hl_ns(rwin, hl.NS_ID)
-  vim.api.nvim_set_option_value("cursorline", true,  { win = lwin })
-  vim.api.nvim_set_option_value("wrap",       false, { win = rwin })
+  vim.api.nvim_set_option_value("wrap", false, { win = rwin })
 
-  --- Sync the right pane to reflect the left pane's current cursor row.
-  local function sync()
-    local row  = vim.api.nvim_win_get_cursor(lwin)[1]
-    local item = items[row]
+  --- Sync the right pane to reflect the currently-selected item.
+  --- @param item any|nil
+  local function sync(item)
     if not item then return end
     pcall(vim.api.nvim_win_set_config, rwin, {
       title     = " " .. opts.get_title(item) .. " ",
@@ -152,50 +416,31 @@ function M.open_two_pane(opts)
     pcall(vim.api.nvim_win_set_cursor, rwin, { 1, 0 })
   end
 
-  sync()
+  local handle = M.open_search_list({
+    items       = items,
+    title       = opts.left_title,
+    row0        = row0, col0 = col0, width = left_w, list_height = list_h,
+    get_label   = opts.get_label,
+    matches     = opts.matches,
+    on_change   = sync,
+  })
+  handle.register_win(rwin)
 
-  local aug = vim.api.nvim_create_augroup("BelvedereDetailPane_" .. lbuf, { clear = true })
-
-  --- Close both panes.
-  local function close()
-    pcall(vim.api.nvim_win_close, lwin, true)
-    pcall(vim.api.nvim_win_close, rwin, true)
+  --- Focus the search box, ready to type.
+  local function focus_input()
+    if not vim.api.nvim_win_is_valid(handle.input_win) then return end
+    vim.api.nvim_set_current_win(handle.input_win)
+    vim.cmd("startinsert!")
   end
-
-  vim.api.nvim_create_autocmd("WinClosed", {
-    group = aug, pattern = tostring(lwin), once = true,
-    callback = function()
-      pcall(vim.api.nvim_win_close, rwin, true)
-      vim.api.nvim_del_augroup_by_id(aug)
-    end,
-  })
-  vim.api.nvim_create_autocmd("WinClosed", {
-    group = aug, pattern = tostring(rwin), once = true,
-    callback = function()
-      pcall(vim.api.nvim_win_close, lwin, true)
-      vim.api.nvim_del_augroup_by_id(aug)
-    end,
-  })
-  vim.api.nvim_create_autocmd("CursorMoved", {
-    group = aug, buffer = lbuf, callback = sync,
-  })
-
-  --- @param key string
-  --- @param fn  fun()
-  local function lmap(key, fn) vim.keymap.set("n", key, fn, { buffer = lbuf, nowait = true, silent = true }) end
-  lmap("q",     close)
-  lmap("<Esc>", close)
-  lmap("l",     function() vim.api.nvim_set_current_win(rwin) end)
-  lmap("<Tab>", function() vim.api.nvim_set_current_win(rwin) end)
 
   --- @param key string
   --- @param fn  fun()
   local function rmap(key, fn) vim.keymap.set("n", key, fn, { buffer = rbuf, nowait = true, silent = true }) end
-  rmap("q",       close)
-  rmap("<Esc>",   close)
-  rmap("h",       function() vim.api.nvim_set_current_win(lwin) end)
-  rmap("<Tab>",   function() vim.api.nvim_set_current_win(lwin) end)
-  rmap("<S-Tab>", function() vim.api.nvim_set_current_win(lwin) end)
+  rmap("q",       handle.close)
+  rmap("<Esc>",   handle.close)
+  rmap("h",       focus_input)
+  rmap("<Tab>",   focus_input)
+  rmap("<S-Tab>", focus_input)
 end
 
 --- Open a single-item detail float.

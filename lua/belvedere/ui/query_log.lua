@@ -1,17 +1,15 @@
 -- Query log viewer: four-panel float.
--- Left: search input (top) + filtered list (bottom), stitched with shared border.
+-- Left: search input (top) + filtered list (bottom) — built by detail_pane.open_search_list.
 -- Right: SQL preview (top) + results preview (bottom), stitched with shared border.
--- All stacked-border pairs use the save_query.lua technique: the lower window's top
--- border overlaps the upper window's bottom border row; zindex wins on that row.
+-- The right stacked-border pair uses the save_query.lua technique: the lower window's
+-- top border overlaps the upper window's bottom border row; zindex wins on that row.
 local M = {}
 
 local log       = require("belvedere.log")
 local table_fmt = require("belvedere.table")
 local hl        = require("belvedere.hl")
 local config    = require("belvedere.config")
-
-local SEARCH_PROMPT     = "/ "
-local SEARCH_PROMPT_LEN = #SEARCH_PROMPT
+local pane      = require("belvedere.ui.detail_pane")
 
 --- Return the Neovim filetype string for a given driver name.
 --- @param driver string|nil
@@ -78,17 +76,6 @@ function M.open(conn_key, conn)
   local right_col = start_col + left_vw + gap
 
   -- ── Buffers ────────────────────────────────────────────────────────────────
-  -- Search input (editable; cursor protected from eating the "/ " prompt).
-  local input_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[input_buf].bufhidden = "wipe"
-  vim.bo[input_buf].complete  = ""   -- disable completion so <C-n>/<C-p> don't open a popup
-  vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { SEARCH_PROMPT })
-
-  -- Filtered entry list (read-only).
-  local list_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[list_buf].bufhidden  = "wipe"
-  vim.bo[list_buf].modifiable = false
-
   -- SQL preview (read-only, treesitter-highlighted).
   local sql_buf = vim.api.nvim_create_buf(false, true)
   vim.bo[sql_buf].bufhidden  = "wipe"
@@ -102,39 +89,6 @@ function M.open(conn_key, conn)
   vim.bo[res_buf].modifiable = false
 
   -- ── Windows ────────────────────────────────────────────────────────────────
-  -- Input window (top-left). Bottom border = ├─┤, shared with list_win's top.
-  local input_win = vim.api.nvim_open_win(input_buf, true, {
-    relative  = "editor",
-    row       = start_row,
-    col       = start_col,
-    width     = left_cw,
-    height    = 1,
-    style     = "minimal",
-    border    = { "╭", "─", "╮", "│", "┤", "─", "├", "│" },
-    title     = " Query Log ",
-    title_pos = "center",
-  })
-  vim.api.nvim_set_option_value("number", false, { win = input_win })
-  vim.api.nvim_set_option_value("wrap",   false, { win = input_win })
-  vim.api.nvim_win_set_hl_ns(input_win, hl.NS_ID)
-
-  -- List window (bottom-left). Top border overlaps input_win's bottom border row.
-  -- zindex=51 so the ├─┤ top border renders on top of input_win's ├─┤ bottom border.
-  local list_win = vim.api.nvim_open_win(list_buf, false, {
-    relative  = "editor",
-    row       = start_row + 2,  -- same screen row as input_win's bottom border
-    col       = start_col,
-    width     = left_cw,
-    height    = list_h,
-    style     = "minimal",
-    border    = { "├", "─", "┤", "│", "╯", "─", "╰", "│" },
-    zindex    = 51,
-  })
-  vim.api.nvim_set_option_value("cursorline", true,  { win = list_win })
-  vim.api.nvim_set_option_value("number",     false, { win = list_win })
-  vim.api.nvim_set_option_value("wrap",       false, { win = list_win })
-  vim.api.nvim_win_set_hl_ns(list_win, hl.NS_ID)
-
   -- SQL window (top-right). Bottom border = ├─┤, shared with res_win's top.
   local sql_win = vim.api.nvim_open_win(sql_buf, false, {
     relative  = "editor",
@@ -168,31 +122,6 @@ function M.open(conn_key, conn)
   vim.api.nvim_set_option_value("number", false, { win = res_win })
   vim.api.nvim_set_option_value("wrap",   false, { win = res_win })
   vim.api.nvim_win_set_hl_ns(res_win, hl.NS_ID)
-
-  local all_wins = { input_win, list_win, sql_win, res_win }
-
-  -- ── Lifecycle helpers ──────────────────────────────────────────────────────
-  local closed = false
-  local aug    = vim.api.nvim_create_augroup("BelvedereQueryLog", { clear = true })
-
-  --- Close all four windows and clean up the augroup.
-  local function close()
-    if closed then return end
-    closed = true
-    vim.schedule(function() pcall(vim.api.nvim_del_augroup_by_id, aug) end)
-    for _, w in ipairs(all_wins) do
-      if vim.api.nvim_win_is_valid(w) then pcall(vim.api.nvim_win_close, w, true) end
-    end
-  end
-
-  for _, w in ipairs(all_wins) do
-    vim.api.nvim_create_autocmd("WinClosed", {
-      group    = aug,
-      pattern  = tostring(w),
-      once     = true,
-      callback = function() close() end,
-    })
-  end
 
   --- Write `lines` to `buf`, flattening any embedded newlines.
   --- @param buf   integer
@@ -295,238 +224,81 @@ function M.open(conn_key, conn)
     end
   end
 
-  -- ── List (left-bottom panel) ───────────────────────────────────────────────
-  local line_map = {}  -- [1-indexed row] → entry; reassigned by update_list
+  -- ── Search list (left panel) ──────────────────────────────────────────────
+  -- Search input + filtered list, plus their lifecycle (close/WinLeave/nav
+  -- keymaps), are built by detail_pane; sql_win/res_win join the same group.
+  local handle
+  handle = pane.open_search_list({
+    items       = entries,
+    title       = " Query Log ",
+    row0        = start_row, col0 = start_col, width = left_cw, list_height = list_h,
+    get_label   = function(e) return format_entry_line(e, left_cw) end,
+    matches     = function(e, text)
+      local ok, m = pcall(vim.fn.match, e.sql, "\\c" .. text)
+      return ok and m >= 0
+    end,
+    get_row_hl  = function(e)
+      if e.status == "error"   then return "BelvedereConnError" end
+      if e.status == "running" then return "BelvedereHelp" end
+    end,
+    empty_msg   = function(text)
+      return text == "" and "(no queries executed yet)" or "(no matches)"
+    end,
+    on_change   = update_preview,
 
-  --- Repopulate the list panel, applying `filter_text` as a case-insensitive substring filter.
-  --- @param filter_text string
-  local function update_list(filter_text)
-    local filtered = {}
-    if filter_text == "" then
-      filtered = entries
-    else
-      for _, e in ipairs(entries) do
-        local ok, m = pcall(vim.fn.match, e.sql, "\\c" .. filter_text)
-        if ok and m >= 0 then
-          table.insert(filtered, e)
+    -- <CR> in the search box: open the currently selected list entry.
+    on_submit   = function(entry)
+      if not entry then return end
+
+      handle.close()
+
+      -- Resolve source buffer: valid in-session bufnr takes priority; fall back to
+      -- source_file for entries loaded from a previous session.
+      local target_buf
+      if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
+        target_buf = entry.bufnr
+      elseif entry.source_file and entry.source_file ~= "" then
+        local bn = vim.fn.bufnr(entry.source_file)
+        if bn > 0 then
+          target_buf = bn
+        else
+          vim.cmd("edit " .. vim.fn.fnameescape(entry.source_file))
+          if entry.source_line then
+            pcall(vim.api.nvim_win_set_cursor, 0, { entry.source_line + 1, 0 })
+          end
         end
       end
-    end
-
-    line_map = {}
-    local list_lines, list_rules = {}, {}
-
-    if #filtered == 0 then
-      list_lines = { filter_text == "" and "(no queries executed yet)" or "(no matches)" }
-    else
-      for i, e in ipairs(filtered) do
-        table.insert(list_lines, format_entry_line(e, left_cw))
-        line_map[i] = e
-        if e.status == "error" then
-          table.insert(list_rules, { higroup = "BelvedereConnError",
-            start = { i - 1, 0 }, finish = { i - 1, -1 } })
-        elseif e.status == "running" then
-          table.insert(list_rules, { higroup = "BelvedereHelp",
-            start = { i - 1, 0 }, finish = { i - 1, -1 } })
+      if target_buf then
+        local buf_wins = vim.tbl_filter(function(w)
+          return vim.api.nvim_win_is_valid(w)
+              and vim.api.nvim_win_get_config(w).relative == ""
+        end, vim.fn.win_findbuf(target_buf))
+        if #buf_wins > 0 then
+          vim.api.nvim_set_current_win(buf_wins[1])
+        else
+          vim.api.nvim_set_current_buf(target_buf)
         end
-      end
-    end
-
-    set_buf_lines(list_buf, list_lines)
-    vim.api.nvim_buf_clear_namespace(list_buf, hl.NS_ID, 0, -1)
-    for _, rule in ipairs(list_rules) do
-      vim.hl.range(list_buf, hl.NS_ID, rule.higroup, rule.start, rule.finish)
-    end
-
-    -- Clamp the list cursor and refresh the preview.
-    if vim.api.nvim_win_is_valid(list_win) then
-      local line_count = math.max(1, vim.api.nvim_buf_line_count(list_buf))
-      local ok, cur    = pcall(vim.api.nvim_win_get_cursor, list_win)
-      local row        = ok and math.min(cur[1], line_count) or 1
-      pcall(vim.api.nvim_win_set_cursor, list_win, { row, 0 })
-      update_preview(line_map[row])
-    end
-  end
-
-  -- Initialise list and preview.
-  update_list("")
-
-  -- ── Autocmds ───────────────────────────────────────────────────────────────
-  -- Keep cursor inside the search prompt in the input window.
-  vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
-    group    = aug,
-    buffer   = input_buf,
-    callback = function()
-      local col = vim.api.nvim_win_get_cursor(0)[2]
-      if col < SEARCH_PROMPT_LEN then
-        vim.api.nvim_win_set_cursor(0, { 1, SEARCH_PROMPT_LEN })
-      end
-    end,
-  })
-
-  -- Re-filter the list whenever the search text changes.
-  vim.api.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {
-    group    = aug,
-    buffer   = input_buf,
-    callback = function()
-      local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
-      update_list(vim.trim(line:sub(SEARCH_PROMPT_LEN + 1)))
-    end,
-  })
-
-  -- Update preview when the list cursor moves.
-  vim.api.nvim_create_autocmd("CursorMoved", {
-    group    = aug,
-    buffer   = list_buf,
-    callback = function()
-      if not vim.api.nvim_win_is_valid(list_win) then return end
-      local row = vim.api.nvim_win_get_cursor(list_win)[1]
-      update_preview(line_map[row])
-    end,
-  })
-
-  -- Close when focus leaves the float entirely (e.g. <C-w>l).
-  -- WinLeave fires before the new window is entered, so schedule the check.
-  local all_wins_set = {}
-  for _, w in ipairs(all_wins) do all_wins_set[w] = true end
-  for _, buf in ipairs({ input_buf, list_buf }) do
-    vim.api.nvim_create_autocmd("WinLeave", {
-      group    = aug,
-      buffer   = buf,
-      callback = function()
-        vim.schedule(function()
-          if closed then return end
-          if not all_wins_set[vim.api.nvim_get_current_win()] then close() end
-        end)
-      end,
-    })
-  end
-
-  -- ── Keymaps ────────────────────────────────────────────────────────────────
-  --- Move the list cursor by `delta` rows from the input window.
-  --- @param delta integer
-  local function list_move(delta)
-    if not vim.api.nvim_win_is_valid(list_win) then return end
-    local count = math.max(1, vim.api.nvim_buf_line_count(list_buf))
-    local row   = vim.api.nvim_win_get_cursor(list_win)[1]
-    local new   = math.max(1, math.min(count, row + delta))
-    if new ~= row then
-      vim.api.nvim_win_set_cursor(list_win, { new, 0 })
-      update_preview(line_map[new])
-    end
-  end
-
-  --- Register <Down>/<C-n> and <Up>/<C-p> keymaps on the input buffer.
-  local function register_nav_keymaps()
-    if not vim.api.nvim_buf_is_valid(input_buf) then return end
-    for _, key in ipairs({ "<Down>", "<C-n>" }) do
-      vim.keymap.set({ "i", "n" }, key, function() list_move(1)  end,
-        { buffer = input_buf, nowait = true, silent = true })
-    end
-    for _, key in ipairs({ "<Up>", "<C-p>" }) do
-      vim.keymap.set({ "i", "n" }, key, function() list_move(-1) end,
-        { buffer = input_buf, nowait = true, silent = true })
-    end
-  end
-
-  -- Register now (overrides BufEnter-based plugins like nvim-cmp).
-  register_nav_keymaps()
-
-  -- Re-register after InsertEnter so any InsertEnter-based plugin that sets
-  -- buffer-local <C-n>/<C-p> keymaps gets overridden. vim.schedule defers
-  -- until all InsertEnter handlers have completed.
-  vim.api.nvim_create_autocmd("InsertEnter", {
-    group    = aug,
-    buffer   = input_buf,
-    once     = true,
-    callback = function() vim.schedule(register_nav_keymaps) end,
-  })
-
-  -- Block <BS> from eating the "/ " prompt.
-  vim.keymap.set("i", "<BS>", function()
-    if vim.api.nvim_win_get_cursor(0)[2] <= SEARCH_PROMPT_LEN then return end
-    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<BS>", true, false, true), "n", false)
-  end, { buffer = input_buf, nowait = true })
-
-  -- <CR> in input: open the currently selected list entry.
-  vim.keymap.set({ "i", "n" }, "<CR>", function()
-    if not vim.api.nvim_win_is_valid(list_win) then return end
-    local row   = vim.api.nvim_win_get_cursor(list_win)[1]
-    local entry = line_map[row]
-    if not entry then return end
-
-    close()
-
-    -- Resolve source buffer: valid in-session bufnr takes priority; fall back to
-    -- source_file for entries loaded from a previous session.
-    local target_buf
-    if entry.bufnr and vim.api.nvim_buf_is_valid(entry.bufnr) then
-      target_buf = entry.bufnr
-    elseif entry.source_file and entry.source_file ~= "" then
-      local bn = vim.fn.bufnr(entry.source_file)
-      if bn > 0 then
-        target_buf = bn
-      else
-        vim.cmd("edit " .. vim.fn.fnameescape(entry.source_file))
         if entry.source_line then
-          pcall(vim.api.nvim_win_set_cursor, 0, { entry.source_line + 1, 0 })
+          vim.api.nvim_win_set_cursor(0, { entry.source_line + 1, 0 })
         end
       end
-    end
-    if target_buf then
-      local buf_wins = vim.tbl_filter(function(w)
-        return vim.api.nvim_win_is_valid(w)
-            and vim.api.nvim_win_get_config(w).relative == ""
-      end, vim.fn.win_findbuf(target_buf))
-      if #buf_wins > 0 then
-        vim.api.nvim_set_current_win(buf_wins[1])
-      else
-        vim.api.nvim_set_current_buf(target_buf)
+
+      local results_ui = require("belvedere.ui.results")
+      results_ui.set_conn_name(conn_key, conn and conn.driver_label, entry.bufnr)
+      if entry.status == "success" then
+        local rows = rows_cache[entry.id] or log.load_rows(entry)
+        results_ui.show_results(
+          entry.columns or {}, rows, entry.rows_returned, entry.rows_total, entry.duration_ms)
+      elseif entry.status == "rows_affected" then
+        results_ui.show_rows_affected(entry.rows_affected, entry.verb or "affected", entry.duration_ms)
+      elseif entry.status == "error" then
+        results_ui.show_error(entry.error_msg or "unknown error")
       end
-      if entry.source_line then
-        vim.api.nvim_win_set_cursor(0, { entry.source_line + 1, 0 })
-      end
-    end
+    end,
+  })
 
-    local results_ui = require("belvedere.ui.results")
-    results_ui.set_conn_name(conn_key, conn and conn.driver_label, entry.bufnr)
-    if entry.status == "success" then
-      local rows = rows_cache[entry.id] or log.load_rows(entry)
-      results_ui.show_results(
-        entry.columns or {}, rows, entry.rows_returned, entry.rows_total, entry.duration_ms)
-    elseif entry.status == "rows_affected" then
-      results_ui.show_rows_affected(entry.rows_affected, entry.verb or "affected", entry.duration_ms)
-    elseif entry.status == "error" then
-      results_ui.show_error(entry.error_msg or "unknown error")
-    end
-  end, { buffer = input_buf, nowait = true, silent = true })
-
-  -- <Esc> in input: if filter is non-empty, clear it; otherwise close.
-  -- Insert mode: no `nowait` so that terminal arrow-key sequences (e.g. \x1b[A for
-  -- <Up> over SSH) are not immediately consumed by the \x1b prefix before the rest
-  -- of the sequence arrives. Normal mode: nowait is safe.
-  --- Clear the search text on first press; close the viewer on second press.
-  local function esc_action()
-    vim.cmd("stopinsert")  -- always leave insert mode; keymap suppresses the default <Esc> behaviour
-    local line = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
-    local text = vim.trim(line:sub(SEARCH_PROMPT_LEN + 1))
-    if text ~= "" then
-      vim.api.nvim_buf_set_lines(input_buf, 0, 1, false, { SEARCH_PROMPT })
-      vim.api.nvim_win_set_cursor(input_win, { 1, SEARCH_PROMPT_LEN })
-      update_list("")
-    else
-      close()
-    end
-  end
-  vim.keymap.set("i", "<Esc>", esc_action, { buffer = input_buf, silent = true })
-  vim.keymap.set("n", "<Esc>", esc_action, { buffer = input_buf, nowait = true, silent = true })
-
-  -- Fallback close if the user somehow focuses the list (e.g. mouse click).
-  vim.keymap.set("n", "q",     close, { buffer = list_buf, nowait = true, silent = true })
-  vim.keymap.set("n", "<Esc>", close, { buffer = list_buf, nowait = true, silent = true })
-
-  -- Start in search mode.
-  vim.schedule(function() vim.cmd("startinsert!") end)
+  handle.register_win(sql_win)
+  handle.register_win(res_win)
 end
 
 return M
