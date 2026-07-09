@@ -16,7 +16,9 @@ local function is_nil(v) return pane.is_nil(v) end
 --- @return integer
 local function estimate_lines(col)
   local n = 2  -- header + blank
-  if not is_nil(col.comment) and col.comment ~= "" then n = n + 1 end
+  if not is_nil(col.comment) and col.comment ~= "" then
+    n = n + #vim.split(tostring(col.comment), "\n", { plain = true })
+  end
   if not is_nil(col.default) and col.default ~= "" then n = n + 4 end
   local excl = type(col.exclusive_indices) == "table" and col.exclusive_indices or {}
   if #excl > 0 then n = n + 3 + #excl end
@@ -55,10 +57,12 @@ local function render(buf, col)
   for _, s in ipairs(specs) do hls[#hls + 1] = { s[1], row0, s[2], s[3] } end
 
   if not is_nil(col.comment) and col.comment ~= "" then
-    local comment_row  = #lines
-    local comment_line = "  " .. tostring(col.comment)
-    lines[#lines + 1] = comment_line
-    hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
+    for _, cline in ipairs(vim.split(tostring(col.comment), "\n", { plain = true })) do
+      local comment_row  = #lines
+      local comment_line = "  " .. cline
+      lines[#lines + 1] = comment_line
+      hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
+    end
   end
 
   lines[#lines + 1] = ""
@@ -142,10 +146,12 @@ function M.hover_lines(col)
   for _, s in ipairs(specs) do hls[#hls + 1] = { s[1], tag_row, s[2], s[3] } end
 
   if not is_nil(col.comment) and col.comment ~= "" then
-    local comment_row  = #lines
-    local comment_line = "  " .. tostring(col.comment)
-    lines[#lines + 1] = comment_line
-    hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
+    for _, cline in ipairs(vim.split(tostring(col.comment), "\n", { plain = true })) do
+      local comment_row  = #lines
+      local comment_line = "  " .. cline
+      lines[#lines + 1] = comment_line
+      hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
+    end
   end
 
   return lines, hls
