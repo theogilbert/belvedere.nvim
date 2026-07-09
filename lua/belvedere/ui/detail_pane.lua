@@ -392,9 +392,18 @@ function M.open_search_list(opts)
   vim.keymap.set("i", "<Esc>", esc_action, { buffer = input_buf, silent = true })
   vim.keymap.set("n", "<Esc>", esc_action, { buffer = input_buf, nowait = true, silent = true })
 
+  -- <C-c> in input: close immediately, regardless of filter state (unlike <Esc>,
+  -- which clears the filter first).
+  local function cancel_action()
+    vim.cmd("stopinsert")
+    close()
+  end
+  vim.keymap.set({ "i", "n" }, "<C-c>", cancel_action, { buffer = input_buf, nowait = true, silent = true })
+
   -- Fallback close if the user somehow focuses the list (e.g. mouse click).
   vim.keymap.set("n", "q",     close, { buffer = list_buf, nowait = true, silent = true })
   vim.keymap.set("n", "<Esc>", close, { buffer = list_buf, nowait = true, silent = true })
+  vim.keymap.set("n", "<C-c>", close, { buffer = list_buf, nowait = true, silent = true })
 
   -- Start in search mode.
   vim.schedule(function() vim.cmd("startinsert!") end)
@@ -404,7 +413,7 @@ end
 
 --- Open a two-pane browsing float with a search box filtering the left-hand list.
 --- Left: search input + filtered list (see open_search_list). Right: detail view
---- that updates to match the selected item. q/<Esc> closes from either pane;
+--- that updates to match the selected item. q/<Esc>/<C-c> closes from either pane;
 --- h/<Tab>/<S-Tab> from the right pane jumps back to the search box.
 ---
 --- @param opts table
@@ -488,6 +497,7 @@ function M.open_searchable_two_pane(opts)
   local function rmap(key, fn) vim.keymap.set("n", key, fn, { buffer = rbuf, nowait = true, silent = true }) end
   rmap("q",       handle.close)
   rmap("<Esc>",   handle.close)
+  rmap("<C-c>",   handle.close)
   rmap("h",       focus_input)
   rmap("<Tab>",   focus_input)
   rmap("<S-Tab>", focus_input)
