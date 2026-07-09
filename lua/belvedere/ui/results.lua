@@ -1,8 +1,11 @@
 -- Query results window.
 --
--- One buffer per source buffer, named:
+-- One buffer per (source buffer, connection) pair, named:
 --   "belvedere://results [conn (driver)] [filename]"   (named source buf)
 --   "belvedere://results [conn (driver)] #N"            (unnamed source buf)
+-- Changing a source buffer's connection and running another query therefore opens
+-- a new results buffer rather than renaming/reusing the old one; the old one stays
+-- listed so the user can still :b back to it.
 -- Buffers are listed so the user can :b between them.
 -- One results window per tab: running a query in tab A never clobbers tab B.
 local Buffer      = require("belvedere.buffer")
@@ -119,14 +122,14 @@ local function format_duration(ms)
 end
 
 
--- state.buffers[src_bufnr] = buf_state
--- state.win_ids[tabpage]   = win_id        (one results window per tab)
--- state.autocmds[win_id]   = { scroll, close }
+-- state.buffers[buf_key] = buf_state        (buf_key = buf_key_for(src_bufnr, conn_key))
+-- state.win_ids[tabpage] = win_id            (one results window per tab)
+-- state.autocmds[win_id] = { scroll, close }
 local state = {
   buffers    = {},
   win_ids    = {},
   autocmds   = {},
-  active_src = nil,  -- src_bufnr set by set_conn_name before each query
+  active_src = nil,  -- buf_key set by set_conn_name before each query
 }
 
 --- Return the buf_state for the currently active source buffer, or nil.
@@ -343,6 +346,16 @@ local function src_buf_suffix(src_bufnr)
   return " #" .. src_bufnr
 end
 
+--- Build the `state.buffers` key for a (source buffer, connection) pair. Two calls
+--- with the same source buffer but different connections must produce different
+--- keys, so changing a buffer's connection routes to a fresh results buffer.
+--- @param src_bufnr integer|nil
+--- @param conn_key  string|nil
+--- @return string
+local function buf_key_for(src_bufnr, conn_key)
+  return (src_bufnr or 0) .. "\0" .. (conn_key or "")
+end
+
 --- Open a float showing the SQL text that produced the current results.
 --- @param bs table  buf_state
 local function show_source_query(bs)
@@ -444,12 +457,13 @@ local function show_column_hover(bs)
   end)
 end
 
---- Return an existing valid buf_state for `src_bufnr`, or create and register a new one.
---- @param src_bufnr integer
+--- Return an existing valid buf_state for `buf_key` (see `buf_key_for`), or create
+--- and register a new one.
+--- @param buf_key   string
 --- @param buf_title string
 --- @return table
-local function get_or_create_buf_state(src_bufnr, buf_title)
-  local existing = state.buffers[src_bufnr]
+local function get_or_create_buf_state(buf_key, buf_title)
+  local existing = state.buffers[buf_key]
   if existing and existing.buffer:is_valid() then return existing end
 
   local buf = Buffer:new(buf_title, "belvedere_results", false, "nofile", "hide")
@@ -474,7 +488,7 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
     column_cache  = nil,  -- column name -> ColumnDescription, reset with table_path
     sep_columns   = {},   -- column name -> true, thousands separator toggled on via `t`
   }
-  state.buffers[src_bufnr] = bs
+  state.buffers[buf_key] = bs
 
   buf:set_keymap("n", "q", function()
     local win_id = vim.api.nvim_get_current_win()
@@ -638,7 +652,7 @@ function M.set_conn_name(key, driver_label, src_bufnr)
   local label     = display and (driver_label and (display .. " (" .. driver_label .. ")") or display)
   local buf_title = (label and (BUFNAME .. " [" .. label .. "]") or BUFNAME)
                     .. src_buf_suffix(src_bufnr)
-  local buf_key   = src_bufnr or 0
+  local buf_key   = buf_key_for(src_bufnr, key)
   local bs        = get_or_create_buf_state(buf_key, buf_title)
   bs.conn_key      = key
   bs.table_path    = nil
