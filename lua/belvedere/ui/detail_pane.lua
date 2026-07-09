@@ -414,7 +414,8 @@ end
 --- Open a two-pane browsing float with a search box filtering the left-hand list.
 --- Left: search input + filtered list (see open_search_list). Right: detail view
 --- that updates to match the selected item. q/<Esc>/<C-c> closes from either pane;
---- h/<Tab>/<S-Tab> from the right pane jumps back to the search box.
+--- <Tab> from the search box jumps to the detail pane; h/<Tab>/<S-Tab> from the
+--- detail pane jumps back to the search box.
 ---
 --- @param opts table
 ---   .items      array             items to browse (must be non-empty)
@@ -491,6 +492,31 @@ function M.open_searchable_two_pane(opts)
     vim.api.nvim_set_current_win(handle.input_win)
     vim.cmd("startinsert!")
   end
+
+  --- Focus the right (detail) pane. Leaves insert mode first: this may be
+  --- called while still typing in the search box, and the detail buffer is
+  --- read-only, so staying in insert mode would make the next keystroke try
+  --- (and fail) to edit it instead of triggering a keymap.
+  local function focus_right()
+    if not vim.api.nvim_win_is_valid(rwin) then return end
+    vim.cmd("stopinsert")
+    vim.api.nvim_set_current_win(rwin)
+  end
+
+  -- <Tab> in the search box jumps to the detail pane, mirroring <Tab>/<S-Tab>
+  -- jumping back below. Re-registered after InsertEnter so InsertEnter-based
+  -- completion/snippet plugins that also bind <Tab> don't win the race.
+  local input_buf = vim.api.nvim_win_get_buf(handle.input_win)
+  local function register_focus_right_keymap()
+    if not vim.api.nvim_buf_is_valid(input_buf) then return end
+    vim.keymap.set({ "i", "n" }, "<Tab>", focus_right, { buffer = input_buf, nowait = true, silent = true })
+  end
+  register_focus_right_keymap()
+  vim.api.nvim_create_autocmd("InsertEnter", {
+    buffer   = input_buf,
+    once     = true,
+    callback = function() vim.schedule(register_focus_right_keymap) end,
+  })
 
   --- @param key string
   --- @param fn  fun()
