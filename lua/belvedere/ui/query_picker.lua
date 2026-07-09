@@ -64,9 +64,16 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
   local bufname = "belvedere://queries/" .. scope_key .. "/" .. name
   local bufnr   = find_buf_by_name(bufname)
 
-  if bufnr == -1 then
-    bufnr = vim.api.nvim_create_buf(true, true)
-    vim.api.nvim_buf_set_name(bufnr, bufname)
+  -- A buffer can be valid but unloaded (e.g. after :bdelete or session restore),
+  -- keeping its name while losing its lines. Repopulate in that case instead of
+  -- silently reusing an empty buffer.
+  if bufnr == -1 or not vim.api.nvim_buf_is_loaded(bufnr) then
+    if bufnr == -1 then
+      bufnr = vim.api.nvim_create_buf(true, true)
+      vim.api.nvim_buf_set_name(bufnr, bufname)
+    else
+      vim.fn.bufload(bufnr)
+    end
     local ft = e.ext ~= "" and (vim.filetype.match({ filename = "q." .. e.ext }) or e.ext) or "sql"
     local lines = vim.split(e.content, "\n", { plain = true })
     table.insert(lines, 1, render_comment(ft, "NOTE: This buffer is editable, but changes will not update the saved query."))
