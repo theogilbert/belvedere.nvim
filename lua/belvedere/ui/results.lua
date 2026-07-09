@@ -20,8 +20,9 @@ local M = {}
 
 local BUFNAME = "belvedere://results"
 
-local render_table     -- forward declaration; defined after apply_highlights
-local export_results   -- forward declaration; defined after open_export_buffer
+local render_table              -- forward declaration; defined after apply_highlights
+local export_results            -- forward declaration; defined after open_export_buffer
+local toggle_thousands_separator -- forward declaration; defined after rebuild_segments
 
 --- Return true when column arrays `a` and `b` are identical.
 --- @param a string[]
@@ -72,6 +73,23 @@ local function rows_label(rows_returned, rows_total, page, page_size)
     return count .. ("  ·  page %d/%d  (] next  [ prev)"):format(page, total_pages)
   end
   return count
+end
+
+--- Build a per-display-column thousands-separator array from the set of columns the
+--- user has toggled on for `bs`. The separator is off by default for every column;
+--- `t` on a results-pane cell toggles it for that column only.
+--- @param display_columns string[]  columns in display order
+--- @param sep_columns     table     set of column names with the separator toggled on
+--- @return string[]|nil
+local function sep_array_for(display_columns, sep_columns)
+  local char = config.options.results.thousands_separator
+  char = (char and char ~= "") and char or nil
+  if not char or not next(sep_columns) then return nil end
+  local arr, any = {}, false
+  for i, name in ipairs(display_columns) do
+    if sep_columns[name] then arr[i] = char; any = true end
+  end
+  return any and arr or nil
 end
 
 --- Return the "N row(s) <verb>" message for a DML result.
@@ -454,6 +472,7 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
     conn_key      = nil,
     table_path    = nil,  -- explore-tree path to the source table, if known
     column_cache  = nil,  -- column name -> ColumnDescription, reset with table_path
+    sep_columns   = {},   -- column name -> true, thousands separator toggled on via `t`
   }
   state.buffers[src_bufnr] = bs
 
@@ -492,6 +511,8 @@ local function get_or_create_buf_state(src_bufnr, buf_title)
     { desc = "Export results", silent = true })
   buf:set_keymap("n", config.options.keymaps.hover_key, function() show_column_hover(bs) end,
     { desc = "Show column info", silent = true })
+  buf:set_keymap("n", "t", function() toggle_thousands_separator(bs) end,
+    { desc = "Toggle thousands separator for column", silent = true })
   return bs
 end
 
@@ -546,7 +567,8 @@ render_table = function(bs)
     table.insert(display, row)
   end
 
-  local tbl = table_fmt.from_structured_data(display, 1, config.options.results.thousands_separator, config.options.results.decimal_separator)
+  local sep = sep_array_for(bs.vis_columns, bs.sep_columns)
+  local tbl = table_fmt.from_structured_data(display, 1, sep, config.options.results.decimal_separator)
   bs.table_data = tbl
 
   local label = rows_label(rows_ret, rows_tot, bs.page, page_size)
@@ -647,22 +669,24 @@ function M.begin_batch(n)
   bs.buffer:apply_highlight({})
 end
 
---- Append the result of one SELECT-type statement to the batch view.
+--- Build a batch-view segment for one SELECT-type statement, honoring `sep_columns`.
+--- Stores the raw inputs alongside the rendered `tbl`/`lines`/`hl_rules` so the segment
+--- can be rebuilt later when the user toggles the thousands separator on a column.
 --- @param idx           integer
 --- @param total         integer
 --- @param columns       string[]
 --- @param rows          table[]
 --- @param rows_returned integer
---- @param rows_total    integer|nil
+--- @param rows_total    integer
 --- @param duration_ms   number|nil
-function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total, duration_ms)
-  local bs       = active_bs()
+--- @param sep_columns   table  set of column names with the separator toggled on
+--- @return table  segment
+local function build_segment(idx, total, columns, rows, rows_returned, rows_total, duration_ms, sep_columns)
   local page_size = config.options.results.page_size
-  rows_returned   = rows_returned or #rows
-  rows_total      = rows_total    or rows_returned
   local display   = { columns }
   for i = 1, math.min(rows_returned, page_size) do table.insert(display, rows[i]) end
-  local tbl   = table_fmt.from_structured_data(display, 1, config.options.results.thousands_separator, config.options.results.decimal_separator)
+  local sep   = sep_array_for(columns, sep_columns)
+  local tbl   = table_fmt.from_structured_data(display, 1, sep, config.options.results.decimal_separator)
   local label = rows_label(rows_returned, rows_total, 1, page_size)
   if duration_ms then label = label .. "  ·  " .. format_duration(duration_ms) end
   local content = { label, "" }
@@ -677,7 +701,81 @@ function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_to
       finish  = { r.finish[1] + 2, r.finish[2] },
     })
   end
-  table.insert(bs.segments, { header = make_separator(idx, total), lines = content, hl_rules = rules })
+  return {
+    header = make_separator(idx, total), lines = content, hl_rules = rules, tbl = tbl,
+    idx = idx, total = total, columns = columns, rows = rows,
+    rows_returned = rows_returned, rows_total = rows_total, duration_ms = duration_ms,
+  }
+end
+
+--- Rebuild every SELECT-type segment in `bs.segments` from its stored raw inputs,
+--- picking up the current `bs.sep_columns` state. Non-SELECT segments (errors,
+--- row-count messages) have no `tbl` and are left untouched.
+--- @param bs table  buf_state
+local function rebuild_segments(bs)
+  for i, seg in ipairs(bs.segments) do
+    if seg.tbl then
+      bs.segments[i] = build_segment(seg.idx, seg.total, seg.columns, seg.rows,
+        seg.rows_returned, seg.rows_total, seg.duration_ms, bs.sep_columns)
+    end
+  end
+end
+
+--- Return the batch segment covering 0-indexed buffer line `line0`, or nil.
+--- Mirrors the line layout `render_segments` builds: each segment occupies its
+--- header line, its content lines, and one trailing blank line.
+--- @param bs    table  buf_state
+--- @param line0 integer  0-indexed buffer line
+--- @return table|nil
+local function segment_at_line(bs, line0)
+  local offset = 0
+  for _, seg in ipairs(bs.segments) do
+    local seg_len = 1 + #seg.lines + 1
+    if line0 < offset + seg_len then return seg end
+    offset = offset + seg_len
+  end
+end
+
+--- Toggle the thousands separator for the column under the cursor, in whichever
+--- results view (single-page or batch) is currently showing.
+--- @param bs table  buf_state
+toggle_thousands_separator = function(bs)
+  local col_name
+  if bs.table_data then
+    local col_idx = table_fmt.get_column_at_cursor(bs.table_data.columns_width, vim.fn.virtcol("."))
+    col_name = col_idx and bs.vis_columns[col_idx]
+  elseif #bs.segments > 0 then
+    local seg = segment_at_line(bs, vim.fn.line(".") - 1)
+    if seg and seg.tbl then
+      local col_idx = table_fmt.get_column_at_cursor(seg.tbl.columns_width, vim.fn.virtcol("."))
+      col_name = col_idx and seg.columns[col_idx]
+    end
+  end
+  if not col_name then return end
+
+  bs.sep_columns[col_name] = not bs.sep_columns[col_name] or nil
+
+  if bs.table_data then
+    render_table(bs)
+  else
+    rebuild_segments(bs)
+    render_segments(bs)
+  end
+end
+
+--- Append the result of one SELECT-type statement to the batch view.
+--- @param idx           integer
+--- @param total         integer
+--- @param columns       string[]
+--- @param rows          table[]
+--- @param rows_returned integer
+--- @param rows_total    integer|nil
+--- @param duration_ms   number|nil
+function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total, duration_ms)
+  local bs = active_bs()
+  rows_returned = rows_returned or #rows
+  rows_total    = rows_total    or rows_returned
+  table.insert(bs.segments, build_segment(idx, total, columns, rows, rows_returned, rows_total, duration_ms, bs.sep_columns))
   render_segments(bs)
 end
 

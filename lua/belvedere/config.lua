@@ -41,7 +41,8 @@ M.defaults = {
     page_size = 500,
 
     -- Character inserted between digit groups in numeric cells (e.g. "1_234_567").
-    -- Set to false or "" to disable.
+    -- Off by default for every column; press `t` on a results-pane cell to toggle
+    -- it for that column. Set to false or "" to disable the feature entirely.
     thousands_separator = "_",
 
     -- Character used as the decimal point in numeric cells (e.g. "1234.56").
