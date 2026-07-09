@@ -80,6 +80,7 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
     table.insert(lines, 2, "")
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
     vim.bo[bufnr].filetype   = ft
+    vim.bo[bufnr].buftype    = ""
     vim.bo[bufnr].bufhidden  = "hide"
     pcall(vim.treesitter.start, bufnr)
   end
