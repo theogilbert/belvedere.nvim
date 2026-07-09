@@ -443,21 +443,29 @@ function M.pick(caps, active_set, filetype, callback)
   -- rank 1 = one of the driver's languages maps to the current filetype,
   -- rank 2 = generic driver (no declared languages),
   -- rank 3 = specialty driver for a different filetype.
-  -- idx preserves the server's declared order as a tiebreaker within a rank.
+  -- Connection count (descending) breaks ties within a rank.
   local rank_map = {}
-  for i, d in ipairs(caps.drivers or {}) do
+  for _, d in ipairs(caps.drivers or {}) do
     local langs = d.languages or {}
     local rank = #langs == 0 and 2 or 3
     for _, lang in ipairs(langs) do
       if LANGUAGE_TO_FT[lang] == filetype then rank = 1; break end
     end
-    rank_map[d.driver] = { rank = rank, idx = i }
+    rank_map[d.driver] = rank
   end
 
   -- Build label map from caps for drivers not yet in server_data.
   local caps_label = {}
   for _, d in ipairs(caps.drivers or {}) do
     caps_label[d.driver] = d.label or d.driver
+  end
+
+  -- Count saved connections per driver so busier drivers sort first within a rank.
+  local driver_counts = {}
+  for driver_id, driver_data in pairs(server_data) do
+    local total = 0
+    for _, gconns in pairs(driver_data.groups or {}) do total = total + vim.tbl_count(gconns) end
+    driver_counts[driver_id] = total
   end
 
   -- Collect all known drivers: those with saved connections plus all caps drivers.
@@ -472,10 +480,10 @@ function M.pick(caps, active_set, filetype, callback)
   end
   local driver_ids = vim.tbl_keys(driver_id_set)
   table.sort(driver_ids, function(a, b)
-    local ra = rank_map[a] or { rank = 2, idx = 999 }
-    local rb = rank_map[b] or { rank = 2, idx = 999 }
-    if ra.rank ~= rb.rank then return ra.rank < rb.rank end
-    if ra.idx  ~= rb.idx  then return ra.idx  < rb.idx  end
+    local ra, rb = rank_map[a] or 2, rank_map[b] or 2
+    if ra ~= rb then return ra < rb end
+    local ca, cb = driver_counts[a] or 0, driver_counts[b] or 0
+    if ca ~= cb then return ca > cb end
     return a < b
   end)
 

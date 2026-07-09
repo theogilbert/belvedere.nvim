@@ -55,7 +55,14 @@ local function build(server, server_data, active_set)
   end
 
   local driver_ids = vim.tbl_keys(server_data)
+  local driver_totals = {}
+  for _, driver_id in ipairs(driver_ids) do
+    local total = 0
+    for _, gconns in pairs(server_data[driver_id].groups or {}) do total = total + vim.tbl_count(gconns) end
+    driver_totals[driver_id] = total
+  end
   table.sort(driver_ids, function(a, b)
+    if driver_totals[a] ~= driver_totals[b] then return driver_totals[a] > driver_totals[b] end
     return (server_data[a].label or a):lower() < (server_data[b].label or b):lower()
   end)
 
@@ -63,9 +70,7 @@ local function build(server, server_data, active_set)
     local driver_data = server_data[driver_id]
     local label  = driver_data.label or driver_id
     local groups = driver_data.groups or {}
-
-    local total = 0
-    for _, gconns in pairs(groups) do total = total + vim.tbl_count(gconns) end
+    local total  = driver_totals[driver_id]
 
     local expanded = state.expanded[driver_id]
     local chevron  = expanded and "▾ " or "▸ "
