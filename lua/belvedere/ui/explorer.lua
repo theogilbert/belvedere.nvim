@@ -677,4 +677,11 @@ function M.reset()
   spinner:reset()
 end
 
+--- Open the table/view describe float for `details`, using `node` for its
+--- display name and icon. Exposed so other modules (e.g. the diagram viewer)
+--- can reuse the same renderer for paths not backed by a real ExplorerNode.
+--- @param details TableDetails|nil
+--- @param node    { name: string, type: string }
+M.open_describe_float = open_describe_float
+
 return M

@@ -2,6 +2,7 @@
 local M = {}
 
 local client = require("belvedere.client")
+local config = require("belvedere.config")
 local hl     = require("belvedere.hl")
 
 local NS_ID = vim.api.nvim_create_namespace("BelvedereDiagram")
@@ -43,6 +44,20 @@ local function apply_regions(buf, regions)
   end
 end
 
+--- Find the region under a 0-indexed (row, col) cursor position, if any.
+--- @param regions table[]  DiagramRegion objects: { row, col_start, col_end, path }
+--- @param row     integer  0-indexed
+--- @param col     integer  0-indexed byte offset
+--- @return table|nil
+local function region_at(regions, row, col)
+  for _, region in ipairs(regions) do
+    if region.row == row and col >= region.col_start and col < region.col_end then
+      return region
+    end
+  end
+  return nil
+end
+
 --- Request an ASCII diagram for the table at `path` and display it in a new tab.
 --- @param conn_id any
 --- @param path    string[]
@@ -66,6 +81,37 @@ function M.open(conn_id, path, title)
       { buffer = buf, silent = true, nowait = true })
   end
 
+  local regions = {}
+
+  --- Handle the hover key: resolve the region under the cursor and describe it.
+  local function on_hover()
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    local region = region_at(regions, cursor[1] - 1, cursor[2])
+    if not region then return end
+
+    client.request("explore.describe", { connection_id = conn_id, path = region.path }, function(err, result)
+      vim.schedule(function()
+        if err then
+          vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
+          return
+        end
+        local details = result and result.details
+        if not details or details == vim.NIL then
+          vim.notify("belvedere: nothing to describe here", vim.log.levels.WARN)
+          return
+        end
+        if details.type == "column" then
+          require("belvedere.ui.column").open_single(details)
+        else
+          require("belvedere.ui.explorer").open_describe_float(
+            details, { name = region.path[#region.path], type = "table" })
+        end
+      end)
+    end)
+  end
+  vim.keymap.set("n", config.options.keymaps.hover_key, on_hover,
+    { buffer = buf, silent = true, nowait = true })
+
   client.request("explore.diagram", { connection_id = conn_id, path = path }, function(err, result)
     vim.schedule(function()
       if not vim.api.nvim_buf_is_valid(buf) then return end
@@ -76,7 +122,8 @@ function M.open(conn_id, path, title)
       if not err then
         apply_border_highlight(buf, lines)
         if result and result.regions then
-          apply_regions(buf, result.regions)
+          regions = result.regions
+          apply_regions(buf, regions)
         end
       end
     end)
