@@ -102,6 +102,11 @@ function M.open(conn_id, path, title)
         end
         if details.type == "column" then
           require("belvedere.ui.column").open_single(details)
+        elseif details.type == "columns" then
+          local parts = vim.list_slice(region.path, 1, #region.path - 1)
+          local ctx   = table.concat(parts, ".")
+          local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
+          require("belvedere.ui.column").open(details, title)
         else
           require("belvedere.ui.explorer").open_describe_float(
             details, { name = region.path[#region.path], type = "table" })
