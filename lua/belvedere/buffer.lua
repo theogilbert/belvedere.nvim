@@ -59,18 +59,14 @@ function Buffer:close()
   end
 end
 
---- Open a floating window listing all keymaps that have a desc.
---- Keymaps with a `group` field in their opts are rendered under section headers.
-function Buffer:show_help()
-  local keymaps = {}
-  for _, km in ipairs(self.keymaps) do
-    local opts = km[3] or {}
-    local desc = opts.desc or ""
-    if desc ~= "" then
-      table.insert(keymaps, { lhs = km[2], desc = desc, group = opts.group or "" })
-    end
-  end
-  if #keymaps == 0 then return end
+--- Open a floating window listing `keymaps`. Keymaps with a non-empty `group`
+--- are rendered under section headers. Closes on q/<Esc>/g?.
+--- Shared by Buffer:show_help and any other keymap-tracking UI that isn't
+--- built on a Buffer instance (e.g. detail_pane's floating panes).
+--- @param keymaps { lhs: string, desc: string, group: string }[]
+--- @return integer|nil win  the help float's window id, or nil if there was nothing to show
+function Buffer.render_help_float(keymaps)
+  if #keymaps == 0 then return nil end
 
   local has_groups = false
   for _, km in ipairs(keymaps) do
@@ -123,6 +119,12 @@ function Buffer:show_help()
     vim.hl.range(buf, hl.NS_ID, "BelvedereHeaderRow", { lnum - 1, 0 }, { lnum - 1, -1 })
   end
 
+  -- A caller may trigger this from insert mode (e.g. detail_pane's <C-h> is
+  -- bound in the search box). Leave insert mode first: mode is global, not
+  -- per-window, so staying in it would make the next keystroke try (and fail)
+  -- to edit this read-only buffer instead of being a normal-mode command.
+  vim.cmd("stopinsert")
+
   local win = vim.api.nvim_open_win(buf, true, {
     relative  = "cursor",
     row       = 1,
@@ -133,13 +135,33 @@ function Buffer:show_help()
     border    = "rounded",
     title     = " keymaps ",
     title_pos = "center",
+    -- Above any of the plugin's own floats (detail_pane's list window uses
+    -- zindex=51 for its stitched-border trick), so the help float always
+    -- renders on top rather than behind them.
+    zindex    = 200,
   })
   vim.api.nvim_win_set_hl_ns(win, hl.NS_ID)
 
-  for _, key in ipairs({ "q", "<Esc>", "g?" }) do
+  for _, key in ipairs({ "q", "<Esc>", "g?", "<C-h>" }) do
     vim.keymap.set("n", key, function() pcall(vim.api.nvim_win_close, win, true) end,
       { buffer = buf, silent = true })
   end
+
+  return win
+end
+
+--- Open a floating window listing all keymaps that have a desc.
+--- Keymaps with a `group` field in their opts are rendered under section headers.
+function Buffer:show_help()
+  local keymaps = {}
+  for _, km in ipairs(self.keymaps) do
+    local opts = km[3] or {}
+    local desc = opts.desc or ""
+    if desc ~= "" then
+      table.insert(keymaps, { lhs = km[2], desc = desc, group = opts.group or "" })
+    end
+  end
+  Buffer.render_help_float(keymaps)
 end
 
 --- Register a buffer-local keymap and record it so it appears in the `g?` help float.

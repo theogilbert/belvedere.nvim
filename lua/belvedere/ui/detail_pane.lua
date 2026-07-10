@@ -4,6 +4,7 @@
 local M = {}
 
 local hl         = require("belvedere.hl")
+local Buffer     = require("belvedere.buffer")
 
 --- Positional highlight entry: { group, 0-indexed-row, byte-col-start, byte-col-end }.
 --- Used in the `hls` accumulator arrays passed between section/tag_line/apply.
@@ -134,7 +135,9 @@ end
 ---                (default: "(no matches)")
 ---   .on_change   fn(item|nil)              called with the newly-selected item
 ---   .on_submit   fn(item|nil)|nil          called when <CR> is pressed in the search box
---- @return table  { input_win, list_win, close = fun(), register_win = fun(winid) }
+---   .extra_help  { lhs: string, desc: string, group: string }[]|nil   additional entries
+---                shown by <C-h>'s help float, for keymaps a caller adds on its own windows
+--- @return table  { input_win, list_win, close = fun(), register_win = fun(winid), show_help = fun() }
 function M.open_search_list(opts)
   local items       = opts.items
   local matches     = opts.matches or function(item, text)
@@ -202,6 +205,23 @@ function M.open_search_list(opts)
     vim.api.nvim_create_autocmd("WinClosed", {
       group = aug, pattern = tostring(winid), once = true,
       callback = function() close() end,
+    })
+  end
+
+  --- Register a transient window (e.g. the <C-h> help float) as temporarily
+  --- "inside" the group for the leave-to-close check, without its own closing
+  --- cascading into closing the group. Un-registered automatically once it
+  --- closes. Needed because opening it can race the leave-to-close check
+  --- scheduled by whatever window switch preceded it (see WinLeave below):
+  --- without this, that deferred check can fire after focus has already
+  --- landed on the (unregistered) transient window and wrongly conclude the
+  --- float was left entirely.
+  --- @param winid integer
+  local function register_transient_win(winid)
+    all_wins_set[winid] = true
+    vim.api.nvim_create_autocmd("WinClosed", {
+      group = aug, pattern = tostring(winid), once = true,
+      callback = function() all_wins_set[winid] = nil end,
     })
   end
 
@@ -405,17 +425,49 @@ function M.open_search_list(opts)
   vim.keymap.set("n", "<Esc>", close, { buffer = list_buf, nowait = true, silent = true })
   vim.keymap.set("n", "<C-c>", close, { buffer = list_buf, nowait = true, silent = true })
 
+  -- <C-h>: show a help float listing every keymap active in this browsing float.
+  local help_keymaps = {
+    { lhs = "<Down>/<C-n>", desc = "Next item",     group = "Navigate" },
+    { lhs = "<Up>/<C-p>",   desc = "Previous item", group = "Navigate" },
+  }
+  if opts.on_submit then
+    table.insert(help_keymaps, { lhs = "<CR>", desc = "Select", group = "Navigate" })
+  end
+  vim.list_extend(help_keymaps, opts.extra_help or {})
+  vim.list_extend(help_keymaps, {
+    { lhs = "<Esc>", desc = "Clear filter, then close", group = "" },
+    { lhs = "<C-c>", desc = "Close",                    group = "" },
+    { lhs = "q",     desc = "Close (from the list)",    group = "" },
+    { lhs = "<C-h>", desc = "Show this help",           group = "" },
+  })
+
+  --- Open the help float and, if it opened, register it as a transient member
+  --- of this group (see register_transient_win for why that matters).
+  local function show_help()
+    local win = Buffer.render_help_float(help_keymaps)
+    if win then register_transient_win(win) end
+  end
+  vim.keymap.set({ "i", "n" }, "<C-h>", show_help, { buffer = input_buf, nowait = true, silent = true })
+  vim.keymap.set("n", "<C-h>", show_help, { buffer = list_buf, nowait = true, silent = true })
+
   -- Start in search mode.
   vim.schedule(function() vim.cmd("startinsert!") end)
 
-  return { input_win = input_win, list_win = list_win, close = close, register_win = register_win }
+  return {
+    input_win    = input_win,
+    list_win     = list_win,
+    close        = close,
+    register_win = register_win,
+    show_help    = show_help,
+  }
 end
 
 --- Open a two-pane browsing float with a search box filtering the left-hand list.
 --- Left: search input + filtered list (see open_search_list). Right: detail view
 --- that updates to match the selected item. q/<Esc>/<C-c> closes from either pane;
---- <Tab> from the search box jumps to the detail pane; h/<Tab>/<S-Tab> from the
---- detail pane jumps back to the search box.
+--- <Tab> switches focus back and forth between the search box and the detail
+--- pane; <C-h> anywhere opens a help float listing every keymap (the detail
+--- pane's footer hints at this).
 ---
 --- @param opts table
 ---   .items      array             items to browse (must be non-empty)
@@ -456,10 +508,12 @@ function M.open_searchable_two_pane(opts)
   vim.bo[rbuf].modifiable = false
 
   local rwin = vim.api.nvim_open_win(rbuf, false, {
-    relative  = "editor",
-    row       = row0, col = col0 + left_w + 3,
-    width     = right_w, height = right_h,
-    style     = "minimal", border = "rounded",
+    relative   = "editor",
+    row        = row0, col = col0 + left_w + 3,
+    width      = right_w, height = right_h,
+    style      = "minimal", border = "rounded",
+    footer     = " Press <C-h> for help ",
+    footer_pos = "right",
   })
   vim.api.nvim_win_set_hl_ns(rwin, hl.NS_ID)
   vim.api.nvim_set_option_value("wrap", false, { win = rwin })
@@ -483,6 +537,9 @@ function M.open_searchable_two_pane(opts)
     get_label   = opts.get_label,
     matches     = opts.matches,
     on_change   = sync,
+    extra_help  = {
+      { lhs = "<Tab>", desc = "Switch between list and detail pane", group = "Navigate" },
+    },
   })
   handle.register_win(rwin)
 
@@ -503,8 +560,8 @@ function M.open_searchable_two_pane(opts)
     vim.api.nvim_set_current_win(rwin)
   end
 
-  -- <Tab> in the search box jumps to the detail pane, mirroring <Tab>/<S-Tab>
-  -- jumping back below. Re-registered after InsertEnter so InsertEnter-based
+  -- <Tab> in the search box jumps to the detail pane, mirroring <Tab> jumping
+  -- back below. Re-registered after InsertEnter so InsertEnter-based
   -- completion/snippet plugins that also bind <Tab> don't win the race.
   local input_buf = vim.api.nvim_win_get_buf(handle.input_win)
   local function register_focus_right_keymap()
@@ -521,12 +578,11 @@ function M.open_searchable_two_pane(opts)
   --- @param key string
   --- @param fn  fun()
   local function rmap(key, fn) vim.keymap.set("n", key, fn, { buffer = rbuf, nowait = true, silent = true }) end
-  rmap("q",       handle.close)
-  rmap("<Esc>",   handle.close)
-  rmap("<C-c>",   handle.close)
-  rmap("h",       focus_input)
-  rmap("<Tab>",   focus_input)
-  rmap("<S-Tab>", focus_input)
+  rmap("q",     handle.close)
+  rmap("<Esc>", handle.close)
+  rmap("<C-c>", handle.close)
+  rmap("<Tab>", focus_input)
+  rmap("<C-h>", handle.show_help)
 end
 
 --- Open a single-item detail float.
