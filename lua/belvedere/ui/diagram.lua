@@ -135,10 +135,8 @@ function M.open(conn_id, path, title)
   vim.api.nvim_win_set_buf(win, buf)
   vim.api.nvim_win_set_hl_ns(win, hl.NS_ID)
 
-  for _, key in ipairs({ "q", "<Esc>" }) do
-    vim.keymap.set("n", key, function() pcall(vim.cmd, "tabclose") end,
-      { buffer = buf, silent = true, nowait = true })
-  end
+  vim.keymap.set("n", "q", function() pcall(vim.cmd, "tabclose") end,
+    { buffer = buf, silent = true, nowait = true })
 
   local regions = {}
 
