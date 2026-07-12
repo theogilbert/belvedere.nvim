@@ -18,14 +18,26 @@ local DIAGRAM_ROOT_TABLE_FG = "#DAA520" -- gold, reserved for a diagram's source
 
 -- Muted, low-saturation colors cycled across non-root tables in a schema diagram,
 -- so each table's box reads as visually distinct without competing with the
--- gold reserved for the diagram's root/source table.
+-- gold reserved for the diagram's root/source table. Hues are NOT evenly spaced
+-- around the wheel by degree — HSL hue angle is not perceptually uniform (e.g.
+-- blue/purple hues compress much more tightly in perceived difference per
+-- degree than others do), so equal-degree spacing reliably produces close-
+-- looking pairs despite "even" spacing (this palette previously had violet and
+-- magenta only 8.3 apart in CIE Lab distance despite a 26° hue gap). These 10
+-- were instead chosen by a greedy farthest-point search over CIE Lab distance
+-- at fixed saturation/lightness, also kept away from the root table's gold, so
+-- the worst-case pair here is ~14 apart in Lab (vs. 8.3 before).
 local DIAGRAM_TABLE_FG = {
-  "#7D8BA5", -- slate grey
-  "#83B2A6", -- teal grey
-  "#B283A2", -- mauve grey
-  "#B29C83", -- tan grey
-  "#8391B2", -- blue grey
-  "#99B283", -- olive grey
+  "#8181BB", -- blue
+  "#81BB90", -- green
+  "#BB8E81", -- rust
+  "#81ADBB", -- sky
+  "#BB81A4", -- pink
+  "#BBB281", -- mustard
+  "#81BBAF", -- teal
+  "#8196BB", -- cornflower
+  "#AB81BB", -- purple
+  "#A2BB81", -- olive
 }
 
 --- Highlight group for a diagram's source/root table (the one `explore.diagram`

@@ -38,26 +38,122 @@ local function path_key(path)
   return table.concat(path, "\0")
 end
 
+--- Derive a relationship edge's owning-table path from its region path
+--- (`[..., "relationships", <column>]` → `[...]`).
+--- @param edge_path string[]
+--- @return string[]
+local function owner_table_path(edge_path)
+  return vim.list_slice(edge_path, 1, #edge_path - 2)
+end
+
+--- Infer which tables are directly connected by an edge, so color assignment
+--- can keep adjacent tables visually distinct. An edge's owner table is known
+--- exactly from its path; the table on the other side isn't encoded in
+--- DiagramRegion, so it's approximated as whichever other table's box rows
+--- sit nearest (smallest row gap) to the edge's own rows — reliable for the
+--- tree layout `explore.diagram` draws, where an edge is always sandwiched
+--- directly between the two boxes it connects.
+--- @param regions table[]  DiagramRegion objects: { row, col_start, col_end, kind, path }
+--- @return table<string, table<string, boolean>>  path-key → set of adjacent path-keys
+local function build_adjacency(regions)
+  local table_rows = {} -- path-key → { min, max, path }
+  local edge_rows   = {} -- edge path-key → { min, max, path }
+
+  local function extend(rows, key, row, path)
+    local r = rows[key]
+    if not r then
+      rows[key] = { min = row, max = row, path = path }
+    else
+      r.min = math.min(r.min, row)
+      r.max = math.max(r.max, row)
+    end
+  end
+
+  for _, region in ipairs(regions) do
+    if region.kind == "table" then
+      extend(table_rows, path_key(region.path), region.row, region.path)
+    elseif region.kind == "edge" then
+      extend(edge_rows, path_key(region.path), region.row, region.path)
+    end
+  end
+
+  --- Row distance between two ranges; 0 when they overlap.
+  local function row_gap(a, b)
+    if a.min > b.max then return a.min - b.max end
+    if b.min > a.max then return b.min - a.max end
+    return 0
+  end
+
+  local adj = {}
+  local function link(a, b)
+    adj[a] = adj[a] or {}
+    adj[a][b] = true
+    adj[b] = adj[b] or {}
+    adj[b][a] = true
+  end
+
+  for edge_key, edge in pairs(edge_rows) do
+    local owner_key = path_key(owner_table_path(edge.path))
+    local nearest_key, nearest_gap = nil, nil
+    for table_key, t in pairs(table_rows) do
+      if table_key ~= owner_key then
+        local gap = row_gap(edge, t)
+        if not nearest_gap or gap < nearest_gap then
+          nearest_key, nearest_gap = table_key, gap
+        end
+      end
+    end
+    if nearest_key then link(owner_key, nearest_key) end
+  end
+
+  return adj
+end
+
 --- Assign each table in `regions` a highlight group: the root table (the one
---- originally requested) keeps the shared, vivid BelvedereExplorerTable color;
---- every other table gets a muted color cycled from hl.DIAGRAM_TABLE_PALETTE,
---- in the order its first region is encountered.
+--- originally requested) keeps the dedicated gold DIAGRAM_ROOT_TABLE color;
+--- every other table gets a color cycled from hl.DIAGRAM_TABLE_PALETTE, in the
+--- order its first region is encountered, skipping any color already used by
+--- a table it's directly connected to (per build_adjacency) so linked tables
+--- don't end up looking alike.
 --- @param regions   table[]  DiagramRegion objects: { row, col_start, col_end, kind, path }
 --- @param root_path string[] path of the table `explore.diagram` was requested for
 --- @return table<string, string>  path-key → highlight group
 local function assign_table_colors(regions, root_path)
   local palette = hl.DIAGRAM_TABLE_PALETTE
+  local adj     = build_adjacency(regions)
   local colors  = { [path_key(root_path)] = hl.DIAGRAM_ROOT_TABLE }
-  local next_i  = 1
+
+  local order, seen = {}, {}
   for _, region in ipairs(regions) do
     if region.kind == "table" then
       local key = path_key(region.path)
-      if not colors[key] then
-        colors[key] = palette[(next_i - 1) % #palette + 1]
-        next_i = next_i + 1
+      if not seen[key] then
+        seen[key] = true
+        order[#order + 1] = key
       end
     end
   end
+
+  local next_i = 1
+  for _, key in ipairs(order) do
+    if not colors[key] then
+      local used = {}
+      for neighbor in pairs(adj[key] or {}) do
+        if colors[neighbor] then used[colors[neighbor]] = true end
+      end
+      local chosen
+      for i = 0, #palette - 1 do
+        local candidate = palette[(next_i - 1 + i) % #palette + 1]
+        if not used[candidate] then
+          chosen = candidate
+          break
+        end
+      end
+      colors[key] = chosen or palette[(next_i - 1) % #palette + 1]
+      next_i = next_i + 1
+    end
+  end
+
   return colors
 end
 
@@ -81,8 +177,7 @@ local function region_hl_group(region, table_colors)
     return table_colors[path_key(region.path)] or "BelvedereExplorerTable"
   end
   if kind == "edge" then
-    local owner = vim.list_slice(region.path, 1, #region.path - 2)
-    return table_colors[path_key(owner)] or "BelvedereExplorerConstraint"
+    return table_colors[path_key(owner_table_path(region.path))] or "BelvedereExplorerConstraint"
   end
   return "BelvedereExplorerTable"
 end
