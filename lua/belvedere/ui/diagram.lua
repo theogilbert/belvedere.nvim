@@ -23,29 +23,33 @@ local function apply_border_highlight(buf, lines)
   end
 end
 
---- Highlight group for a DiagramRegion, based on the shape of its `path`.
---- A column path ends in `.columns.<name>`; anything else names a table/view.
---- @param path string[]
+--- Highlight group for a DiagramRegion. Prefers the explicit `kind` field;
+--- falls back to sniffing `path`'s shape for servers predating `kind`
+--- (a column path ends in `.columns.<name>`; anything else names a table/view).
+--- @param region table  DiagramRegion object: { row, col_start, col_end, kind, path }
 --- @return string
-local function region_hl_group(path)
-  if #path >= 2 and path[#path - 1] == "columns" then
-    return "BelvedereExplorerColumn"
+local function region_hl_group(region)
+  local kind = region.kind
+  if kind == nil then
+    kind = (#region.path >= 2 and region.path[#region.path - 1] == "columns") and "column" or "table"
   end
+  if kind == "column" then return "BelvedereExplorerColumn" end
+  if kind == "edge"   then return "BelvedereExplorerConstraint" end
   return "BelvedereExplorerTable"
 end
 
 --- Apply highlight groups to `buf` for each region in `regions`.
 --- @param buf     integer
---- @param regions table[]  DiagramRegion objects: { row, col_start, col_end, path }
+--- @param regions table[]  DiagramRegion objects: { row, col_start, col_end, kind, path }
 local function apply_regions(buf, regions)
   for _, region in ipairs(regions) do
     vim.api.nvim_buf_add_highlight(
-      buf, NS_ID, region_hl_group(region.path), region.row, region.col_start, region.col_end)
+      buf, NS_ID, region_hl_group(region), region.row, region.col_start, region.col_end)
   end
 end
 
 --- Find the region under a 0-indexed (row, col) cursor position, if any.
---- @param regions table[]  DiagramRegion objects: { row, col_start, col_end, path }
+--- @param regions table[]  DiagramRegion objects: { row, col_start, col_end, kind, path }
 --- @param row     integer  0-indexed
 --- @param col     integer  0-indexed byte offset
 --- @return table|nil
@@ -107,6 +111,8 @@ function M.open(conn_id, path, title)
           local ctx   = table.concat(parts, ".")
           local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
           require("belvedere.ui.column").open(details, title)
+        elseif details.type == "relationship" then
+          require("belvedere.ui.relationship").open_single(details)
         else
           require("belvedere.ui.explorer").open_describe_float(
             details, { name = region.path[#region.path], type = "table" })

@@ -276,7 +276,7 @@ Returns detailed metadata about a specific node.
 
 | Field     | Type                | Description                    |
 |-----------|---------------------|--------------------------------|
-| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription), `"indices"` → [IndicesDescription](#indicesdescription), `"column"` → [ColumnDescription](#columndescription), `"columns"` → [ColumnsDescription](#columnsdescription) |
+| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription), `"indices"` → [IndicesDescription](#indicesdescription), `"column"` → [ColumnDescription](#columndescription), `"columns"` → [ColumnsDescription](#columnsdescription), `"relationship"` → [RelationshipDescription](#relationshipdescription) |
 
 ---
 
@@ -329,7 +329,7 @@ Only supported for table/view nodes; if `path` does not resolve to a table, the 
 | Field     | Type                                    | Description                                                     |
 |-----------|------------------------------------------|-------------------------------------------------------------------|
 | `diagram` | string                                   | ASCII diagram, as a multi-line string                             |
-| `regions` | array of [DiagramRegion](#diagramregion) | Byte-offset spans identifying the table/column named at each point in `diagram`, so a client can resolve a cursor position to an `explore.describe` path without parsing the diagram text itself |
+| `regions` | array of [DiagramRegion](#diagramregion) | Byte-offset spans identifying the table, column, or relationship drawn at each point in `diagram`, so a client can resolve a cursor position to an `explore.describe` path without parsing the diagram text itself |
 
 **example**
 
@@ -342,16 +342,20 @@ Only supported for table/view nodes; if `path` does not resolve to a table, the 
   "result": {
     "diagram": "┌─ users ───────────┐\n│ id    INTEGER  PK │\n│ name  TEXT        │\n└───────────────────┘\n└── orders.user_id → id\n    ┌─ orders ─────────────┐\n    │ id       INTEGER  PK │\n    │ user_id  INTEGER  FK │\n    │ total    REAL        │\n    └──────────────────────┘",
     "regions": [
-      { "row": 0, "col_start": 7,  "col_end": 12, "path": ["users"] },
-      { "row": 1, "col_start": 4,  "col_end": 6,  "path": ["users", "columns", "id"] },
-      { "row": 4, "col_start": 10, "col_end": 16, "path": ["orders"] }
+      { "row": 0, "col_start": 7,  "col_end": 12, "kind": "table",  "path": ["users"] },
+      { "row": 1, "col_start": 4,  "col_end": 6,  "kind": "column", "path": ["users", "columns", "id"] },
+      { "row": 4, "col_start": 0,  "col_end": 3,  "kind": "edge",   "path": ["orders", "relationships", "user_id"] },
+      { "row": 4, "col_start": 3,  "col_end": 20, "kind": "edge",   "path": ["orders", "relationships", "user_id"] },
+      { "row": 4, "col_start": 10, "col_end": 16, "kind": "table",  "path": ["orders"] }
     ]
   },
   "error": null
 }
 ```
 
-(truncated — in practice every table and column name drawn anywhere in `diagram` gets a region)
+The two `kind: "edge"` regions above both carry the identical `path` — they're the two halves of the same join-label line (`└──` and `orders.user_id → id`). A relationship spanning several rows (e.g. a vertical trunk bar connecting a branch point to a sibling several lines below) emits one region per row it touches, all sharing that same `path`; a client can group regions by `path` to treat them as a single edge (for highlighting or hover) without parsing the tree layout itself.
+
+(truncated — in practice every table, column, and relationship drawn anywhere in `diagram` gets a region)
 
 ---
 
@@ -468,6 +472,23 @@ One column-level leg of a foreign key relating a table to another table, used in
 
 ---
 
+## RelationshipDescription
+
+Returned as `details` by `explore.describe` when the path resolves to a relationship (edge) node — a path ending in `["relationships", <column>]`, as emitted by [`explore.diagram`](#explorediagram)'s `regions` (e.g. `["public", "orders", "relationships", "user_id"]`). Describes one foreign key in full, symmetric form (both the owning and referenced side), unlike [TableReference](#tablereference) which only describes the far side from an already-known local table.
+
+| Field             | Type            | Description                                                     |
+|--------------------|-----------------|-------------------------------------------------------------------|
+| `type`             | string          | Always `"relationship"` — use to discriminate description types |
+| `table`            | string          | Local table name (the table owning the foreign key)             |
+| `schema`           | string or null  | Local table's schema, or null for databases without schema support |
+| `column`           | string          | Local column                                                     |
+| `ref_table`        | string          | Referenced table name                                            |
+| `ref_schema`       | string or null  | Referenced table's schema, or null for databases without schema support |
+| `ref_column`       | string          | Referenced column                                                 |
+| `constraint_name`  | string or null  | Foreign key constraint name, or null if unnamed/unsupported      |
+
+---
+
 ## TableDescription
 
 Returned as `details` by `explore.describe` for table/view nodes:
@@ -572,16 +593,19 @@ string value on the wire, instead of pattern-matching cell contents.
 ```
 ## DiagramRegion
 
-One span in the `diagram` string returned by [`explore.diagram`](#explorediagram) that names a table or column — in a box header, a join-label line, or a plain-text pointer. Lets a client resolve a cursor position to an `explore.describe` path without parsing the diagram text itself.
+One span in the `diagram` string returned by [`explore.diagram`](#explorediagram) that names a table, column, or relationship — in a box header, a join-label line, a connector/trunk character, or a plain-text pointer. Lets a client resolve a cursor position to an `explore.describe` path without parsing the diagram text itself.
 
 `row` and `col_start`/`col_end` are all **0-indexed**. `row` counts lines of `diagram` as split on `\n`, starting from `0`. `col_start`/`col_end` are byte offsets into that line (not codepoints or display columns), also starting from `0`; `col_end` is exclusive. Note this differs from `nvim_win_get_cursor()`, whose row is 1-indexed — clients must subtract 1 from the cursor row before comparing against `row`.
+
+A relationship (`kind: "edge"`) is typically covered by several regions — one per row its connector characters touch, including any vertical trunk bars linking a branch point to a sibling box further down — all sharing the same `path`. Clients should group edge regions by `path` to treat them as one edge (e.g. for highlighting or hover), rather than assuming one region per edge.
 
 | Field       | Type             | Description                                                                 |
 |-------------|------------------|-------------------------------------------------------------------------------|
 | `row`       | integer          | 0-indexed line number within `diagram`                                       |
 | `col_start` | integer          | 0-indexed byte offset where the span starts                                  |
 | `col_end`   | integer          | 0-indexed byte offset where the span ends (exclusive)                        |
-| `path`      | array of strings | Path to pass as `explore.describe`'s `path` param to describe this table or column |
+| `kind`      | string           | `"table"`, `"column"`, or `"edge"` — discriminates what `path` names, without the client having to infer it from `path`'s shape |
+| `path`      | array of strings | Path to pass as `explore.describe`'s `path` param to describe this table, column, or relationship |
 
 ---
 
