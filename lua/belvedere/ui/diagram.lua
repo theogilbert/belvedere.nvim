@@ -11,6 +11,13 @@ local NS_ID = vim.api.nvim_create_namespace("BelvedereDiagram")
 -- Matched as a set of UTF-8 byte sequences since Lua patterns are byte-oriented.
 local BORDER_PATTERN = "[┌┐└┘─│├┬┴┼→]+"
 
+-- Explicit stacking order for overlapping highlights (e.g. a table's box-border
+-- region and the generic border dim both cover the same bytes; a column region
+-- sits inside a table's interior row). Higher wins, regardless of call order —
+-- deliberately not relying on nvim_buf_add_highlight's implicit "last extmark
+-- inserted wins" behavior for same-priority overlaps.
+local PRIORITY = { border = 100, table = 110, edge = 110, column = 120 }
+
 --- Dim the box-drawing/connector characters in `lines` so they recede behind the
 --- table and column names highlighted via `apply_regions`.
 --- @param buf   integer
@@ -18,33 +25,81 @@ local BORDER_PATTERN = "[┌┐└┘─│├┬┴┼→]+"
 local function apply_border_highlight(buf, lines)
   for row, line in ipairs(lines) do
     for s, e in line:gmatch("()" .. BORDER_PATTERN .. "()") do
-      vim.api.nvim_buf_add_highlight(buf, NS_ID, "BelvedereBorder", row - 1, s - 1, e - 1)
+      vim.hl.range(buf, NS_ID, "BelvedereBorder",
+        { row - 1, s - 1 }, { row - 1, e - 1 }, { priority = PRIORITY.border })
     end
   end
+end
+
+--- Join a DiagramRegion path into a table usable as a lookup key.
+--- @param path string[]
+--- @return string
+local function path_key(path)
+  return table.concat(path, "\0")
+end
+
+--- Assign each table in `regions` a highlight group: the root table (the one
+--- originally requested) keeps the shared, vivid BelvedereExplorerTable color;
+--- every other table gets a muted color cycled from hl.DIAGRAM_TABLE_PALETTE,
+--- in the order its first region is encountered.
+--- @param regions   table[]  DiagramRegion objects: { row, col_start, col_end, kind, path }
+--- @param root_path string[] path of the table `explore.diagram` was requested for
+--- @return table<string, string>  path-key → highlight group
+local function assign_table_colors(regions, root_path)
+  local palette = hl.DIAGRAM_TABLE_PALETTE
+  local colors  = { [path_key(root_path)] = hl.DIAGRAM_ROOT_TABLE }
+  local next_i  = 1
+  for _, region in ipairs(regions) do
+    if region.kind == "table" then
+      local key = path_key(region.path)
+      if not colors[key] then
+        colors[key] = palette[(next_i - 1) % #palette + 1]
+        next_i = next_i + 1
+      end
+    end
+  end
+  return colors
 end
 
 --- Highlight group for a DiagramRegion. Prefers the explicit `kind` field;
 --- falls back to sniffing `path`'s shape for servers predating `kind`
 --- (a column path ends in `.columns.<name>`; anything else names a table/view).
---- @param region table  DiagramRegion object: { row, col_start, col_end, kind, path }
+--- Table regions are colored per-table via `table_colors`; edge regions inherit
+--- the color of the table that owns the foreign key (the first path segments
+--- before `relationships`/`<column>`), so a relationship reads as belonging to
+--- its owning table's box.
+--- @param region       table  DiagramRegion object: { row, col_start, col_end, kind, path }
+--- @param table_colors table<string, string>  path-key → highlight group, from assign_table_colors
 --- @return string
-local function region_hl_group(region)
+local function region_hl_group(region, table_colors)
   local kind = region.kind
   if kind == nil then
     kind = (#region.path >= 2 and region.path[#region.path - 1] == "columns") and "column" or "table"
   end
   if kind == "column" then return "BelvedereExplorerColumn" end
-  if kind == "edge"   then return "BelvedereExplorerConstraint" end
+  if kind == "table" then
+    return table_colors[path_key(region.path)] or "BelvedereExplorerTable"
+  end
+  if kind == "edge" then
+    local owner = vim.list_slice(region.path, 1, #region.path - 2)
+    return table_colors[path_key(owner)] or "BelvedereExplorerConstraint"
+  end
   return "BelvedereExplorerTable"
 end
 
---- Apply highlight groups to `buf` for each region in `regions`.
---- @param buf     integer
---- @param regions table[]  DiagramRegion objects: { row, col_start, col_end, kind, path }
-local function apply_regions(buf, regions)
+--- Apply highlight groups to `buf` for each region in `regions`. Uses explicit
+--- priorities (see PRIORITY) rather than call order, since table-box and column
+--- regions can cover overlapping bytes (e.g. a table's interior-row border
+--- characters flank that row's column-name region).
+--- @param buf          integer
+--- @param regions      table[]  DiagramRegion objects: { row, col_start, col_end, kind, path }
+--- @param table_colors table<string, string>  path-key → highlight group, from assign_table_colors
+local function apply_regions(buf, regions, table_colors)
   for _, region in ipairs(regions) do
-    vim.api.nvim_buf_add_highlight(
-      buf, NS_ID, region_hl_group(region), region.row, region.col_start, region.col_end)
+    local kind     = region.kind or "table"
+    local priority = PRIORITY[kind] or PRIORITY.table
+    vim.hl.range(buf, NS_ID, region_hl_group(region, table_colors),
+      { region.row, region.col_start }, { region.row, region.col_end }, { priority = priority })
   end
 end
 
@@ -134,7 +189,7 @@ function M.open(conn_id, path, title)
         apply_border_highlight(buf, lines)
         if result and result.regions then
           regions = result.regions
-          apply_regions(buf, regions)
+          apply_regions(buf, regions, assign_table_colors(regions, path))
         end
       end
     end)

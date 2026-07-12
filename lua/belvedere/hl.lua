@@ -14,10 +14,37 @@ local HELP_FG      = "#4B9CD3"
 local THOUSANDS_FG = "#767676"
 local SCROLLBAR_FG = "#888888"
 
+local DIAGRAM_ROOT_TABLE_FG = "#DAA520" -- gold, reserved for a diagram's source/root table
+
+-- Muted, low-saturation colors cycled across non-root tables in a schema diagram,
+-- so each table's box reads as visually distinct without competing with the
+-- gold reserved for the diagram's root/source table.
+local DIAGRAM_TABLE_FG = {
+  "#7D8BA5", -- slate grey
+  "#83B2A6", -- teal grey
+  "#B283A2", -- mauve grey
+  "#B29C83", -- tan grey
+  "#8391B2", -- blue grey
+  "#99B283", -- olive grey
+}
+
+--- Highlight group for a diagram's source/root table (the one `explore.diagram`
+--- was requested for) — gold and bold, distinct from BelvedereExplorerTable so
+--- this styling stays scoped to the diagram view instead of also affecting
+--- table names in the sidebar/other floats.
+M.DIAGRAM_ROOT_TABLE = "BelvedereDiagramRootTable"
+
+--- Ordered highlight group names backing DIAGRAM_TABLE_FG, for callers that need
+--- to cycle through them (e.g. assigning one per table in a schema diagram).
+M.DIAGRAM_TABLE_PALETTE = {}
+for i = 1, #DIAGRAM_TABLE_FG do
+  M.DIAGRAM_TABLE_PALETTE[i] = "BelvedereDiagramTable" .. i
+end
+
 --- Build the table of highlight group definitions.
 --- @return table<string, table>
 local function build_highlights()
-  return {
+  local highlights = {
     BelvedereBorder    = { fg = BORDER_FG },
     BelvedereHeaderRow = { fg = HEADER_FG, bold = true },
     BelvedereError     = { fg = ERROR_FG },
@@ -28,7 +55,12 @@ local function build_highlights()
     BelvedereHelp      = { fg = HELP_FG, italic = true },
     BelvedereThousandsSeparator = { fg = THOUSANDS_FG },
     BelvedereScrollbarThumb     = { fg = SCROLLBAR_FG },
+    [M.DIAGRAM_ROOT_TABLE]      = { fg = DIAGRAM_ROOT_TABLE_FG, bold = true },
   }
+  for i, group in ipairs(M.DIAGRAM_TABLE_PALETTE) do
+    highlights[group] = { fg = DIAGRAM_TABLE_FG[i] }
+  end
+  return highlights
 end
 
 --- Create namespaces and define all highlight groups; re-called on ColorScheme.
