@@ -212,6 +212,30 @@ local function region_at(regions, row, col)
   return nil
 end
 
+--- Collect the distinct relationship (`kind == "edge"`) paths covering a 0-indexed
+--- (row, col) cursor position. Regions sharing a `path` are one edge (see
+--- docs/protocol.md#diagramregion), but a branch point where several
+--- relationships share a trunk column can still put more than one distinct
+--- edge path under the same cell — unlike `region_at`, which only ever
+--- resolves the first match, this lets a caller notice and handle all of them.
+--- @param regions table[]  DiagramRegion objects: { row, col_start, col_end, kind, path }
+--- @param row     integer  0-indexed
+--- @param col     integer  0-indexed byte offset
+--- @return string[][]  distinct edge paths, in first-seen order
+local function edge_paths_at(regions, row, col)
+  local paths, seen = {}, {}
+  for _, region in ipairs(regions) do
+    if region.kind == "edge" and region.row == row and col >= region.col_start and col < region.col_end then
+      local key = path_key(region.path)
+      if not seen[key] then
+        seen[key] = true
+        paths[#paths + 1] = region.path
+      end
+    end
+  end
+  return paths
+end
+
 --- Request an ASCII diagram for the table at `path` and display it in a new tab.
 --- @param conn_id any
 --- @param path    string[]
@@ -233,12 +257,54 @@ function M.open(conn_id, path, title)
   vim.keymap.set("n", "q", function() pcall(vim.cmd, "tabclose") end,
     { buffer = buf, silent = true, nowait = true })
 
-  local regions = {}
+  local regions      = {}
+  local table_colors = {}
 
-  --- Handle the hover key: resolve the region under the cursor and describe it.
+  --- Handle the hover key: resolve the region(s) under the cursor and describe
+  --- them. When the cursor sits on more than one distinct relationship at once
+  --- (e.g. a shared trunk column at a branch point), describes all of them and
+  --- opens a browsable picker instead of arbitrarily picking one.
   local function on_hover()
     local cursor = vim.api.nvim_win_get_cursor(0)
-    local region = region_at(regions, cursor[1] - 1, cursor[2])
+    local row, col = cursor[1] - 1, cursor[2]
+
+    local edges = edge_paths_at(regions, row, col)
+    if #edges > 1 then
+      local remaining     = #edges
+      local rels, colors  = {}, {}
+      for i, edge_path in ipairs(edges) do
+        colors[i] = region_hl_group({ kind = "edge", path = edge_path }, table_colors)
+        client.request("explore.describe", { connection_id = conn_id, path = edge_path }, function(err, result)
+          vim.schedule(function()
+            if not err and result and result.details and result.details ~= vim.NIL then
+              rels[i] = result.details
+            end
+            remaining = remaining - 1
+            if remaining == 0 then
+              -- Re-pack, dropping any index whose describe call failed or
+              -- resolved to nothing, so rels/colors stay aligned pairwise.
+              local final_rels, final_colors = {}, {}
+              for j = 1, #edges do
+                if rels[j] then
+                  final_rels[#final_rels + 1]   = rels[j]
+                  final_colors[#final_colors + 1] = colors[j]
+                end
+              end
+              if #final_rels == 0 then
+                vim.notify("belvedere: nothing to describe here", vim.log.levels.WARN)
+              elseif #final_rels == 1 then
+                require("belvedere.ui.relationship").open_single(final_rels[1], final_colors[1])
+              else
+                require("belvedere.ui.relationship").open(final_rels, final_colors)
+              end
+            end
+          end)
+        end)
+      end
+      return
+    end
+
+    local region = region_at(regions, row, col)
     if not region then return end
 
     client.request("explore.describe", { connection_id = conn_id, path = region.path }, function(err, result)
@@ -260,7 +326,7 @@ function M.open(conn_id, path, title)
           local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
           require("belvedere.ui.column").open(details, title)
         elseif details.type == "relationship" then
-          require("belvedere.ui.relationship").open_single(details)
+          require("belvedere.ui.relationship").open_single(details, region_hl_group(region, table_colors))
         else
           require("belvedere.ui.explorer").open_describe_float(
             details, { name = region.path[#region.path], type = "table" })
@@ -281,8 +347,9 @@ function M.open(conn_id, path, title)
       if not err then
         apply_border_highlight(buf, lines)
         if result and result.regions then
-          regions = result.regions
-          apply_regions(buf, regions, assign_table_colors(regions, path))
+          regions      = result.regions
+          table_colors = assign_table_colors(regions, path)
+          apply_regions(buf, regions, table_colors)
         end
       end
     end)
