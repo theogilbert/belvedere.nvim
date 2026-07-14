@@ -476,7 +476,7 @@ Column metadata object used inside [TableDescription](#tabledescription):
 
 ## TableReference
 
-One column-level leg of a foreign key relating a table to another table, used inside [TableDescription](#tabledescription):
+One column-level leg of a foreign key relating a table to another table, used inside [TableDescription](#tabledescription) and [ColumnDescription](#columndescription):
 
 | Field        | Type            | Description                                                |
 |--------------|-----------------|-------------------------------------------------------------|
@@ -577,6 +577,7 @@ Returned as `details` by `explore.describe` when the path resolves to an individ
 | `composite_indices` | array of [IndexDescription](#indexdescription) | Indices that cover this column and at least one other column             |
 | `comment`           | string or null                                 | Column comment as stored in the database; null if unsupported or not set |
 | `sample`            | array                                          | Up to 3 distinct non-null representative values sampled from the column  |
+| `outgoing_references` | array of [TableReference](#tablereference)   | Foreign keys defined on this column that reference another table. Empty if this column is not a foreign key. A column can carry more than one entry — either because it participates in more than one single-column FK constraint (each naming a different target), or because it is one leg of multiple composite FK constraints. |
 
 ---
 
