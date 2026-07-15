@@ -276,7 +276,7 @@ Returns detailed metadata about a specific node.
 
 | Field     | Type                | Description                    |
 |-----------|---------------------|--------------------------------|
-| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription), `"indices"` → [IndicesDescription](#indicesdescription), `"column"` → [ColumnDescription](#columndescription), `"columns"` → [ColumnsDescription](#columnsdescription) |
+| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription), `"indices"` → [IndicesDescription](#indicesdescription), `"column"` → [ColumnDescription](#columndescription), `"columns"` → [ColumnsDescription](#columnsdescription), `"relationship"` → [RelationshipDescription](#relationshipdescription) |
 
 ---
 
@@ -306,6 +306,71 @@ Returns a sample of up to 10 rows from the node at the given path. Only supporte
 {"id":6,"method":"explore.preview","params":{"connection_id":"0","path":["public","users"]}}
 {"id":6,"result":{"columns":["id","name"],"rows":[[1,"Alice"],[2,"Bob"]],"rows_total":2,"duration_ms":1.5},"error":null}
 ```
+
+---
+
+### `explore.diagram`
+
+Returns an ASCII diagram of the table at the given path and every table connected to it, recursively, via foreign keys (both outgoing and incoming). Connected tables that are themselves connected to further tables are expanded too, so the diagram can cover an entire connected region of the schema, not just the immediate neighbours of `path`.
+
+The diagram is rendered as a vertical tree: the root table's box is printed first, and each related table is nested underneath it, indented, and connected to its parent by a line naming the join columns. A table that is reachable by more than one path (a cycle, or a table referenced from two places) is only drawn once — later references to it appear as a plain text pointer instead of a duplicate box. The text has no line-wrap applied and assumes the client will render it without wrapping; boxes are sized to their content and the tree aims for roughly 120 columns wide, but width is not capped.
+
+Only supported for table/view nodes; if `path` does not resolve to a table, the request returns an error.
+
+**params**
+
+| Field           | Type             | Description            |
+|-----------------|------------------|-------------------------|
+| `connection_id` | string           | Connection to query     |
+| `path`          | array of strings | Path to the table       |
+
+**result**
+
+| Field     | Type                                    | Description                                                     |
+|-----------|------------------------------------------|-------------------------------------------------------------------|
+| `diagram` | string                                   | ASCII diagram, as a multi-line string                             |
+| `regions` | array of [DiagramRegion](#diagramregion) | Byte-offset spans identifying the table, column, or relationship drawn at each point in `diagram`, so a client can resolve a cursor position to an `explore.describe` path without parsing the diagram text itself |
+
+**example**
+
+```json
+{"id":7,"method":"explore.diagram","params":{"connection_id":"0","path":["users"]}}
+```
+```json
+{
+  "id": 7,
+  "result": {
+    "diagram": "┌─ users ───────────┐\n│ id    INTEGER  PK │\n│ name  TEXT        │\n└───────────────────┘\n└── orders.user_id → id\n    ┌─ orders ─────────────┐\n    │ id       INTEGER  PK │\n    │ user_id  INTEGER  FK │\n    │ total    REAL        │\n    └──────────────────────┘",
+    "regions": [
+      { "row": 0, "col_start": 0,  "col_end": 49, "kind": "table",  "path": ["users"] },
+      { "row": 1, "col_start": 0,  "col_end": 3,  "kind": "table",  "path": ["users"] },
+      { "row": 1, "col_start": 4,  "col_end": 6,  "kind": "column", "path": ["users", "columns", "id"] },
+      { "row": 1, "col_start": 22, "col_end": 25, "kind": "table",  "path": ["users"] },
+      { "row": 2, "col_start": 0,  "col_end": 3,  "kind": "table",  "path": ["users"] },
+      { "row": 2, "col_start": 22, "col_end": 25, "kind": "table",  "path": ["users"] },
+      { "row": 3, "col_start": 0,  "col_end": 63, "kind": "table",  "path": ["users"] },
+      { "row": 4, "col_start": 0,  "col_end": 3,  "kind": "edge",   "path": ["orders", "relationships", "user_id"] },
+      { "row": 4, "col_start": 3,  "col_end": 20, "kind": "edge",   "path": ["orders", "relationships", "user_id"] },
+      { "row": 4, "col_start": 10, "col_end": 16, "kind": "table",  "path": ["orders"] },
+      { "row": 5, "col_start": 0,  "col_end": 60, "kind": "table",  "path": ["orders"] },
+      { "row": 6, "col_start": 4,  "col_end": 7,  "kind": "table",  "path": ["orders"] },
+      { "row": 6, "col_start": 29, "col_end": 32, "kind": "table",  "path": ["orders"] },
+      { "row": 7, "col_start": 4,  "col_end": 7,  "kind": "table",  "path": ["orders"] },
+      { "row": 7, "col_start": 29, "col_end": 32, "kind": "table",  "path": ["orders"] },
+      { "row": 8, "col_start": 4,  "col_end": 7,  "kind": "table",  "path": ["orders"] },
+      { "row": 8, "col_start": 29, "col_end": 32, "kind": "table",  "path": ["orders"] },
+      { "row": 9, "col_start": 0,  "col_end": 76, "kind": "table",  "path": ["orders"] }
+    ]
+  },
+  "error": null
+}
+```
+
+The two `kind: "edge"` regions above both carry the identical `path` — they're the two halves of the same join-label line (`└──` and `orders.user_id → id`). A relationship spanning several rows (e.g. a vertical trunk bar connecting a branch point to a sibling several lines below) emits one region per row it touches, all sharing that same `path`; a client can group regions by `path` to treat them as a single edge (for highlighting or hover) without parsing the tree layout itself.
+
+A table is covered by more than one `kind: "table"` region the same way: its name, plus its box's top and bottom border rows in full (rows 0 and 3 for `users` above), plus — on **every** interior row — a region for just the left border character and another for just the right border character (never the whole row, so they never overlap that row's `kind: "column"` region — see rows 1, 2, 6, 7, and 8 above, each contributing two narrow `kind: "table"` regions). Skipping these interior-row pairs is the most common implementation gap: without them, a client that colors each table's box per-`path` will render the header and footer correctly but leave every column row's `│ │` uncolored. All of a table's regions share that table's `path`, letting a client group them to treat the whole box outline as belonging to one table (e.g. to color each table's box distinctly) without re-deriving box geometry from the diagram text itself.
+
+(truncated for columns/relationships elsewhere — but every row of the `users` and `orders` boxes above is now fully enumerated as a concrete, complete example of the table-region convention)
 
 ---
 
@@ -411,7 +476,7 @@ Column metadata object used inside [TableDescription](#tabledescription):
 
 ## TableReference
 
-One column-level leg of a foreign key relating a table to another table, used inside [TableDescription](#tabledescription):
+One column-level leg of a foreign key relating a table to another table, used inside [TableDescription](#tabledescription) and [ColumnDescription](#columndescription):
 
 | Field        | Type            | Description                                                |
 |--------------|-----------------|-------------------------------------------------------------|
@@ -419,6 +484,23 @@ One column-level leg of a foreign key relating a table to another table, used in
 | `table`      | string          | Name of the other table                                    |
 | `ref_column` | string          | Column on the other table                                  |
 | `schema`     | string or null  | Schema of the other table, or null for databases without schema support |
+
+---
+
+## RelationshipDescription
+
+Returned as `details` by `explore.describe` when the path resolves to a relationship (edge) node — a path ending in `["relationships", <column>]`, as emitted by [`explore.diagram`](#explorediagram)'s `regions` (e.g. `["public", "orders", "relationships", "user_id"]`). Describes one foreign key in full, symmetric form (both the owning and referenced side), unlike [TableReference](#tablereference) which only describes the far side from an already-known local table.
+
+| Field             | Type            | Description                                                     |
+|--------------------|-----------------|-------------------------------------------------------------------|
+| `type`             | string          | Always `"relationship"` — use to discriminate description types |
+| `table`            | string          | Local table name (the table owning the foreign key)             |
+| `schema`           | string or null  | Local table's schema, or null for databases without schema support |
+| `column`           | string          | Local column                                                     |
+| `ref_table`        | string          | Referenced table name                                            |
+| `ref_schema`       | string or null  | Referenced table's schema, or null for databases without schema support |
+| `ref_column`       | string          | Referenced column                                                 |
+| `constraint_name`  | string or null  | Foreign key constraint name, or null if unnamed/unsupported      |
 
 ---
 
@@ -495,6 +577,7 @@ Returned as `details` by `explore.describe` when the path resolves to an individ
 | `composite_indices` | array of [IndexDescription](#indexdescription) | Indices that cover this column and at least one other column             |
 | `comment`           | string or null                                 | Column comment as stored in the database; null if unsupported or not set |
 | `sample`            | array                                          | Up to 3 distinct non-null representative values sampled from the column  |
+| `outgoing_references` | array of [TableReference](#tablereference)   | Foreign keys defined on this column that reference another table. Empty if this column is not a foreign key. A column can carry more than one entry — either because it participates in more than one single-column FK constraint (each naming a different target), or because it is one leg of multiple composite FK constraints. |
 
 ---
 
@@ -524,6 +607,23 @@ string value on the wire, instead of pattern-matching cell contents.
 ```json
 {"type": "lob", "text": "CLOB (3423 chars)"}
 ```
+## DiagramRegion
+
+One span in the `diagram` string returned by [`explore.diagram`](#explorediagram) that names a table, column, or relationship — in a box header, a box border row/character, a join-label line, a connector/trunk character, or a plain-text pointer. Lets a client resolve a cursor position to an `explore.describe` path without parsing the diagram text itself.
+
+`row` and `col_start`/`col_end` are all **0-indexed**. `row` counts lines of `diagram` as split on `\n`, starting from `0`. `col_start`/`col_end` are byte offsets into that line (not codepoints or display columns), also starting from `0`; `col_end` is exclusive. Note this differs from `nvim_win_get_cursor()`, whose row is 1-indexed — clients must subtract 1 from the cursor row before comparing against `row`.
+
+A relationship (`kind: "edge"`) is typically covered by several regions — one per row its connector characters touch, including any vertical trunk bars linking a branch point to a sibling box further down — all sharing the same `path`. Clients should group edge regions by `path` to treat them as one edge (e.g. for highlighting or hover), rather than assuming one region per edge.
+
+A table (`kind: "table"`) is likewise typically covered by several regions: its name, its box's top and bottom border rows in full, and — on **every** interior row, not just some — a region for the left border character and a separate region for the right border character (never the whole row, so these never overlap that row's `kind: "column"` region). Omitting the interior-row pair on any row is a common implementation mistake: it leaves that row's `│ │` uncolored even though the header/footer render correctly. All of a table's regions share the table's `path`, so clients can group by `path` to treat the box outline as one unit (e.g. to color each table's box distinctly), without parsing box geometry out of the diagram text.
+
+| Field       | Type             | Description                                                                 |
+|-------------|------------------|-------------------------------------------------------------------------------|
+| `row`       | integer          | 0-indexed line number within `diagram`                                       |
+| `col_start` | integer          | 0-indexed byte offset where the span starts                                  |
+| `col_end`   | integer          | 0-indexed byte offset where the span ends (exclusive)                        |
+| `kind`      | string           | `"table"`, `"column"`, or `"edge"` — discriminates what `path` names, without the client having to infer it from `path`'s shape |
+| `path`      | array of strings | Path to pass as `explore.describe`'s `path` param to describe this table, column, or relationship |
 
 ---
 

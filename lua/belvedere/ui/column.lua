@@ -6,10 +6,18 @@ local M = {}
 
 local pane = require("belvedere.ui.detail_pane")
 local ICON = "󰠵 "
+local ARROW = "  →  "
 
 --- @param v any
 --- @return boolean
 local function is_nil(v) return pane.is_nil(v) end
+
+--- Build the "schema.table." prefix for the far side of a TableReference.
+--- @param ref table  TableReference
+--- @return string
+local function ref_table_prefix(ref)
+  return (not is_nil(ref.schema) and ref.schema .. "." or "") .. ref.table .. "."
+end
 
 --- Return the estimated rendered line count for a single column detail view.
 --- @param col table  ColumnDescription
@@ -26,6 +34,8 @@ local function estimate_lines(col)
   if #comp > 0 then n = n + 3 + #comp end
   local sample = type(col.sample) == "table" and col.sample or {}
   if #sample > 0 then n = n + 3 + #sample end
+  local refs = type(col.outgoing_references) == "table" and col.outgoing_references or {}
+  if #refs > 0 then n = n + 3 + #refs end
   return n
 end
 
@@ -70,6 +80,27 @@ local function render(buf, col)
   if not is_nil(col.default) and col.default ~= "" then
     pane.section(lines, hls, "Default")
     lines[#lines + 1] = "  " .. tostring(col.default)
+    lines[#lines + 1] = ""
+  end
+
+  local refs = type(col.outgoing_references) == "table" and col.outgoing_references or {}
+  if #refs > 0 then
+    pane.section(lines, hls, "Foreign keys")
+    for _, ref in ipairs(refs) do
+      local row_idx = #lines
+      local parts, pos = {}, 0
+      local function seg(s, grp)
+        if grp then hls[#hls + 1] = { grp, row_idx, pos, pos + #s } end
+        parts[#parts + 1] = s
+        pos = pos + #s
+      end
+      seg("  ")
+      seg(ref.column, "BelvedereExplorerColumn")
+      seg(ARROW)
+      seg(ref_table_prefix(ref), "BelvedereExplorerTable")
+      seg(ref.ref_column, "BelvedereExplorerColumn")
+      lines[#lines + 1] = table.concat(parts)
+    end
     lines[#lines + 1] = ""
   end
 
@@ -152,6 +183,21 @@ function M.hover_lines(col)
       lines[#lines + 1] = comment_line
       hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
     end
+  end
+
+  local refs = type(col.outgoing_references) == "table" and col.outgoing_references or {}
+  for _, ref in ipairs(refs) do
+    local row_idx = #lines
+    local parts, pos = {}, 0
+    local function seg(s, grp)
+      if grp then hls[#hls + 1] = { grp, row_idx, pos, pos + #s } end
+      parts[#parts + 1] = s
+      pos = pos + #s
+    end
+    seg(ARROW)
+    seg(ref_table_prefix(ref), "BelvedereExplorerTable")
+    seg(ref.ref_column, "BelvedereExplorerColumn")
+    lines[#lines + 1] = table.concat(parts)
   end
 
   return lines, hls
