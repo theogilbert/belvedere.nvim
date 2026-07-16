@@ -14,39 +14,39 @@ There is no build step for the Lua code. The precompiled treesitter parsers (`pa
 
 ## Architecture
 
-belvedere.nvim is a Neovim database-client plugin that delegates all database work to an external backend process. The client and server communicate over **newline-delimited JSON on stdio** — one JSON object per line in each direction. See `docs/protocol.md` for the full wire format.
+grannos.nvim is a Neovim database-client plugin that delegates all database work to an external backend process. The client and server communicate over **newline-delimited JSON on stdio** — one JSON object per line in each direction. See `docs/protocol.md` for the full wire format.
 
 ### Module map
 
 | Module | Role |
 |--------|------|
-| `plugin/belvedere.lua` | All `:DbXxx` user commands; entry point that Neovim loads |
-| `lua/belvedere/init.lua` | Public Lua API (`require("belvedere")`); owns session state |
-| `lua/belvedere/client.lua` | Spawns the backend process; speaks the JSON protocol |
-| `lua/belvedere/connections.lua` | Reads/writes `connections.json`; connection CRUD wizards |
-| `lua/belvedere/executor.lua` | Sends queries, dispatches results, manages gutter marks and log entries |
-| `lua/belvedere/config.lua` | Plugin options with defaults |
-| `lua/belvedere/buffer.lua` | Generic buffer class: content, keymaps, `g?` help float |
-| `lua/belvedere/ui/connections.lua` | Connections panel (right sidebar) |
-| `lua/belvedere/ui/explorer.lua` | Schema explorer (left sidebar) |
-| `lua/belvedere/ui/results.lua` | Query results panel (split) |
-| `lua/belvedere/ui/spinner.lua` | Refcounted braille spinner driven by a libuv timer |
-| `lua/belvedere/ui/gutter.lua` | Gutter extmarks: running/success/error icons |
-| `lua/belvedere/ui/conn_label.lua` | Winbar connection label per window |
-| `lua/belvedere/ui/query_log.lua` | 4-pane query history float |
-| `lua/belvedere/ui/query_picker.lua` | Saved-query picker (fzf-lua or `vim.ui.select`) |
-| `lua/belvedere/ui/save_query.lua` | Save-query wizard |
-| `lua/belvedere/ui/col_picker.lua` | Column-visibility picker for the results panel |
-| `lua/belvedere/ui/detail_pane.lua` | Shared two-pane and single-item detail float infrastructure |
-| `lua/belvedere/ui/indices.lua` | Index-description float (uses detail_pane) |
-| `lua/belvedere/ui/column.lua` | Column-description float (uses detail_pane) |
-| `lua/belvedere/ui/window.lua` | Sidebar window helper |
-| `lua/belvedere/log.lua` | In-memory query log (per connection) |
-| `lua/belvedere/selection.lua` | Visual selection extraction |
-| `lua/belvedere/ts_queries.lua` | Treesitter helpers: statement at cursor, statements in range |
-| `lua/belvedere/hl.lua` | Highlight group definitions |
-| `lua/belvedere/table.lua` | Column-aligned table rendering for results |
-| `lua/belvedere/queries.lua` | Saved-queries filesystem helpers |
+| `plugin/grannos.lua` | All `:DbXxx` user commands; entry point that Neovim loads |
+| `lua/grannos/init.lua` | Public Lua API (`require("grannos")`); owns session state |
+| `lua/grannos/client.lua` | Spawns the backend process; speaks the JSON protocol |
+| `lua/grannos/connections.lua` | Reads/writes `connections.json`; connection CRUD wizards |
+| `lua/grannos/executor.lua` | Sends queries, dispatches results, manages gutter marks and log entries |
+| `lua/grannos/config.lua` | Plugin options with defaults |
+| `lua/grannos/buffer.lua` | Generic buffer class: content, keymaps, `g?` help float |
+| `lua/grannos/ui/connections.lua` | Connections panel (right sidebar) |
+| `lua/grannos/ui/explorer.lua` | Schema explorer (left sidebar) |
+| `lua/grannos/ui/results.lua` | Query results panel (split) |
+| `lua/grannos/ui/spinner.lua` | Refcounted braille spinner driven by a libuv timer |
+| `lua/grannos/ui/gutter.lua` | Gutter extmarks: running/success/error icons |
+| `lua/grannos/ui/conn_label.lua` | Winbar connection label per window |
+| `lua/grannos/ui/query_log.lua` | 4-pane query history float |
+| `lua/grannos/ui/query_picker.lua` | Saved-query picker (fzf-lua or `vim.ui.select`) |
+| `lua/grannos/ui/save_query.lua` | Save-query wizard |
+| `lua/grannos/ui/col_picker.lua` | Column-visibility picker for the results panel |
+| `lua/grannos/ui/detail_pane.lua` | Shared two-pane and single-item detail float infrastructure |
+| `lua/grannos/ui/indices.lua` | Index-description float (uses detail_pane) |
+| `lua/grannos/ui/column.lua` | Column-description float (uses detail_pane) |
+| `lua/grannos/ui/window.lua` | Sidebar window helper |
+| `lua/grannos/log.lua` | In-memory query log (per connection) |
+| `lua/grannos/selection.lua` | Visual selection extraction |
+| `lua/grannos/ts_queries.lua` | Treesitter helpers: statement at cursor, statements in range |
+| `lua/grannos/hl.lua` | Highlight group definitions |
+| `lua/grannos/table.lua` | Column-aligned table rendering for results |
+| `lua/grannos/queries.lua` | Saved-queries filesystem helpers |
 
 ### Session state and connection identity
 
@@ -68,7 +68,7 @@ Connection keys are **NUL-separated composite strings**: `server\0driver\0group\
 
 ### Known circular dependency
 
-`init.lua` requires `ui/connections.lua` at the top level, and `ui/connections.lua` in turn needs `require("belvedere")` in almost every handler. To avoid a circular-require error, `ui/connections.lua` does all of those requires **lazily** (inside function bodies), not at the top of the file. Preserve this pattern when adding new cross-module calls between these two files.
+`init.lua` requires `ui/connections.lua` at the top level, and `ui/connections.lua` in turn needs `require("grannos")` in almost every handler. To avoid a circular-require error, `ui/connections.lua` does all of those requires **lazily** (inside function bodies), not at the top of the file. Preserve this pattern when adding new cross-module calls between these two files.
 
 ### Documentation
 
@@ -79,4 +79,4 @@ All public and private functions must have LuaDoc annotations (`---` comments). 
 
 ### Buffer abstraction
 
-All sidebar and log panels use the `Buffer` class (`lua/belvedere/buffer.lua`). It wraps a scratch buffer, tracks registered keymaps, and provides a `g?` help float automatically. Register keymaps via `buffer:set_keymap(mode, key, fn, opts)` rather than `vim.keymap.set` directly so they appear in the help float. Pass `opts.group` (a string) to group related keys under a section header in the help float.
+All sidebar and log panels use the `Buffer` class (`lua/grannos/buffer.lua`). It wraps a scratch buffer, tracks registered keymaps, and provides a `g?` help float automatically. Register keymaps via `buffer:set_keymap(mode, key, fn, opts)` rather than `vim.keymap.set` directly so they appear in the help float. Pass `opts.group` (a string) to group related keys under a section header in the help float.

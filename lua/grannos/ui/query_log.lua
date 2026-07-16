@@ -5,11 +5,11 @@
 -- top border overlaps the upper window's bottom border row; zindex wins on that row.
 local M = {}
 
-local log       = require("belvedere.log")
-local table_fmt = require("belvedere.table")
-local hl        = require("belvedere.hl")
-local config    = require("belvedere.config")
-local pane      = require("belvedere.ui.detail_pane")
+local log       = require("grannos.log")
+local table_fmt = require("grannos.table")
+local hl        = require("grannos.hl")
+local config    = require("grannos.config")
+local pane      = require("grannos.ui.detail_pane")
 
 --- Return the Neovim filetype string for a given driver name.
 --- @param driver string|nil
@@ -165,7 +165,7 @@ function M.open(conn_key, conn)
 
     elseif entry.status == "error" then
       res_lines = { "Error: " .. (entry.error_msg or "unknown error") }
-      res_rules = { { higroup = "BelvedereError", start = { 0, 0 }, finish = { 0, -1 } } }
+      res_rules = { { higroup = "GrannosError", start = { 0, 0 }, finish = { 0, -1 } } }
 
     elseif entry.status == "rows_affected" then
       local msg = (entry.rows_affected or 0) .. " row"
@@ -173,7 +173,7 @@ function M.open(conn_key, conn)
           .. " " .. (entry.verb or "affected")
       if entry.duration_ms then msg = msg .. "  ·  " .. format_duration(entry.duration_ms) end
       res_lines = { msg }
-      res_rules = { { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } } }
+      res_rules = { { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } } }
 
     elseif entry.status == "success" then
       if not rows_cache[entry.id] then rows_cache[entry.id] = log.load_rows(entry) end
@@ -188,7 +188,7 @@ function M.open(conn_key, conn)
       if entry.duration_ms then count_msg = count_msg .. "  ·  " .. format_duration(entry.duration_ms) end
 
       res_lines = { count_msg, "" }
-      res_rules = { { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } } }
+      res_rules = { { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } } }
 
       if #cols > 0 then
         local display = { cols }
@@ -197,7 +197,7 @@ function M.open(conn_key, conn)
         local tbl_offset = 2
 
         for _, l in ipairs(tbl.text) do table.insert(res_lines, l) end
-        for _, r in ipairs(table_fmt.col_hl_rules("BelvedereHeaderRow", tbl_offset, 1, tbl)) do
+        for _, r in ipairs(table_fmt.col_hl_rules("GrannosHeaderRow", tbl_offset, 1, tbl)) do
           table.insert(res_rules, r)
         end
         for _, r in ipairs(table_fmt.null_hl_rules(tbl)) do
@@ -238,8 +238,8 @@ function M.open(conn_key, conn)
       return ok and m >= 0
     end,
     get_row_hl  = function(e)
-      if e.status == "error"   then return "BelvedereConnError" end
-      if e.status == "running" then return "BelvedereHelp" end
+      if e.status == "error"   then return "GrannosConnError" end
+      if e.status == "running" then return "GrannosHelp" end
     end,
     empty_msg   = function(text)
       return text == "" and "(no queries executed yet)" or "(no matches)"
@@ -283,7 +283,7 @@ function M.open(conn_key, conn)
         end
       end
 
-      local results_ui = require("belvedere.ui.results")
+      local results_ui = require("grannos.ui.results")
       results_ui.set_conn_name(conn_key, conn and conn.driver_label, entry.bufnr)
       if entry.status == "success" then
         local rows = rows_cache[entry.id] or log.load_rows(entry)

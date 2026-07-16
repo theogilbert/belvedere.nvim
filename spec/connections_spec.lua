@@ -1,5 +1,5 @@
-local connections = require("belvedere.connections")
-local config      = require("belvedere.config")
+local connections = require("grannos.connections")
+local config      = require("grannos.config")
 
 -- Write a full file-format table to the temp path.
 local function write_file(path, data)

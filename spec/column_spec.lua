@@ -1,4 +1,4 @@
-local column = require("belvedere.ui.column")
+local column = require("grannos.ui.column")
 
 local function base_col(overrides)
   local col = {
@@ -48,7 +48,7 @@ describe("column.hover_lines", function()
       end
       return groups
     end
-    assert.same({ "BelvedereExplorerTable", "BelvedereExplorerColumn" }, groups_on_row(2))
-    assert.same({ "BelvedereExplorerTable", "BelvedereExplorerColumn" }, groups_on_row(3))
+    assert.same({ "GrannosExplorerTable", "GrannosExplorerColumn" }, groups_on_row(2))
+    assert.same({ "GrannosExplorerTable", "GrannosExplorerColumn" }, groups_on_row(3))
   end)
 end)

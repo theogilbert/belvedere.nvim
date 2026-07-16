@@ -1,20 +1,20 @@
 local M = {}
 
-local client            = require("belvedere.client")
-local config            = require("belvedere.config")
-local hl                = require("belvedere.hl")
-local connections       = require("belvedere.connections")
-local executor          = require("belvedere.executor")
-local explorer          = require("belvedere.ui.explorer")
-local conn_label        = require("belvedere.ui.conn_label")
-local connections_panel = require("belvedere.ui.connections")
-local selection         = require("belvedere.selection")
-local gutter            = require("belvedere.ui.gutter")
-local ts_queries        = require("belvedere.ts_queries")
-local log               = require("belvedere.log")
-local hover             = require("belvedere.ui.hover")
+local client            = require("grannos.client")
+local config            = require("grannos.config")
+local hl                = require("grannos.hl")
+local connections       = require("grannos.connections")
+local executor          = require("grannos.executor")
+local explorer          = require("grannos.ui.explorer")
+local conn_label        = require("grannos.ui.conn_label")
+local connections_panel = require("grannos.ui.connections")
+local selection         = require("grannos.selection")
+local gutter            = require("grannos.ui.gutter")
+local ts_queries        = require("grannos.ts_queries")
+local log               = require("grannos.log")
+local hover             = require("grannos.ui.hover")
 
-local FLASH_NS = vim.api.nvim_create_namespace("BelvedereFlash")
+local FLASH_NS = vim.api.nvim_create_namespace("GrannosFlash")
 
 --- @class ConnSession
 --- @field conn_id      any     backend connection id returned by the server
@@ -22,7 +22,7 @@ local FLASH_NS = vim.api.nvim_create_namespace("BelvedereFlash")
 --- @field key          string  composite NUL-separated connection key
 --- @field driver_label string  human-readable driver name for UI labels
 
---- Briefly highlight a range in `bufnr` using the BelvedereQueryFlash group, then clear it.
+--- Briefly highlight a range in `bufnr` using the GrannosQueryFlash group, then clear it.
 --- All coordinates are 0-indexed.
 --- @param bufnr integer
 --- @param sr    integer  start row
@@ -34,7 +34,7 @@ local function flash_range(bufnr, sr, sc, er, ec)
   vim.api.nvim_buf_set_extmark(bufnr, FLASH_NS, sr, sc, {
     end_row  = er,
     end_col  = ec,
-    hl_group = "BelvedereQueryFlash",
+    hl_group = "GrannosQueryFlash",
     priority = 200,
   })
   vim.defer_fn(function()
@@ -111,7 +111,7 @@ local function start_backend()
   if client.is_running() then return true end
   local ok, err = pcall(client.start, config.options.server_cmd)
   if not ok then
-    vim.notify("belvedere: " .. tostring(err), vim.log.levels.ERROR)
+    vim.notify("grannos: " .. tostring(err), vim.log.levels.ERROR)
     return false
   end
   return true
@@ -164,7 +164,7 @@ function M.connect(name)
       end
     end
     if not params then
-      vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.ERROR)
+      vim.notify(("grannos: connection %q not found"):format(name), vim.log.levels.ERROR)
       return
     end
     connections.prompt_password(params, function(params_with_pw)
@@ -226,12 +226,12 @@ function M._send_connect(name, params, after_connect)
   client.request("connect", server_params, function(err, result)
     connections_panel.clear_conn_loading(name)
     if err then
-      vim.notify(("belvedere: %q failed — %s"):format(display, err), vim.log.levels.ERROR)
+      vim.notify(("grannos: %q failed — %s"):format(display, err), vim.log.levels.ERROR)
       connections_panel.set_conn_error(name, err)
       return
     end
     state.conns[name] = { conn_id = result.connection_id, driver = driver, key = name, driver_label = driver_label }
-    vim.notify(("belvedere: connected to %q (%s)"):format(display, driver_label), vim.log.levels.INFO)
+    vim.notify(("grannos: connected to %q (%s)"):format(display, driver_label), vim.log.levels.INFO)
     connections_panel.refresh()
     if after_connect then after_connect(name) end
   end)
@@ -241,7 +241,7 @@ end
 function M.associate()
   local keys = vim.tbl_keys(state.conns)
   if #keys == 0 then
-    vim.notify("belvedere: no open connections — open the connection panel with :DbConnections", vim.log.levels.WARN)
+    vim.notify("grannos: no open connections — open the connection panel with :DbConnections", vim.log.levels.WARN)
     return
   end
   table.sort(keys)
@@ -255,7 +255,7 @@ function M.associate()
   }, function(key)
     if not key then return end
     set_buf_conn(vim.api.nvim_get_current_buf(), key)
-    vim.notify(("belvedere: buffer associated with %q"):format(connections.conn_display_name(key)), vim.log.levels.INFO)
+    vim.notify(("grannos: buffer associated with %q"):format(connections.conn_display_name(key)), vim.log.levels.INFO)
   end)
 end
 
@@ -264,7 +264,7 @@ end
 function M.disconnect(name)
   local key = name ~= "" and name or state.buf_conns[vim.api.nvim_get_current_buf()]
   if not key then
-    vim.notify("belvedere: no active connection", vim.log.levels.WARN)
+    vim.notify("grannos: no active connection", vim.log.levels.WARN)
     return
   end
   local conn = state.conns[key]
@@ -279,12 +279,12 @@ function M.disconnect(name)
     end
   end
   if not conn then
-    vim.notify(("belvedere: not connected to %q"):format(name), vim.log.levels.ERROR)
+    vim.notify(("grannos: not connected to %q"):format(name), vim.log.levels.ERROR)
     return
   end
   client.request("disconnect", { connection_id = conn.conn_id }, function(err, _)
     if err then
-      vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
+      vim.notify("grannos: " .. err, vim.log.levels.ERROR)
       return
     end
     state.conns[key] = nil
@@ -292,7 +292,7 @@ function M.disconnect(name)
     for bufnr, conn_name in pairs(state.buf_conns) do
       if conn_name == key then set_buf_conn(bufnr, nil) end
     end
-    vim.notify(("belvedere: disconnected from %q"):format(connections.conn_display_name(key)), vim.log.levels.INFO)
+    vim.notify(("grannos: disconnected from %q"):format(connections.conn_display_name(key)), vim.log.levels.INFO)
     connections_panel.refresh()
   end)
 end
@@ -345,15 +345,15 @@ end
 --- @param first_line integer  0-indexed first line of `sql` in `bufnr`
 local function execute_sql(sql, bufnr, first_line)
   if not sql or sql == "" then
-    vim.notify("belvedere: no SQL to execute", vim.log.levels.WARN)
+    vim.notify("grannos: no SQL to execute", vim.log.levels.WARN)
     return
   end
   local conn = conn_for_buf(bufnr)
   if not conn then
     if next(state.conns) == nil then
-      vim.notify("belvedere: no active connection — use :DbConnections to connect", vim.log.levels.WARN)
+      vim.notify("grannos: no active connection — use :DbConnections to connect", vim.log.levels.WARN)
     else
-      vim.notify("belvedere: no active connection — run :DbAssociate first", vim.log.levels.WARN)
+      vim.notify("grannos: no active connection — run :DbAssociate first", vim.log.levels.WARN)
     end
     return
   end
@@ -383,7 +383,7 @@ function M.execute()
 
     local sql = selection.get_selection()
     if not sql or sql == "" then
-      vim.notify("belvedere: empty selection", vim.log.levels.WARN)
+      vim.notify("grannos: empty selection", vim.log.levels.WARN)
       return
     end
     execute_sql(sql, bufnr, sr)
@@ -399,7 +399,7 @@ function M.execute()
     -- Treesitter unavailable — fall back to the current line.
     local sql = vim.api.nvim_get_current_line()
     if vim.trim(sql) == "" then
-      vim.notify("belvedere: current line is empty", vim.log.levels.WARN)
+      vim.notify("grannos: current line is empty", vim.log.levels.WARN)
       return
     end
     execute_sql(sql, bufnr, vim.api.nvim_win_get_cursor(0)[1] - 1)
@@ -425,7 +425,7 @@ end
 function M.open_current_driver_help(opts)
   local conn = conn_for_buf(vim.api.nvim_get_current_buf())
   if not conn then
-    vim.notify("belvedere: no connection associated with this buffer", vim.log.levels.WARN)
+    vim.notify("grannos: no connection associated with this buffer", vim.log.levels.WARN)
     return
   end
   M.open_driver_help(conn.driver, opts)
@@ -439,7 +439,7 @@ function M.open_driver_help(driver, opts)
   if not start_backend() then return end
   client.request("driver.help", { driver = driver }, function(err, result)
     if err then
-      vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
+      vim.notify("grannos: " .. err, vim.log.levels.ERROR)
       return
     end
     local buf = vim.api.nvim_create_buf(false, true)
@@ -477,7 +477,7 @@ end
 function M.open_explorer_for(name)
   local conn = state.conns[name]
   if not conn then
-    vim.notify(("belvedere: not connected to %q — press <CR> to connect first"):format(connections.conn_display_name(name)), vim.log.levels.ERROR)
+    vim.notify(("grannos: not connected to %q — press <CR> to connect first"):format(connections.conn_display_name(name)), vim.log.levels.ERROR)
     return
   end
   explorer.open(conn.conn_id, connections.conn_display_name(name), conn.driver, name, conn.driver_label)
@@ -488,7 +488,7 @@ function M.open_explorer()
   local key = state.buf_conns[vim.api.nvim_get_current_buf()]
   local conn = key and state.conns[key]
   if not conn then
-    vim.notify("belvedere: no active connection — run :DbConnect first", vim.log.levels.WARN)
+    vim.notify("grannos: no active connection — run :DbConnect first", vim.log.levels.WARN)
     return
   end
   explorer.open(conn.conn_id, connections.conn_display_name(key), conn.driver, key, conn.driver_label)
@@ -507,14 +507,14 @@ end
 --- Stop the backend process and notify the user.
 function M.stop()
   teardown()
-  vim.notify("belvedere: backend stopped", vim.log.levels.INFO)
+  vim.notify("grannos: backend stopped", vim.log.levels.INFO)
 end
 
 --- Restart the backend process (teardown then start).
 function M.restart()
   teardown()
   if start_backend() then
-    vim.notify("belvedere: backend restarted", vim.log.levels.INFO)
+    vim.notify("grannos: backend restarted", vim.log.levels.INFO)
   end
 end
 
@@ -524,7 +524,7 @@ end
 local function open_save_query(content, bufnr)
   local ext = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":e")
   if ext == "" then ext = vim.bo[bufnr].filetype end
-  require("belvedere.ui.save_query").open(content, state.buf_conns[bufnr], ext)
+  require("grannos.ui.save_query").open(content, state.buf_conns[bufnr], ext)
 end
 
 --- Save the visual selection or current line as a named query (mode-aware).
@@ -534,13 +534,13 @@ function M.save_query()
   if selection.is_in_visual_mode() then
     content = selection.get_selection()
     if not content or content == "" then
-      vim.notify("belvedere: empty selection", vim.log.levels.WARN)
+      vim.notify("grannos: empty selection", vim.log.levels.WARN)
       return
     end
   else
     content = vim.api.nvim_get_current_line()
     if vim.trim(content) == "" then
-      vim.notify("belvedere: current line is empty", vim.log.levels.WARN)
+      vim.notify("grannos: current line is empty", vim.log.levels.WARN)
       return
     end
   end
@@ -555,7 +555,7 @@ function M.save_query_range(line1, line2)
   local lines   = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
   local content = table.concat(lines, "\n")
   if vim.trim(content) == "" then
-    vim.notify("belvedere: empty selection", vim.log.levels.WARN)
+    vim.notify("grannos: empty selection", vim.log.levels.WARN)
     return
   end
   open_save_query(content, bufnr)
@@ -574,13 +574,13 @@ function M.show_query_info()
   local line  = stmt and stmt.start_row or (vim.api.nvim_win_get_cursor(0)[1] - 1)
   local entry = log.find_at(conn_key, bufnr, line)
   if not entry then
-    vim.notify("belvedere: no executed query at cursor", vim.log.levels.INFO)
+    vim.notify("grannos: no executed query at cursor", vim.log.levels.INFO)
     return
   end
 
   if hover.is_open() then
     hover.close()
-    local results_ui = require("belvedere.ui.results")
+    local results_ui = require("grannos.ui.results")
     local conn       = state.conns[conn_key]
     results_ui.set_conn_name(conn_key, conn and conn.driver_label, entry.bufnr or bufnr)
     if entry.status == "success" then
@@ -632,12 +632,12 @@ function M.cancel_query()
   local line       = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-indexed
   local request_id = gutter.find_request_covering_line(bufnr, line)
   if not request_id then
-    vim.notify("belvedere: no running query covers the cursor", vim.log.levels.WARN)
+    vim.notify("grannos: no running query covers the cursor", vim.log.levels.WARN)
     return
   end
   client.cancel(request_id, function(err, _)
     if err then
-      vim.notify("belvedere: cancel failed — " .. err, vim.log.levels.ERROR)
+      vim.notify("grannos: cancel failed — " .. err, vim.log.levels.ERROR)
     end
   end)
 end
@@ -654,7 +654,7 @@ function M.ensure_connected(conn_key, callback)
   end
   local params = connections.get(conn_key)
   if not params then
-    vim.notify(("belvedere: connection %q not found"):format(conn_key), vim.log.levels.ERROR)
+    vim.notify(("grannos: connection %q not found"):format(conn_key), vim.log.levels.ERROR)
     return
   end
   connections.prompt_password(params, function(params_with_pw)
@@ -670,10 +670,10 @@ function M.load_query(conn_key)
     conn_key = state.buf_conns[vim.api.nvim_get_current_buf()]
   end
   if not conn_key then
-    vim.notify("belvedere: no connection associated with current buffer", vim.log.levels.WARN)
+    vim.notify("grannos: no connection associated with current buffer", vim.log.levels.WARN)
     return
   end
-  require("belvedere.ui.query_picker").open(conn_key)
+  require("grannos.ui.query_picker").open(conn_key)
 end
 
 --- Open the query log viewer for `conn_key` (defaults to the current buffer's connection).
@@ -681,7 +681,7 @@ end
 function M.query_log(conn_key)
   if not conn_key then
     local cur = vim.api.nvim_get_current_buf()
-    local results_ui = require("belvedere.ui.results")
+    local results_ui = require("grannos.ui.results")
     if results_ui.is_results_buf(cur) then
       conn_key = results_ui.conn_key_for_buf(cur)
     else
@@ -689,10 +689,10 @@ function M.query_log(conn_key)
     end
   end
   if not conn_key then
-    vim.notify("belvedere: no connection associated with current buffer", vim.log.levels.WARN)
+    vim.notify("grannos: no connection associated with current buffer", vim.log.levels.WARN)
     return
   end
-  require("belvedere.ui.query_log").open(conn_key, state.conns[conn_key])
+  require("grannos.ui.query_log").open(conn_key, state.conns[conn_key])
 end
 
 return M

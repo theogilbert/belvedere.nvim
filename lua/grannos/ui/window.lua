@@ -1,4 +1,4 @@
--- Shared window helpers for belvedere's sidebar panels.
+-- Shared window helpers for grannos's sidebar panels.
 local M = {}
 
 local SIDEBAR_WIDTH = 35

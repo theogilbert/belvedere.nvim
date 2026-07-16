@@ -1,4 +1,4 @@
-# belvedere.nvim
+# grannos.nvim
 
 A Neovim database client. Communicates with an external server backend over newline-delimited JSON on stdio — see the [protocol spec](docs/protocol.md).
 
@@ -16,9 +16,9 @@ Install a server backend, then install the plugin with your plugin manager:
 **lazy.nvim**
 ```lua
 {
-  "you/belvedere.nvim",
+  "you/grannos.nvim",
   config = function()
-    require("belvedere").setup()
+    require("grannos").setup()
   end,
 }
 ```
@@ -27,12 +27,12 @@ Install a server backend, then install the plugin with your plugin manager:
 
 ```lua
 -- plugins.lua
-require("belvedere").setup({
+require("grannos").setup({
   server_cmd = "belvedere --log -v"
 })
 
 -- keymaps.lua
-local dbelveder = require("belvedere")
+local dbelveder = require("grannos")
 vim.keymap.set("n", "<leader>bC", dbelveder.open_connections, { desc = "Data[b]ase - [c]onnections" })
 vim.keymap.set("n", "<leader>bc", dbelveder.connect, { desc = "Data[b]ase - [c]onnect" })
 vim.keymap.set("n", "<leader>bh", function() dbelveder.open_current_driver_help({ position = "bottom" }) end, { desc = "Data[b]ase [h]elp" })
@@ -49,20 +49,20 @@ vim.keymap.set({"n", "v"}, "<leader>bl", dbelveder.load_query, { desc = "Data[b]
 `setup()` is required. All options have defaults:
 
 ```lua
-require("belvedere").setup({
+require("grannos").setup({
   -- Command used to launch the server backend.
   -- Default: "belvedere" (assumes it is on $PATH).
   server_cmd = "belvedere",
 
   -- Override the path to the connections file.
-  -- Default: $XDG_CONFIG_HOME/belvedere/connections.json
-  --          (~/.config/belvedere/connections.json on most systems)
-  -- connections_file = vim.fn.expand("~/.config/belvedere/connections.json"),
+  -- Default: $XDG_CONFIG_HOME/grannos/connections.json
+  --          (~/.config/grannos/connections.json on most systems)
+  -- connections_file = vim.fn.expand("~/.config/grannos/connections.json"),
 
   -- Override the directory where saved queries are stored.
-  -- Default: $XDG_DATA_HOME/belvedere/queries/
-  --          (~/.local/share/belvedere/queries/ on most systems)
-  -- queries_dir = vim.fn.expand("~/.local/share/belvedere/queries"),
+  -- Default: $XDG_DATA_HOME/grannos/queries/
+  --          (~/.local/share/grannos/queries/ on most systems)
+  -- queries_dir = vim.fn.expand("~/.local/share/grannos/queries"),
 
   keymaps = {
     -- Key in the connections panel to show the error details float.
@@ -82,7 +82,7 @@ require("belvedere").setup({
 
 ### 1. Manage connections
 
-Open the connections panel with `:DbConnections`. Connections are grouped by driver and persist across sessions in `~/.config/belvedere/connections.json`.
+Open the connections panel with `:DbConnections`. Connections are grouped by driver and persist across sessions in `~/.config/grannos/connections.json`.
 
 | Key | Action |
 |-----|--------|
@@ -205,7 +205,7 @@ If the current buffer has an associated connection the scope picker lets you cho
 
 Duplicate names within the same scope are rejected with a warning and you are re-prompted for the name.
 
-Queries are stored as plain files under `~/.local/share/belvedere/queries/` and inherit the file extension of the source buffer (e.g. `.sql`, `.cypher`).
+Queries are stored as plain files under `~/.local/share/grannos/queries/` and inherit the file extension of the source buffer (e.g. `.sql`, `.cypher`).
 
 ### 6. Load saved queries
 
@@ -219,7 +219,7 @@ Or press `l` on a connection or group entry in the connections panel.
 
 A picker (fzf-lua if available, otherwise `vim.ui.select`) lists all queries in scope — connection-specific entries appear first, then group-level, then driver-level. Searching matches both name and content simultaneously.
 
-On `<CR>` the query opens in a new buffer (`belvedere://queries/…`) associated with the connection, so `:DbExecute` works immediately. The buffer is editable — a comment at the top reminds you that edits do not update the saved query file. On `<C-d>` the selected query is deleted (with confirmation).
+On `<CR>` the query opens in a new buffer (`grannos://queries/…`) associated with the connection, so `:DbExecute` works immediately. The buffer is editable — a comment at the top reminds you that edits do not update the saved query file. On `<C-d>` the selected query is deleted (with confirmation).
 
 ### 7. Explore the schema
 
@@ -259,11 +259,11 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 
 ## Connections file
 
-Connections are stored in `~/.config/belvedere/connections.json` (XDG-compliant). The file is created automatically on first save. Passwords are not stored — you are prompted at connect time.
+Connections are stored in `~/.config/grannos/connections.json` (XDG-compliant). The file is created automatically on first save. Passwords are not stored — you are prompted at connect time.
 
 ### Write protection
 
-By default, belvedere detects write operations (DML and DDL) in SQL and Cypher buffers before executing and prompts for confirmation. The prompt offers three choices:
+By default, grannos detects write operations (DML and DDL) in SQL and Cypher buffers before executing and prompts for confirmation. The prompt offers three choices:
 
 - **Abort** — cancel the execution
 - **Execute** — run this time, keep prompting on future writes
@@ -300,10 +300,10 @@ The per-connection `allow_writes` flag is stored in `connections.json`. When set
 
 ## Queries directory
 
-Saved queries live under `~/.local/share/belvedere/queries/` (XDG-compliant). The directory is created automatically on first save. Each query is stored as a plain text file whose extension matches the source buffer:
+Saved queries live under `~/.local/share/grannos/queries/` (XDG-compliant). The directory is created automatically on first save. Each query is stored as a plain text file whose extension matches the source buffer:
 
 ```
-~/.local/share/belvedere/queries/
+~/.local/share/grannos/queries/
   driver/<server>/<driver>/
     <name>.<ext>              ← applies to any connection using this driver
   group/<server>/<driver>/<group>/
@@ -319,7 +319,7 @@ Files can be edited or deleted directly from the filesystem.
 ## Lua API
 
 ```lua
-local db = require("belvedere")
+local db = require("grannos")
 
 -- Configure (call once at startup).
 db.setup(opts)
@@ -371,7 +371,7 @@ db.cancel_query()
 ```
 
 ```lua
-local conns = require("belvedere.connections")
+local conns = require("grannos.connections")
 
 -- Load the full connections file: returns { server -> { driver -> { label, groups -> { group -> { name -> params } } } } }
 conns.load_all()

@@ -1,4 +1,4 @@
-local export = require("belvedere.export")
+local export = require("grannos.export")
 
 describe("export.to_json", function()
   it("renders rows as a pretty-printed array of objects in column order", function()

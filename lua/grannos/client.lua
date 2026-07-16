@@ -125,14 +125,14 @@ function M.start(cmd)
         entry.cb("backend exited", nil)
       end
       if code ~= 0 then
-        vim.notify(("belvedere: backend exited with code %d"):format(code), vim.log.levels.ERROR)
+        vim.notify(("grannos: backend exited with code %d"):format(code), vim.log.levels.ERROR)
       end
     end,
     stdin  = "pipe",
     stdout = "pipe",
   })
   if job_id <= 0 then
-    error(("belvedere: failed to start %q — is it installed?"):format(cmd))
+    error(("grannos: failed to start %q — is it installed?"):format(cmd))
   end
   state.job_id = job_id
 end

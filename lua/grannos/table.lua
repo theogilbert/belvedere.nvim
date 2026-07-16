@@ -242,7 +242,7 @@ function M.null_hl_rules(tbl)
     for j, cell in ipairs(row) do
       if cell == vim.NIL then
         rules[#rules + 1] = {
-          higroup = "BelvedereNull",
+          higroup = "GrannosNull",
           start   = { buf_line, positions[j][1] },
           finish  = { buf_line, positions[j][2] },
         }
@@ -266,7 +266,7 @@ function M.lob_hl_rules(tbl)
     for j, cell in ipairs(row) do
       if is_lob(cell) then
         rules[#rules + 1] = {
-          higroup = "BelvedereLob",
+          higroup = "GrannosLob",
           start   = { buf_line, positions[j][1] },
           finish  = { buf_line, positions[j][2] },
         }
@@ -300,7 +300,7 @@ function M.thousands_hl_rules(tbl)
           local a, b = int_s:find(sep_char, from, true)
           if not a then break end
           rules[#rules + 1] = {
-            higroup = "BelvedereThousandsSeparator",
+            higroup = "GrannosThousandsSeparator",
             start   = { buf_line, base + a - 1 },
             finish  = { buf_line, base + b },
           }
@@ -318,9 +318,9 @@ end
 --- @param buf_id integer
 function M.setup_buf_hl(buf_id)
   vim.api.nvim_buf_call(buf_id, function()
-    vim.cmd("syntax match BelvedereTableBorder /[│├┼─┤]/")
+    vim.cmd("syntax match GrannosTableBorder /[│├┼─┤]/")
   end)
-  vim.cmd("highlight link BelvedereTableBorder BelvedereBorder")
+  vim.cmd("highlight link GrannosTableBorder GrannosBorder")
 end
 
 return M

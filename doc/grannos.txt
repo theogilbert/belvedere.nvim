@@ -1,28 +1,28 @@
-*belvedere.txt*  Database client for Neovim
+*grannos.txt*  Database client for Neovim
 
-Author:   belvedere contributors
+Author:   grannos contributors
 License:  MIT
 
 ================================================================================
-CONTENTS                                                    *belvedere-contents*
+CONTENTS                                                    *grannos-contents*
 
-  1. Introduction ....................................... |belvedere-intro|
-  2. Requirements ....................................... |belvedere-requirements|
-  3. Setup .............................................. |belvedere-setup|
-  4. Connections panel .................................. |belvedere-connections|
-  5. Commands ........................................... |belvedere-commands|
-  6. Query log .......................................... |belvedere-query-log|
-  7. Saved queries ...................................... |belvedere-saved-queries|
-  8. Explorer ........................................... |belvedere-explorer|
-  9. Results window ..................................... |belvedere-results|
- 10. Lua API ............................................ |belvedere-api|
- 11. Configuration ...................................... |belvedere-config|
- 12. Supported databases ................................ |belvedere-drivers|
+  1. Introduction ....................................... |grannos-intro|
+  2. Requirements ....................................... |grannos-requirements|
+  3. Setup .............................................. |grannos-setup|
+  4. Connections panel .................................. |grannos-connections|
+  5. Commands ........................................... |grannos-commands|
+  6. Query log .......................................... |grannos-query-log|
+  7. Saved queries ...................................... |grannos-saved-queries|
+  8. Explorer ........................................... |grannos-explorer|
+  9. Results window ..................................... |grannos-results|
+ 10. Lua API ............................................ |grannos-api|
+ 11. Configuration ...................................... |grannos-config|
+ 12. Supported databases ................................ |grannos-drivers|
 
 ================================================================================
-INTRODUCTION                                                   *belvedere-intro*
+INTRODUCTION                                                   *grannos-intro*
 
-belvedere.nvim is a database client for Neovim. It delegates all database
+grannos.nvim is a database client for Neovim. It delegates all database
 connectivity to an external server process, communicating with it over
 newline-delimited JSON on stdio (the belvedere protocol).
 
@@ -34,22 +34,22 @@ config), so they persist across sessions and are shared between any client
 that speaks the belvedere protocol.
 
 ================================================================================
-REQUIREMENTS                                            *belvedere-requirements*
+REQUIREMENTS                                            *grannos-requirements*
 
 - Neovim 0.9 or later
 - A server that implements the belvedere protocol, on $PATH or configured
-  via |belvedere-server_cmd|. See your server's documentation for
+  via |grannos-server_cmd|. See your server's documentation for
   installation instructions and supported drivers.
 ================================================================================
-SETUP                                                         *belvedere-setup*
+SETUP                                                         *grannos-setup*
 
-Call `require("belvedere").setup()` once in your config: >lua
-  require("belvedere").setup()
+Call `require("grannos").setup()` once in your config: >lua
+  require("grannos").setup()
 <
-All options are optional. See |belvedere-config| for the full reference.
+All options are optional. See |grannos-config| for the full reference.
 
 ================================================================================
-CONNECTIONS PANEL                                        *belvedere-connections*
+CONNECTIONS PANEL                                        *grannos-connections*
 
 Open the connections panel with |:DbConnections|. Connections are grouped by
 driver and persist across sessions. A "Connected to name (driver)" label
@@ -58,15 +58,15 @@ appears at the bottom of any window whose buffer has an associated connection.
 CONNECTIONS FILE ~
 
 The default location is: >
-  $XDG_CONFIG_HOME/belvedere/connections.json
-  (~/.config/belvedere/connections.json on most systems)
+  $XDG_CONFIG_HOME/grannos/connections.json
+  (~/.config/grannos/connections.json on most systems)
 <
 The directory and file are created automatically when you save your first
 connection. You can edit the file directly, or use the panel keymaps below.
 
-WRITE PROTECTION ~                                  *belvedere-write-protection*
+WRITE PROTECTION ~                                  *grannos-write-protection*
 
-For SQL and Cypher buffers, belvedere uses treesitter to detect write
+For SQL and Cypher buffers, grannos uses treesitter to detect write
 operations (DML and DDL statements) before dispatching a query. When a write
 is detected and the connection has not been permanently allowed, a prompt
 offers three choices:
@@ -123,7 +123,7 @@ STATUS INDICATORS ~
   ⠋…  Connecting in progress (animated spinner)
 
 ================================================================================
-COMMANDS                                                    *belvedere-commands*
+COMMANDS                                                    *grannos-commands*
 
                                                            *:DbConnections*
 :DbConnections
@@ -184,19 +184,19 @@ COMMANDS                                                    *belvedere-commands*
 
     Duplicate names within the same scope are rejected with a warning and
     you are re-prompted. On success a notification confirms the name and
-    scope. See |belvedere-saved-queries| for storage details.
+    scope. See |grannos-saved-queries| for storage details.
 
                                                           *:DbLoadQueries*
 :DbLoadQueries
     Open the saved-queries picker for the connection associated with the
     current buffer. Requires the buffer to have an associated connection
     (run |:DbAssociate| first if needed). Equivalent to `l` in the
-    connections panel. See |belvedere-saved-queries|.
+    connections panel. See |grannos-saved-queries|.
 
                                                            *:DbQueryLog*
 :DbQueryLog
     Open the query log for the connection associated with the current buffer.
-    See |belvedere-query-log|.
+    See |grannos-query-log|.
 
                                                          *:DbCancelQuery*
 :DbCancelQuery
@@ -209,7 +209,7 @@ COMMANDS                                                    *belvedere-commands*
 :DbExplore
     Open the schema explorer sidebar for the connection associated with
     the current buffer (falls back to any open connection).
-    See |belvedere-explorer|.
+    See |grannos-explorer|.
 
                                                                 *:DbStop*
 :DbStop
@@ -222,7 +222,7 @@ COMMANDS                                                    *belvedere-commands*
     associations) is cleared.
 
 ================================================================================
-QUERY LOG                                               *belvedere-query-log*
+QUERY LOG                                               *grannos-query-log*
 
 |:DbQueryLog| opens a floating four-panel UI showing all queries executed on
 the current buffer's connection during this session.
@@ -258,7 +258,7 @@ STATUS INDICATORS ~
   …       Query is still running.
 
 ================================================================================
-SAVED QUERIES                                          *belvedere-saved-queries*
+SAVED QUERIES                                          *grannos-saved-queries*
 
 Use |:DbSaveQuery| to store a query with a name and a scope.
 
@@ -290,7 +290,7 @@ In the fzf-lua picker you can search by both name and content simultaneously.
 QUERY BUFFER ~
 
 A query opened from the picker gets a dedicated buffer:
-  - Name: `belvedere://queries/<scope>/<query_name>`
+  - Name: `grannos://queries/<scope>/<query_name>`
   - `buftype=nofile`, editable (`modifiable=true`)
   - A comment at the top of the buffer notes that edits do not update the
     saved query file on disk.
@@ -302,8 +302,8 @@ A query opened from the picker gets a dedicated buffer:
 STORAGE ~
 
 Queries are stored as plain text files under: >
-  $XDG_DATA_HOME/belvedere/queries/
-  (~/.local/share/belvedere/queries/ on most systems)
+  $XDG_DATA_HOME/grannos/queries/
+  (~/.local/share/grannos/queries/ on most systems)
 <
 The directory tree mirrors the scope hierarchy: >
   driver/<server>/<driver>/<name>.<ext>
@@ -313,14 +313,14 @@ The directory tree mirrors the scope hierarchy: >
 The file extension is taken from the source buffer (e.g. `.sql`, `.cypher`).
 Files can be opened, edited, and deleted directly in the filesystem.
 The directory is created automatically on first save. Override the location
-with |belvedere-queries_dir|.
+with |grannos-queries_dir|.
 
 ================================================================================
-EXPLORER                                                    *belvedere-explorer*
+EXPLORER                                                    *grannos-explorer*
 
 |:DbExplore| opens a vertical sidebar showing the database object tree.
 The window title bar (winbar) displays the connection name and driver.
-The buffer is named `belvedere://explorer [name (driver)]`.
+The buffer is named `grannos://explorer [name (driver)]`.
 
 KEYMAPS ~
 
@@ -340,9 +340,9 @@ TREE STRUCTURE ~
 The tree hierarchy is entirely defined by the server. Refer to your
 server's documentation for the object tree it exposes per driver.
 ================================================================================
-RESULTS WINDOW                                               *belvedere-results*
+RESULTS WINDOW                                               *grannos-results*
 
-Query results are shown in a dedicated buffer named `belvedere://results`.
+Query results are shown in a dedicated buffer named `grannos://results`.
 
 - Columns are right-padded and aligned.
 - A separator line is drawn below the header.
@@ -350,10 +350,10 @@ Query results are shown in a dedicated buffer named `belvedere://results`.
 - DML queries (INSERT, UPDATE, DELETE) show an affected-row count instead.
 - Multiple statements separated by `;` are executed sequentially; each
   result is shown under a labelled heading (`── Query 1 / 3 ──`, etc.).
-- Results are paginated; page size is controlled by |belvedere-page_size|.
+- Results are paginated; page size is controlled by |grannos-page_size|.
 
 The buffer is read-only and reused across queries. Its direction and size
-are controlled by |belvedere-results-split| and |belvedere-results-height|.
+are controlled by |grannos-results-split| and |grannos-results-height|.
 
 KEYMAPS ~
 
@@ -366,103 +366,103 @@ KEYMAPS ~
   g?      Show a keymap reference float.
 
 ================================================================================
-LUA API                                                          *belvedere-api*
+LUA API                                                          *grannos-api*
 
-                                                      *belvedere.setup()*
-require("belvedere").setup({opts})
+                                                      *grannos.setup()*
+require("grannos").setup({opts})
     Initialize the plugin. Must be called before any other function.
-    {opts} is optional — see |belvedere-config|.
+    {opts} is optional — see |grannos-config|.
 
-                                              *belvedere.open_connections()*
-require("belvedere").open_connections()
+                                              *grannos.open_connections()*
+require("grannos").open_connections()
     Toggle the connections panel. Equivalent to |:DbConnections|.
 
-                                                    *belvedere.connect()*
-require("belvedere").connect([{name}])
+                                                    *grannos.connect()*
+require("grannos").connect([{name}])
     Open the connection picker, or connect directly to {name} if given.
     Equivalent to |:DbConnect|.
 
-                                                  *belvedere.associate()*
-require("belvedere").associate()
+                                                  *grannos.associate()*
+require("grannos").associate()
     Open a picker of active connections and associate the current buffer
     with the chosen one. Equivalent to |:DbAssociate|.
 
-                                                 *belvedere.disconnect()*
-require("belvedere").disconnect({name})
+                                                 *grannos.disconnect()*
+require("grannos").disconnect({name})
     Disconnect {name}. Pass an empty string to disconnect the connection
     of the current buffer.
 
-                                                    *belvedere.execute()*
-require("belvedere").execute()
+                                                    *grannos.execute()*
+require("grannos").execute()
     Execute the visual selection (when called from a visual-mode Lua
     keymap) or the current line (normal mode) against the current
     buffer's connection.
 
-                                                *belvedere.buffers_for()*
-require("belvedere").buffers_for({name})
+                                                *grannos.buffers_for()*
+require("grannos").buffers_for({name})
     Return a list of buffer numbers whose associated connection is {name}.
     Only valid buffers are included.
 
-                                              *belvedere.execute_range()*
-require("belvedere").execute_range({line1}, {line2})
+                                              *grannos.execute_range()*
+require("grannos").execute_range({line1}, {line2})
     Execute lines {line1}–{line2} (1-based) from the current buffer.
 
-                                               *belvedere.open_explorer()*
-require("belvedere").open_explorer()
+                                               *grannos.open_explorer()*
+require("grannos").open_explorer()
     Open the explorer for the current buffer's connection (or any open
     connection). Equivalent to |:DbExplore|.
 
-                                            *belvedere.open_explorer_for()*
-require("belvedere").open_explorer_for({name})
+                                            *grannos.open_explorer_for()*
+require("grannos").open_explorer_for({name})
     Open the explorer for the named connection specifically.
 
-                                                      *belvedere.stop()*
-require("belvedere").stop()
+                                                      *grannos.stop()*
+require("grannos").stop()
     Kill the server process and clear all state.
     Equivalent to |:DbStop|.
 
-                                                   *belvedere.restart()*
-require("belvedere").restart()
+                                                   *grannos.restart()*
+require("grannos").restart()
     Restart the server process. Equivalent to |:DbRestart|.
 
-                                                *belvedere.save_query()*
-require("belvedere").save_query()
+                                                *grannos.save_query()*
+require("grannos").save_query()
     Open the save-query UI. Reads the visual selection when called from a
     visual-mode keymap, or the current line in normal mode. The current
     buffer's associated connection (if any) is used to pre-populate the
     scope picker. The file extension is taken from the current buffer.
-    See |belvedere-saved-queries|.
+    See |grannos-saved-queries|.
 
-                                                *belvedere.load_query()*
-require("belvedere").load_query([{conn_key}])
+                                                *grannos.load_query()*
+require("grannos").load_query([{conn_key}])
     Open the saved-queries picker for {conn_key}. If {conn_key} is omitted,
     the connection associated with the current buffer is used. Shows a
     warning if no connection can be resolved.
-    Equivalent to |:DbLoadQueries|. See |belvedere-saved-queries|.
+    Equivalent to |:DbLoadQueries|. See |grannos-saved-queries|.
 
-                                               *belvedere.query_log()*
-require("belvedere").query_log([{conn_key}])
+                                               *grannos.query_log()*
+require("grannos").query_log([{conn_key}])
     Open the query log for {conn_key}. If {conn_key} is omitted, the
     connection associated with the current buffer is used. Shows a warning
     if no connection can be resolved.
-    Equivalent to |:DbQueryLog|. See |belvedere-query-log|.
+    Equivalent to |:DbQueryLog|. See |grannos-query-log|.
 
-                                              *belvedere.cancel_query()*
-require("belvedere").cancel_query()
+                                              *grannos.cancel_query()*
+require("grannos").cancel_query()
     Cancel the in-flight query whose gutter running icon sits on the cursor
     line of the current buffer. Looks up the request id stored when the
     query was dispatched and sends a `cancel` request to the server. If the
     cursor is not on a running-query line a warning is shown.
     Equivalent to |:DbCancelQuery|.
 
-                                       *belvedere.open_current_driver_help()*
-require("belvedere").open_current_driver_help([{opts}])
+                                       *grannos.open_current_driver_help()*
+require("grannos").open_current_driver_help([{opts}])
     Fetch and display documentation for the driver associated with the
     current buffer's connection. Shows a warning if the buffer has no
-    associated connection. See |belvedere.open_driver_help()| for {opts}.
+    associated connection. See |grannos.open_driver_help()| for {opts}.
 
-                                              *belvedere.open_driver_help()*
-require("belvedere").open_driver_help({driver} [, {opts}])
+                                              *grannos.open_driver_help()*
+require("grannos").open_driver_help({driver} [, {opts}])
     Fetch documentation for {driver} from the server and display it with
     markdown highlighting. Press q or <Esc> to close.
 
@@ -473,61 +473,61 @@ require("belvedere").open_driver_help({driver} [, {opts}])
     Equivalent to pressing `?` in the connections panel (always float).
 
 CONNECTIONS MODULE ~
-                                                  *belvedere-connections-api*
+                                                  *grannos-connections-api*
 
 Connection keys are NUL-separated strings of the form
 `server\0driver\0group\0name`. Most callers receive keys from other
 module functions rather than constructing them directly.
 
-require("belvedere.connections").load_all()
+require("grannos.connections").load_all()
     Returns the full file as a nested table:
     `{ server -> { driver -> { label, groups -> { group -> { name -> params } } } } }`
 
-require("belvedere.connections").load({server})
+require("grannos.connections").load({server})
     Returns the driver map for {server}: `{ driver -> { label, groups -> ... } }`.
 
-require("belvedere.connections").get({key})
+require("grannos.connections").get({key})
     Returns the params table for the 4-part {key}, or nil.
 
-require("belvedere.connections").delete({key})
+require("grannos.connections").delete({key})
     Removes the connection identified by {key} from the connections file.
 
-require("belvedere.connections").pick({caps}, {active_set}, {callback})
+require("grannos.connections").pick({caps}, {active_set}, {callback})
     Opens the connection picker. {active_set} is a table of currently
     connected keys (used to annotate entries). {caps} is the server
     capabilities object (used if the user selects "New connection").
     {callback} is called as `callback(key, params)` on selection, or
     `callback(nil)` on cancel.
 
-require("belvedere.connections").create({caps}, {callback})
+require("grannos.connections").create({caps}, {callback})
     Runs the new-connection wizard using {caps} from the server to drive
     the driver list and field prompts. {callback} is called as
     `callback(key, params)` on completion, or `callback(nil)` on cancel.
 
-require("belvedere.connections").edit({key}, {caps}, {callback})
+require("grannos.connections").edit({key}, {caps}, {callback})
     Runs the edit wizard for the connection identified by {key}, with all
     fields pre-filled from the stored values. {callback} is called as
     `callback(new_key, params)` on completion, or `callback(nil)` on
     cancel.
 
-require("belvedere.connections").clone({key}, {new_name}, {caps}, {callback})
+require("grannos.connections").clone({key}, {new_name}, {caps}, {callback})
     Clones the connection identified by {key} as {new_name}, running the
     field-edit wizard with all values pre-filled. {callback} is called as
     `callback(new_key, params)` on completion, or `callback(nil)` on cancel.
 
-require("belvedere.connections").set_allow_writes({key})
+require("grannos.connections").set_allow_writes({key})
     Sets `allow_writes = true` for the connection identified by {key} and
     persists the change to the connections file immediately. This suppresses
     all future write-protection prompts for that connection. See
-    |belvedere-write-protection|.
+    |grannos-write-protection|.
 
 ================================================================================
-CONFIGURATION                                                 *belvedere-config*
+CONFIGURATION                                                 *grannos-config*
 
 All keys are optional.
 
 >lua
-  require("belvedere").setup({
+  require("grannos").setup({
     server_cmd       = "belvedere",
     connections_file = nil,   -- auto-detected from $XDG_CONFIG_HOME
     queries_dir      = nil,   -- auto-detected from $XDG_DATA_HOME
@@ -544,61 +544,61 @@ All keys are optional.
   })
 <
 
-                                                       *belvedere-server_cmd*
+                                                       *grannos-server_cmd*
 server_cmd ~
   Type: `string`   Default: `"belvedere"`
 
   Shell command used to launch the server process. Can include arguments.
 
-                                                  *belvedere-connections_file*
+                                                  *grannos-connections_file*
 connections_file ~
-  Type: `string`   Default: `$XDG_CONFIG_HOME/belvedere/connections.json`
+  Type: `string`   Default: `$XDG_CONFIG_HOME/grannos/connections.json`
 
   Path to the JSON file where connections are stored. The directory is
   created automatically on first save.
 
-                                                      *belvedere-queries_dir*
+                                                      *grannos-queries_dir*
 queries_dir ~
-  Type: `string`   Default: `$XDG_DATA_HOME/belvedere/queries`
+  Type: `string`   Default: `$XDG_DATA_HOME/grannos/queries`
 
   Root directory for saved queries. Each query is stored as a plain text
   file in a subdirectory that encodes its scope. The directory is created
-  automatically on first save. See |belvedere-saved-queries|.
+  automatically on first save. See |grannos-saved-queries|.
 
-                                                    *belvedere-hover-key*
+                                                    *grannos-hover-key*
 keymaps.hover_key ~
   Type: `string`   Default: `"K"`
 
   Key inside the connections panel to open the hover float (connection
   details or error message).
 
-                                                   *belvedere-results-split*
+                                                   *grannos-results-split*
 results.split ~
   Type: `"below"` | `"right"`   Default: `"below"`
 
   Direction of the results window split.
 
-                                                  *belvedere-results-height*
+                                                  *grannos-results-height*
 results.height ~
   Type: `integer`   Default: `15`
 
   Height in lines of the results split (only applies when `split = "below"`).
 
-                                                       *belvedere-page_size*
+                                                       *grannos-page_size*
 results.page_size ~
   Type: `integer`   Default: `500`
 
   Number of rows per page in the results window. Use `[` and `]` to
   navigate between pages.
 
-                                              *belvedere-thousands_separator*
+                                              *grannos-thousands_separator*
 results.thousands_separator ~
   Type: `string|false`   Default: `"_"`
 
   Character inserted between digit groups in numeric cells (e.g.
   `"1_234_567"`). Set to `false` or `""` to disable grouping.
 
-                                                *belvedere-decimal_separator*
+                                                *grannos-decimal_separator*
 results.decimal_separator ~
   Type: `string|false`   Default: `"."`
 
@@ -609,11 +609,11 @@ results.decimal_separator ~
   `"1.234.567,89"`).
 
   The thousands separator is highlighted slightly dimmer than the digits
-  (`BelvedereThousandsSeparator`); the decimal separator is always
+  (`GrannosThousandsSeparator`); the decimal separator is always
   highlighted the same as the surrounding digits.
 
 ================================================================================
-SUPPORTED DATABASES                                          *belvedere-drivers*
+SUPPORTED DATABASES                                          *grannos-drivers*
 
 The available drivers depend entirely on the server. Driver identifiers and
 their connection parameters are announced at runtime via the `capabilities`

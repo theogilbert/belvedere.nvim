@@ -4,7 +4,7 @@
 -- index-specific content rendering.
 local M = {}
 
-local pane = require("belvedere.ui.detail_pane")
+local pane = require("grannos.ui.detail_pane")
 local ICON = "󰒻 "
 
 --- @param v any
@@ -38,16 +38,16 @@ local function render(buf, idx)
   -- One-liner: type · unique/non-unique · [clustered] · [invisible/disabled]
   local tagged = {}
   if not is_nil(idx.index_type) and idx.index_type ~= "" then
-    tagged[#tagged + 1] = { idx.index_type, "BelvedereExplorerIndex" }
+    tagged[#tagged + 1] = { idx.index_type, "GrannosExplorerIndex" }
   end
   tagged[#tagged + 1] = idx.unique
-    and { "unique",     "BelvedereQuerySuccess" }
-    or  { "non-unique", "BelvedereExplorerDim"  }
+    and { "unique",     "GrannosQuerySuccess" }
+    or  { "non-unique", "GrannosExplorerDim"  }
   if idx.clustered then
-    tagged[#tagged + 1] = { "clustered", "BelvedereExplorerSchema" }
+    tagged[#tagged + 1] = { "clustered", "GrannosExplorerSchema" }
   end
   if not is_nil(idx.visible) and not idx.visible then
-    tagged[#tagged + 1] = { "invisible", "BelvedereError" }
+    tagged[#tagged + 1] = { "invisible", "GrannosError" }
   end
 
   local row0 = #lines
@@ -72,7 +72,7 @@ local function render(buf, idx)
       local frow = #lines
       lines[#lines + 1] = "  " .. f.name .. dir
       if dir ~= "" then
-        hls[#hls + 1] = { "BelvedereExplorerDim", frow, 2 + #f.name, -1 }
+        hls[#hls + 1] = { "GrannosExplorerDim", frow, 2 + #f.name, -1 }
       end
     end
     lines[#lines + 1] = ""
@@ -90,7 +90,7 @@ local function render(buf, idx)
     for _, dline in ipairs(vim.split(idx.ddl, "\n", { plain = true })) do
       local drow = #lines
       lines[#lines + 1] = "  " .. dline
-      hls[#hls + 1] = { "BelvedereExplorerDim", drow, 2, -1 }
+      hls[#hls + 1] = { "GrannosExplorerDim", drow, 2, -1 }
     end
   end
 
@@ -103,7 +103,7 @@ end
 function M.open(details, title)
   local indices = type(details.indices) == "table" and details.indices or {}
   if #indices == 0 then
-    vim.notify("belvedere: no indices found for this table", vim.log.levels.WARN)
+    vim.notify("grannos: no indices found for this table", vim.log.levels.WARN)
     return
   end
   pane.open_searchable_two_pane({

@@ -4,14 +4,14 @@
 --          K hover, ? driver help, R refresh, q close.
 local M = {}
 
-local Buffer      = require("belvedere.buffer")
-local connections = require("belvedere.connections")
-local config      = require("belvedere.config")
-local hl          = require("belvedere.hl")
-local window      = require("belvedere.ui.window")
-local Spinner     = require("belvedere.ui.spinner")
+local Buffer      = require("grannos.buffer")
+local connections = require("grannos.connections")
+local config      = require("grannos.config")
+local hl          = require("grannos.hl")
+local window      = require("grannos.ui.window")
+local Spinner     = require("grannos.ui.spinner")
 
-local BUFNAME     = "belvedere://connections"
+local BUFNAME     = "grannos://connections"
 local ACTIVE_MARK = " ✓"
 local ERROR_MARK  = " ✗"
 local ICON_DRIVER = "\xEF\x87\x80"  -- U+F1C0  nf-fa-database
@@ -50,8 +50,8 @@ local function build(server, server_data, active_set)
     local _, _, _, conn_name = connections.conn_parts(key)
     table.insert(lines,    string.rep(" ", indent) .. ICON_CONN .. " " .. conn_name .. mark)
     table.insert(line_map, { type = "conn", key = key })
-    if active      then hl_rules[#lines] = "BelvedereConnection"
-    elseif has_err then hl_rules[#lines] = "BelvedereConnError" end
+    if active      then hl_rules[#lines] = "GrannosConnection"
+    elseif has_err then hl_rules[#lines] = "GrannosConnError" end
   end
 
   local driver_ids = vim.tbl_keys(server_data)
@@ -76,7 +76,7 @@ local function build(server, server_data, active_set)
     local chevron  = expanded and "▾ " or "▸ "
     table.insert(lines,    chevron .. ICON_DRIVER .. " " .. label .. " (" .. total .. ")")
     table.insert(line_map, { type = "header", driver = driver_id })
-    hl_rules[#lines] = "BelvedereHeaderRow"
+    hl_rules[#lines] = "GrannosHeaderRow"
 
     if expanded then
       local group_names = vim.tbl_keys(groups)
@@ -100,7 +100,7 @@ local function build(server, server_data, active_set)
           local sg_chev = sg_exp and "▾ " or "▸ "
           table.insert(lines,    "  " .. sg_chev .. ICON_GROUP .. " " .. group_name .. " (" .. #conn_names .. ")")
           table.insert(line_map, { type = "subgroup", driver = driver_id, group = group_name })
-          hl_rules[#lines] = "BelvedereHeaderRow"
+          hl_rules[#lines] = "GrannosHeaderRow"
           if sg_exp then
             for _, conn_name in ipairs(conn_names) do
               add_conn_row(connections.conn_key(server, driver_id, group_name, conn_name), 6)
@@ -131,8 +131,8 @@ end
 local function refresh()
   if state.panel_loading then return end
 
-  local db   = require("belvedere")
-  local caps = require("belvedere.client").capabilities()
+  local db   = require("grannos")
+  local caps = require("grannos.client").capabilities()
   local server = caps and (caps.server or "") or ""
 
   local active_set = {}
@@ -150,7 +150,7 @@ local function refresh()
   for lnum, group in pairs(hl_rules) do
     table.insert(rules, { higroup = group, start = { lnum - 1, 0 }, finish = { lnum - 1, -1 } })
   end
-  table.insert(rules, { higroup = "BelvedereHelp", start = { #lines - 1, 0 }, finish = { #lines - 1, -1 } })
+  table.insert(rules, { higroup = "GrannosHelp", start = { #lines - 1, 0 }, finish = { #lines - 1, -1 } })
   state.buffer:apply_highlight(rules)
 end
 
@@ -173,7 +173,7 @@ local function on_enter()
     refresh()
   else
     state.conn_errors[entry.key] = nil
-    require("belvedere").connect(entry.key)
+    require("grannos").connect(entry.key)
   end
 end
 
@@ -190,7 +190,7 @@ local function on_delete()
       refresh()
     end)
   elseif entry.type == "subgroup" then
-    local caps   = require("belvedere.client").capabilities()
+    local caps   = require("grannos.client").capabilities()
     local server = caps and (caps.server or "") or ""
     local label  = entry.group ~= "" and entry.group or "(no group)"
     local count  = vim.tbl_count(
@@ -210,14 +210,14 @@ end
 local function on_disconnect()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  require("belvedere").disconnect(entry.key)
+  require("grannos").disconnect(entry.key)
 end
 
 --- e key handler: open the edit wizard for the connection under the cursor.
 local function on_edit()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local db = require("belvedere")
+  local db = require("grannos")
   db.ensure_backend_with_caps(function(caps)
     connections.edit(entry.key, caps, function(new_key, _)
       if not new_key then return end
@@ -233,7 +233,7 @@ local function on_clone()
   local _, _, _, bare_name = connections.conn_parts(entry.key)
   vim.ui.input({ prompt = "Clone as: ", default = (bare_name ~= "" and bare_name or connections.conn_display_name(entry.key)) .. "-copy" }, function(new_name)
     if not new_name or new_name == "" then return end
-    local db = require("belvedere")
+    local db = require("grannos")
     db.ensure_backend_with_caps(function(caps)
       connections.clone(entry.key, new_name, caps, function(new_key, _)
         if not new_key then return end
@@ -245,7 +245,7 @@ end
 
 --- n key handler: open the new-connection wizard.
 local function on_new()
-  local db = require("belvedere")
+  local db = require("grannos")
   db.ensure_backend_with_caps(function(caps)
     connections.create(caps, function(key, params)
       if not key then return end
@@ -257,7 +257,7 @@ end
 
 --- G key handler: create a new named group for a driver.
 local function on_new_group()
-  local db = require("belvedere")
+  local db = require("grannos")
   db.ensure_backend_with_caps(function(caps)
     local server = caps.server or ""
     vim.ui.input({ prompt = "Group name: " }, function(name)
@@ -280,17 +280,17 @@ end
 local function on_explore()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  require("belvedere").open_explorer_for(entry.key)
+  require("grannos").open_explorer_for(entry.key)
 end
 
 --- b key handler: jump to a buffer associated with the connection under the cursor.
 local function on_jump()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  local db   = require("belvedere")
+  local db   = require("grannos")
   local bufs = db.buffers_for(entry.key)
   if #bufs == 0 then
-    vim.notify("belvedere: no buffers associated with " .. connections.conn_display_name(entry.key), vim.log.levels.WARN)
+    vim.notify("grannos: no buffers associated with " .. connections.conn_display_name(entry.key), vim.log.levels.WARN)
     return
   end
   local panel_win = vim.fn.bufwinid(state.buffer.buf_id)
@@ -336,7 +336,7 @@ local function on_help()
     driver = drv
   end
   if not driver or driver == "" then return end
-  require("belvedere").open_driver_help(driver)
+  require("grannos").open_driver_help(driver)
 end
 
 local HIDDEN_CONN_FIELDS = { password = true, requires_password = true }
@@ -387,7 +387,7 @@ local function open_hover_float(lines, title, border_hl, line_hl)
 
   state.hover_win = fwin
   vim.api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
-    group    = vim.api.nvim_create_augroup("BelvedereHoverFloat", { clear = true }),
+    group    = vim.api.nvim_create_augroup("GrannosHoverFloat", { clear = true }),
     buffer   = state.buffer.buf_id,
     once     = true,
     callback = function()
@@ -404,7 +404,7 @@ local function on_hover()
   if not entry or entry.type ~= "conn" then return end
 
   if state.hover_win and vim.api.nvim_win_is_valid(state.hover_win) then
-    pcall(vim.api.nvim_del_augroup_by_name, "BelvedereHoverFloat")
+    pcall(vim.api.nvim_del_augroup_by_name, "GrannosHoverFloat")
     local fwin = state.hover_win
     local fbuf = vim.api.nvim_win_get_buf(fwin)
     local prev = vim.api.nvim_get_current_win()
@@ -423,7 +423,7 @@ local function on_hover()
   local err_msg = state.conn_errors[entry.key]
   if err_msg then
     open_hover_float(vim.split(err_msg, "\n", { plain = true }),
-      "error", "BelvedereConnError", "BelvedereConnError")
+      "error", "GrannosConnError", "GrannosConnError")
     return
   end
 
@@ -432,7 +432,7 @@ local function on_hover()
 
   local _, driver = connections.conn_parts(entry.key)
   local labels = {}
-  local caps = require("belvedere.client").capabilities()
+  local caps = require("grannos.client").capabilities()
   if caps then
     for _, d in ipairs(caps.drivers or {}) do
       if d.driver == driver then
@@ -468,11 +468,11 @@ local function on_load_query()
   local entry = entry_at_cursor()
   if not entry then return end
   if entry.type == "conn" then
-    require("belvedere").load_query(entry.key)
+    require("grannos").load_query(entry.key)
   elseif entry.type == "subgroup" then
-    local caps   = require("belvedere.client").capabilities()
+    local caps   = require("grannos.client").capabilities()
     local server = caps and (caps.server or "") or ""
-    require("belvedere.ui.query_picker").open_for_group(server, entry.driver, entry.group)
+    require("grannos.ui.query_picker").open_for_group(server, entry.driver, entry.group)
   end
 end
 
@@ -480,13 +480,13 @@ end
 local function on_query_log()
   local entry = entry_at_cursor()
   if not entry or entry.type ~= "conn" then return end
-  require("belvedere").query_log(entry.key)
+  require("grannos").query_log(entry.key)
 end
 
 --- Open (or close) the connections panel.
 function M.open()
   connections.invalidate()
-  local db = require("belvedere")
+  local db = require("grannos")
   db.ensure_backend_with_caps(function()
     if state.panel_loading then
       state.panel_loading:reset()
@@ -504,10 +504,10 @@ function M.open()
     M.refresh()
   end)
 
-  local needs_loading = not require("belvedere.client").capabilities()
+  local needs_loading = not require("grannos.client").capabilities()
 
   if not (state.buffer and state.buffer:is_valid()) then
-    state.buffer = Buffer:new(BUFNAME, "belvedere_connections", false, "nofile")
+    state.buffer = Buffer:new(BUFNAME, "grannos_connections", false, "nofile")
     vim.api.nvim_create_autocmd("WinResized", { callback = function() M.refresh() end })
     local hover_key = config.options.keymaps.hover_key
     state.buffer:set_keymap("n", "<CR>",    on_enter,      { nowait = true, silent = true, desc = "Expand/collapse or connect", group = "Navigate" })

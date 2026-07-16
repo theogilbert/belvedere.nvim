@@ -1,6 +1,6 @@
 -- Pure serializers for exporting query results in various formats.
 -- No nvim API calls beyond what table_fmt.from_structured_data already uses.
-local table_fmt = require("belvedere.table")
+local table_fmt = require("grannos.table")
 
 local M = {}
 

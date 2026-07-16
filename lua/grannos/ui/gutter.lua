@@ -13,7 +13,7 @@ local ICON_ERROR   = "\xEE\xAA\xB8"  -- U+EAB8
 
 --- Create the extmark namespace used by all gutter marks.
 function M.setup()
-  NS = vim.api.nvim_create_namespace("BelvedereGutter")
+  NS = vim.api.nvim_create_namespace("GrannosGutter")
 end
 
 --- Return the 0-indexed row of `mark_id` in `bufnr`, or nil when not found.
@@ -51,7 +51,7 @@ function M.show_running(bufnr, line)
   end
   local mark_id = vim.api.nvim_buf_set_extmark(bufnr, NS, line, 0, {
     sign_text     = ICON_RUNNING,
-    sign_hl_group = "BelvedereQueryRunning",
+    sign_hl_group = "GrannosQueryRunning",
     priority      = 100,
   })
   return { bufnr = bufnr, mark_id = mark_id }
@@ -60,13 +60,13 @@ end
 --- Update the gutter mark to the success icon.
 --- @param handle GutterHandle|nil
 function M.show_success(handle)
-  replace(handle, ICON_SUCCESS, "BelvedereQuerySuccess")
+  replace(handle, ICON_SUCCESS, "GrannosQuerySuccess")
 end
 
 --- Update the gutter mark to the error icon.
 --- @param handle GutterHandle|nil
 function M.show_error(handle)
-  replace(handle, ICON_ERROR, "BelvedereQueryError")
+  replace(handle, ICON_ERROR, "GrannosQueryError")
 end
 
 --- Associate a backend request id with a gutter mark handle.

@@ -1,6 +1,6 @@
 -- Query log: persisted for a rolling 7-day window, shared across sessions.
 -- Entries are stored as JSON files under:
---   stdpath("data")/belvedere/logs/{YYYY-MM-DD}/{conn_hash}/{id}.json
+--   stdpath("data")/grannos/logs/{YYYY-MM-DD}/{conn_hash}/{id}.json
 -- Rows are stored inline in the entry file.
 -- Day-directories older than 7 days are pruned automatically (5 s after startup).
 local M = {}
@@ -19,7 +19,7 @@ local state = {
 --- Return the root log directory under stdpath("data").
 --- @return string
 local function log_root()
-  return vim.fn.stdpath("data") .. "/belvedere/logs"
+  return vim.fn.stdpath("data") .. "/grannos/logs"
 end
 
 --- Return today's log directory.

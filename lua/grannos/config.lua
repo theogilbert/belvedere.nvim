@@ -4,14 +4,14 @@ local M = {}
 --- @return string
 local function default_connections_file()
   local xdg = vim.env.XDG_CONFIG_HOME or vim.fn.expand("~/.config")
-  return xdg .. "/belvedere/connections.json"
+  return xdg .. "/grannos/connections.json"
 end
 
 --- Return the XDG-aware default directory for saved queries.
 --- @return string
 local function default_queries_dir()
   local xdg = vim.env.XDG_DATA_HOME or vim.fn.expand("~/.local/share")
-  return xdg .. "/belvedere/queries"
+  return xdg .. "/grannos/queries"
 end
 
 M.defaults = {
@@ -19,11 +19,11 @@ M.defaults = {
   server_cmd = "belvedere",  -- or "python -m belvedere"
 
   -- Path to the JSON file that stores named connections.
-  -- Defaults to $XDG_CONFIG_HOME/belvedere/connections.json
+  -- Defaults to $XDG_CONFIG_HOME/grannos/connections.json
   connections_file = nil,  -- populated in setup() so the function runs at call time
 
   -- Directory that stores saved queries (one file per query).
-  -- Defaults to $XDG_DATA_HOME/belvedere/queries/
+  -- Defaults to $XDG_DATA_HOME/grannos/queries/
   queries_dir = nil,
 
   keymaps = {

@@ -1,6 +1,6 @@
 ---
 name: test
-description: Run belvedere.nvim's plenary.nvim spec files headlessly from the CLI, without needing to open Neovim and run :PlenaryBustedFile by hand. Use when asked to run tests, run the test suite, run a spec file, or verify a change against the tests.
+description: Run grannos.nvim's plenary.nvim spec files headlessly from the CLI, without needing to open Neovim and run :PlenaryBustedFile by hand. Use when asked to run tests, run the test suite, run a spec file, or verify a change against the tests.
 ---
 
 Run the plenary specs in `spec/` headlessly.

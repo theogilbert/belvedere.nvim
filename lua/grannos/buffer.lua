@@ -1,6 +1,6 @@
 -- Generic buffer abstraction.
 -- Ported from nvim-dap-df/lua/nvim-dap-df-pane/buffer.lua.
-local hl = require("belvedere.hl")
+local hl = require("grannos.hl")
 
 local Buffer = {}
 Buffer.__index = Buffer
@@ -116,7 +116,7 @@ function Buffer.render_help_float(keymaps)
   vim.bo[buf].bufhidden  = "wipe"
 
   for lnum in pairs(header_lnums) do
-    vim.hl.range(buf, hl.NS_ID, "BelvedereHeaderRow", { lnum - 1, 0 }, { lnum - 1, -1 })
+    vim.hl.range(buf, hl.NS_ID, "GrannosHeaderRow", { lnum - 1, 0 }, { lnum - 1, -1 })
   end
 
   -- A caller may trigger this from insert mode (e.g. detail_pane's <C-h> is

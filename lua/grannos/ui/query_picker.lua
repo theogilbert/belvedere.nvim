@@ -1,6 +1,6 @@
 local M = {}
 
-local queries = require("belvedere.queries")
+local queries = require("grannos.queries")
 
 local SEP     = "\t"
 local KEY_SEP = "\1"   -- SOH: won't appear in scope keys or query names
@@ -61,7 +61,7 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
   local e = data_by_key[scope_key .. KEY_SEP .. name]
   if not e then return end
 
-  local bufname = "belvedere://queries/" .. scope_key .. "/" .. name
+  local bufname = "grannos://queries/" .. scope_key .. "/" .. name
   local bufnr   = find_buf_by_name(bufname)
 
   -- A buffer can be valid but unloaded (e.g. after :bdelete or session restore),
@@ -85,7 +85,7 @@ local function open_query_buffer(scope_key, name, data_by_key, conn_key)
     pcall(vim.treesitter.start, bufnr)
   end
 
-  if conn_key then require("belvedere").set_buf_conn(bufnr, conn_key) end
+  if conn_key then require("grannos").set_buf_conn(bufnr, conn_key) end
 
   vim.cmd("leftabove vsplit")
   vim.api.nvim_set_current_buf(bufnr)
@@ -102,7 +102,7 @@ local function select_query(scope_key, name, data_by_key, conn_key)
     open_query_buffer(scope_key, name, data_by_key, nil)
     return
   end
-  require("belvedere").ensure_connected(conn_key, function(key)
+  require("grannos").ensure_connected(conn_key, function(key)
     open_query_buffer(scope_key, name, data_by_key, key)
   end)
 end
@@ -112,7 +112,7 @@ end
 --- @param conn_key     string|nil  associated connection for the opened buffer
 local function show_picker(entries_data, conn_key)
   if #entries_data == 0 then
-    vim.notify("belvedere: no saved queries", vim.log.levels.INFO)
+    vim.notify("grannos: no saved queries", vim.log.levels.INFO)
     return
   end
 
@@ -157,7 +157,7 @@ local function show_picker(entries_data, conn_key)
             }, function(choice)
               if choice == "Yes" then
                 queries.delete(sk, name)
-                vim.notify(('belvedere: deleted "%s"'):format(name), vim.log.levels.INFO)
+                vim.notify(('grannos: deleted "%s"'):format(name), vim.log.levels.INFO)
               end
             end)
           end)

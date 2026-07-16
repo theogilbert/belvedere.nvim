@@ -1,4 +1,4 @@
-local table_fmt = require("belvedere.table")
+local table_fmt = require("grannos.table")
 
 describe("table.from_structured_data thousands separator", function()
   local rows = { { "id", "amount" }, { 1, 1234567 }, { 2, 999 } }
@@ -36,7 +36,7 @@ describe("table.from_structured_data thousands separator", function()
     -- "1_234_567" has 2 separators, "999" groups to nothing (<=3 digits) -> 2 rules total.
     assert.equals(2, #rules)
     for _, r in ipairs(rules) do
-      assert.equals("BelvedereThousandsSeparator", r.higroup)
+      assert.equals("GrannosThousandsSeparator", r.higroup)
     end
   end)
 
@@ -63,7 +63,7 @@ describe("table.from_structured_data NULL handling", function()
     assert.is_not_nil(text:find("NULL", 1, true))
     local rules = table_fmt.null_hl_rules(tbl)
     assert.equals(1, #rules)
-    assert.equals("BelvedereNull", rules[1].higroup)
+    assert.equals("GrannosNull", rules[1].higroup)
   end)
 end)
 
@@ -75,7 +75,7 @@ describe("table.from_structured_data LOB handling", function()
     assert.is_not_nil(text:find("CLOB (3423 chars)", 1, true))
     local rules = table_fmt.lob_hl_rules(tbl)
     assert.equals(1, #rules)
-    assert.equals("BelvedereLob", rules[1].higroup)
+    assert.equals("GrannosLob", rules[1].higroup)
   end)
 end)
 

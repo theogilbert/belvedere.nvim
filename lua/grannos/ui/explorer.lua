@@ -2,28 +2,28 @@
 -- Navigation: <CR> expands/collapses nodes; hover_key (default K) describes the item under cursor.
 local M = {}
 
-local Buffer  = require("belvedere.buffer")
-local client  = require("belvedere.client")
-local config  = require("belvedere.config")
-local hl      = require("belvedere.hl")
-local results = require("belvedere.ui.results")
-local window  = require("belvedere.ui.window")
-local Spinner = require("belvedere.ui.spinner")
+local Buffer  = require("grannos.buffer")
+local client  = require("grannos.client")
+local config  = require("grannos.config")
+local hl      = require("grannos.hl")
+local results = require("grannos.ui.results")
+local window  = require("grannos.ui.window")
+local Spinner = require("grannos.ui.spinner")
 
-local BUFNAME = "belvedere://explorer"
+local BUFNAME = "grannos://explorer"
 
-local EXPLORER_NS = vim.api.nvim_create_namespace("BelvedereExplorer")
+local EXPLORER_NS = vim.api.nvim_create_namespace("GrannosExplorer")
 
 local EXPLORER_HL = {
-  database       = "BelvedereExplorerDatabase",
-  schema         = "BelvedereExplorerSchema",
-  table          = "BelvedereExplorerTable",
-  ["base table"] = "BelvedereExplorerTable",
-  view           = "BelvedereExplorerView",
-  collection     = "BelvedereExplorerCollection",
-  index          = "BelvedereExplorerIndex",
-  constraint     = "BelvedereExplorerConstraint",
-  group          = "BelvedereExplorerGroup",
+  database       = "GrannosExplorerDatabase",
+  schema         = "GrannosExplorerSchema",
+  table          = "GrannosExplorerTable",
+  ["base table"] = "GrannosExplorerTable",
+  view           = "GrannosExplorerView",
+  collection     = "GrannosExplorerCollection",
+  index          = "GrannosExplorerIndex",
+  constraint     = "GrannosExplorerConstraint",
+  group          = "GrannosExplorerGroup",
 }
 
 local TYPE_ICONS = {
@@ -110,7 +110,7 @@ render = function()
       local c3 = c2 + #node.name
 
       if node.expandable then
-        add_hl(row, c0, c1, "BelvedereExplorerDim")
+        add_hl(row, c0, c1, "GrannosExplorerDim")
       end
       local type_hl = EXPLORER_HL[node.type]
       if type_hl then
@@ -118,7 +118,7 @@ render = function()
       end
       if label ~= "" then
         -- skip the two-space separator before the type string
-        add_hl(row, c3 + 2, c3 + 2 + #node.type, "BelvedereExplorerDim")
+        add_hl(row, c3 + 2, c3 + 2 + #node.type, "GrannosExplorerDim")
       end
 
       if node.loading then
@@ -210,7 +210,7 @@ local function load_children(node, reset_cache)
     spinner:stop()
     if err then
       vim.schedule(function()
-        vim.notify("belvedere explorer: " .. err, vim.log.levels.ERROR)
+        vim.notify("grannos explorer: " .. err, vim.log.levels.ERROR)
         render()
       end)
       return
@@ -284,7 +284,7 @@ local render_describe, calculate_win_size, present_describe_float  -- forward de
 --- @param node    ExplorerNode
 local function open_describe_float(details, node)
   if not details or details == vim.NIL then
-    vim.notify("belvedere: nothing to describe for this node", vim.log.levels.WARN)
+    vim.notify("grannos: nothing to describe for this node", vim.log.levels.WARN)
     return
   end
   present_describe_float(render_describe(details, node))
@@ -314,13 +314,13 @@ render_describe = function(details, node)
   local hdr_title = node_icon(node) .. win_title
 
   table.insert(lines, "  " .. hdr_title)
-  add_hl("BelvedereHeaderRow", 0, 2, 2 + #hdr_title)
+  add_hl("GrannosHeaderRow", 0, 2, 2 + #hdr_title)
 
   if not is_nil_val(details.comment) and details.comment ~= "" then
     for _, cline in ipairs(vim.split(details.comment, "\n", { plain = true })) do
       local comment_line = "  " .. cline:gsub("\r$", "")
       table.insert(lines, comment_line)
-      add_hl("BelvedereExplorerDim", #lines - 1, 0, #comment_line)
+      add_hl("GrannosExplorerDim", #lines - 1, 0, #comment_line)
     end
   end
 
@@ -343,7 +343,7 @@ render_describe = function(details, node)
     local grp_off  = math.floor((idx_w - #grp_lbl) / 2)
     local grp_line = string.rep(" ", prefix_w + grp_off) .. grp_lbl
     table.insert(lines, grp_line)
-    add_hl("BelvedereHeaderRow", #lines - 1, prefix_w + grp_off, prefix_w + grp_off + #grp_lbl)
+    add_hl("GrannosHeaderRow", #lines - 1, prefix_w + grp_off, prefix_w + grp_off + #grp_lbl)
 
     local hdr = "  " .. rpad("Name", w_name)
              .. "  " .. rpad("Type", w_type)
@@ -351,11 +351,11 @@ render_describe = function(details, node)
              .. rpad("Default", w_default)
              .. idx_hdr
     table.insert(lines, hdr)
-    add_hl("BelvedereHeaderRow", #lines - 1, 0, #hdr)
+    add_hl("GrannosHeaderRow", #lines - 1, 0, #hdr)
 
     local sep = "  " .. string.rep("─", vim.fn.strdisplaywidth(hdr) - 2)
     table.insert(lines, sep)
-    add_hl("BelvedereBorder", #lines - 1, 0, #sep)
+    add_hl("GrannosBorder", #lines - 1, 0, #sep)
 
     for _, col in ipairs(cols) do
       local null_s    = col.nullable == true and "✓" or col.nullable == false and "✗" or " "
@@ -374,19 +374,19 @@ render_describe = function(details, node)
       end
 
       seg("  ")
-      seg(rpad(col.name, w_name), col.pk and "BelvedereExplorerSchema" or nil)
+      seg(rpad(col.name, w_name), col.pk and "GrannosExplorerSchema" or nil)
       seg("  ")
-      seg(rpad(col.type, w_type),  "BelvedereExplorerTable")
+      seg(rpad(col.type, w_type),  "GrannosExplorerTable")
       seg("   ")
-      seg(null_s,  null_s ~= " " and "BelvedereExplorerDim" or nil)
+      seg(null_s,  null_s ~= " " and "GrannosExplorerDim" or nil)
       seg("    ")
-      seg(pk_s,    col.pk         and "BelvedereExplorerSchema" or nil)
+      seg(pk_s,    col.pk         and "GrannosExplorerSchema" or nil)
       seg("   ")
       seg(rpad(default_s, w_default))
       seg("    ")
-      seg(excl_s,  excl_s == "✓" and "BelvedereExplorerIndex" or nil)
+      seg(excl_s,  excl_s == "✓" and "GrannosExplorerIndex" or nil)
       seg("      ")
-      seg(comp_s,  comp_s == "✓"  and "BelvedereExplorerIndex" or nil)
+      seg(comp_s,  comp_s == "✓"  and "GrannosExplorerIndex" or nil)
 
       table.insert(lines, table.concat(parts))
     end
@@ -395,7 +395,7 @@ render_describe = function(details, node)
   local ARROW = "  →  "
 
   --- Render one references section ("Foreign keys" / "Incoming references").
-  --- Table names use BelvedereExplorerTable; column names use BelvedereExplorerColumn.
+  --- Table names use GrannosExplorerTable; column names use GrannosExplorerColumn.
   --- @param label   string
   --- @param refs    TableReference[]|nil
   --- @param reverse boolean  true to draw the arrow from the other table into `column`
@@ -405,7 +405,7 @@ render_describe = function(details, node)
     table.insert(lines, "")
     local hdr = "  " .. label
     table.insert(lines, hdr)
-    add_hl("BelvedereHeaderRow", #lines - 1, 2, 2 + #label)
+    add_hl("GrannosHeaderRow", #lines - 1, 2, 2 + #label)
 
     for _, r in ipairs(refs) do
       local other_table = (not is_nil_val(r.schema) and r.schema .. "." or "") .. r.table .. "."
@@ -420,15 +420,15 @@ render_describe = function(details, node)
 
       seg("  ")
       if reverse then
-        seg(other_table,  "BelvedereExplorerTable")
-        seg(r.ref_column, "BelvedereExplorerColumn")
+        seg(other_table,  "GrannosExplorerTable")
+        seg(r.ref_column, "GrannosExplorerColumn")
         seg(ARROW)
-        seg(r.column,     "BelvedereExplorerColumn")
+        seg(r.column,     "GrannosExplorerColumn")
       else
-        seg(r.column,      "BelvedereExplorerColumn")
+        seg(r.column,      "GrannosExplorerColumn")
         seg(ARROW)
-        seg(other_table,  "BelvedereExplorerTable")
-        seg(r.ref_column, "BelvedereExplorerColumn")
+        seg(other_table,  "GrannosExplorerTable")
+        seg(r.ref_column, "GrannosExplorerColumn")
       end
 
       table.insert(lines, table.concat(parts))
@@ -462,7 +462,7 @@ present_describe_float = function(lines, hl_rules, win_title)
   vim.bo[buf].modifiable = false
   vim.bo[buf].bufhidden  = "wipe"
 
-  local ns = vim.api.nvim_create_namespace("BelvedereDescribeFloat")
+  local ns = vim.api.nvim_create_namespace("GrannosDescribeFloat")
   for _, rule in ipairs(hl_rules) do
     vim.api.nvim_buf_add_highlight(buf, ns, rule[1], rule[2], rule[3], rule[4])
   end
@@ -500,7 +500,7 @@ local function on_describe()
     spinner:stop()
     if err then
       vim.schedule(function()
-        vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
+        vim.notify("grannos: " .. err, vim.log.levels.ERROR)
         render()
       end)
       return
@@ -513,17 +513,17 @@ local function on_describe()
         local parts = vim.list_slice(p, 1, #p - 1)
         local ctx = table.concat(parts, ".")
         local title = ctx ~= "" and (" Indices · " .. ctx .. " ") or " Indices "
-        require("belvedere.ui.indices").open(details, title)
+        require("grannos.ui.indices").open(details, title)
       elseif details and details.type == "index" then
-        require("belvedere.ui.indices").open_single(details)
+        require("grannos.ui.indices").open_single(details)
       elseif details and details.type == "columns" then
         local p = node.path
         local parts = vim.list_slice(p, 1, #p - 1)
         local ctx = table.concat(parts, ".")
         local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
-        require("belvedere.ui.column").open(details, title)
+        require("grannos.ui.column").open(details, title)
       elseif details and details.type == "column" then
-        require("belvedere.ui.column").open_single(details)
+        require("grannos.ui.column").open_single(details)
       else
         open_describe_float(details, node)
       end
@@ -544,7 +544,7 @@ local function load_root(reset_cache)
     spinner:stop()
     if err then
       vim.schedule(function()
-        vim.notify("belvedere explorer: " .. err, vim.log.levels.ERROR)
+        vim.notify("grannos explorer: " .. err, vim.log.levels.ERROR)
         render()
       end)
       return
@@ -565,7 +565,7 @@ local function on_diagram()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
   if not node or not DIAGRAM_TYPES[node.type] then return end
-  require("belvedere.ui.diagram").open(state.conn_id, node.path, node.name)
+  require("grannos.ui.diagram").open(state.conn_id, node.path, node.name)
 end
 
 --- Handle the "p" keymap: request a row preview for the node under the cursor.
@@ -596,7 +596,7 @@ end
 --- Create the explorer Buffer (with keymaps) if it doesn't exist or has been wiped.
 local function get_or_create_buffer()
   if state.buffer and state.buffer:is_valid() then return end
-  state.buffer = Buffer:new(BUFNAME, "belvedere_explorer", false, "nofile")
+  state.buffer = Buffer:new(BUFNAME, "grannos_explorer", false, "nofile")
   state.buffer:set_keymap("n", "<CR>", on_enter,
     { nowait = true, silent = true, desc = "Expand / collapse node" })
   state.buffer:set_keymap("n", config.options.keymaps.hover_key, on_describe,
@@ -660,7 +660,7 @@ function M.open(conn_id, conn_name, driver, conn_key, driver_label)
     -- Escape % so statusline format doesn't misinterpret it.
     local label = state.conn_label:gsub("%%", "%%%%")
     vim.api.nvim_set_option_value("winbar",
-      "%#BelvedereHeaderRow#  " .. label, { win = win })
+      "%#GrannosHeaderRow#  " .. label, { win = win })
   end
 
   if #state.tree == 0 then

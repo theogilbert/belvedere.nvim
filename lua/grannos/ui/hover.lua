@@ -1,7 +1,7 @@
 local M = {}
 
 local state = { win = nil }
-local NS    = vim.api.nvim_create_namespace("BelvedereHover")
+local NS    = vim.api.nvim_create_namespace("GrannosHover")
 
 --- Close the current hover float if one is open.
 function M.close()

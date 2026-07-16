@@ -1,4 +1,4 @@
--- Manages the connections file ($XDG_CONFIG_HOME/belvedere/connections.json).
+-- Manages the connections file ($XDG_CONFIG_HOME/grannos/connections.json).
 --
 -- File format:
 --   {
@@ -17,7 +17,7 @@
 -- driver, group and server are encoded in the internal key, not stored in params.
 local M = {}
 
-local config = require("belvedere.config")
+local config = require("grannos.config")
 
 local _cache = nil  -- cached parsed file contents; nil means not yet loaded
 
@@ -94,7 +94,7 @@ local function read_data()
   local ok2, parsed = pcall(vim.json.decode, table.concat(lines, "\n"))
   if not ok2 or type(parsed) ~= "table" then
     vim.notify(
-      "belvedere: connections file is corrupted and could not be loaded.\n"
+      "grannos: connections file is corrupted and could not be loaded.\n"
       .. "  Path: " .. path .. "\n"
       .. "  Fix or remove it to continue.",
       vim.log.levels.ERROR
@@ -185,12 +185,12 @@ function M.delete(key)
   local d    = (data[server] or {})[driver]
   local g    = d and (d.groups or {})[group]
   if not g or not g[name] then
-    vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.WARN)
+    vim.notify(("grannos: connection %q not found"):format(name), vim.log.levels.WARN)
     return
   end
   g[name] = nil
   write_data(data)
-  vim.notify(("belvedere: deleted connection %q"):format(name), vim.log.levels.INFO)
+  vim.notify(("grannos: deleted connection %q"):format(name), vim.log.levels.INFO)
 end
 
 --- Delete an entire group and all its connections.
@@ -202,14 +202,14 @@ function M.delete_group(server, driver, group)
   if not data then return end
   local d = (data[server] or {})[driver]
   if not d or not (d.groups or {})[group] then
-    vim.notify(("belvedere: group %q not found"):format(group), vim.log.levels.WARN)
+    vim.notify(("grannos: group %q not found"):format(group), vim.log.levels.WARN)
     return
   end
   local count = vim.tbl_count(d.groups[group])
   d.groups[group] = nil
   write_data(data)
   local label = group ~= "" and group or "(no group)"
-  vim.notify(("belvedere: deleted group %q and %d connection(s)"):format(label, count), vim.log.levels.INFO)
+  vim.notify(("grannos: deleted group %q and %d connection(s)"):format(label, count), vim.log.levels.INFO)
 end
 
 --- Create an empty named group for a driver.
@@ -229,7 +229,7 @@ function M.create_group(server, driver, driver_label, group_name)
   local d = data[server][driver]
   d.groups = d.groups or {}
   if d.groups[group_name] ~= nil then
-    vim.notify(("belvedere: group %q already exists"):format(group_name), vim.log.levels.WARN)
+    vim.notify(("grannos: group %q already exists"):format(group_name), vim.log.levels.WARN)
     return false
   end
   d.groups[group_name] = {}
@@ -656,7 +656,7 @@ function M.create(caps, callback)
     vim.schedule(function()
       vim.ui.input({ prompt = "Connection name: " }, function(name)
         if not name or name == "" then
-          if name ~= nil then vim.notify("belvedere: connection name is required", vim.log.levels.WARN) end
+          if name ~= nil then vim.notify("grannos: connection name is required", vim.log.levels.WARN) end
           callback(nil) return
         end
 
@@ -666,7 +666,7 @@ function M.create(caps, callback)
 
             local existing = ((M.load(server)[driver] or {}).groups or {})[group] or {}
             if existing[name] then
-              vim.notify(("belvedere: %q already exists in this group"):format(name), vim.log.levels.ERROR)
+              vim.notify(("grannos: %q already exists in this group"):format(name), vim.log.levels.ERROR)
               callback(nil)
               return
             end
@@ -695,7 +695,7 @@ function M.create(caps, callback)
                   if not data2 then return end
                   upsert(data2, server, driver, d.label or driver, group, name, params)
                   write_data(data2)
-                  vim.notify(("belvedere: saved %q"):format(name), vim.log.levels.INFO)
+                  vim.notify(("grannos: saved %q"):format(name), vim.log.levels.INFO)
                   local out = (pw ~= nil and pw ~= "")
                     and vim.tbl_extend("force", params, { password = pw }) or params
                   callback(key, out)
@@ -721,14 +721,14 @@ function M.edit(key, caps, callback)
   local server, driver, group, name = M.conn_parts(key)
   local current = M.get(key)
   if not current then
-    vim.notify(("belvedere: connection %q not found"):format(name), vim.log.levels.ERROR)
+    vim.notify(("grannos: connection %q not found"):format(name), vim.log.levels.ERROR)
     callback(nil)
     return
   end
 
   vim.ui.input({ prompt = "Connection name: ", default = name }, function(new_name)
     if not new_name or new_name == "" then
-      if new_name ~= nil then vim.notify("belvedere: connection name is required", vim.log.levels.WARN) end
+      if new_name ~= nil then vim.notify("grannos: connection name is required", vim.log.levels.WARN) end
       callback(nil) return
     end
     vim.schedule(function()
@@ -737,7 +737,7 @@ function M.edit(key, caps, callback)
         local new_key = M.conn_key(server, driver, new_group, new_name)
 
         if new_key ~= key and M.get(new_key) then
-          vim.notify(("belvedere: %q already exists in this group"):format(new_name), vim.log.levels.ERROR)
+          vim.notify(("grannos: %q already exists in this group"):format(new_name), vim.log.levels.ERROR)
           callback(nil)
           return
         end
@@ -782,7 +782,7 @@ function M.edit(key, caps, callback)
               end
               upsert(data2, server, driver, driver_label, new_group, new_name, params)
               write_data(data2)
-              vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
+              vim.notify(("grannos: saved %q"):format(new_name), vim.log.levels.INFO)
               local final = (pw ~= nil and pw ~= "")
                 and vim.tbl_extend("force", params, { password = pw }) or params
               callback(new_key, final)
@@ -814,7 +814,7 @@ function M.clone(source_key, new_name, caps, callback)
   local server, driver = M.conn_parts(source_key)
   local current = M.get(source_key)
   if not current then
-    vim.notify(("belvedere: connection %q not found"):format(M.conn_display_name(source_key)), vim.log.levels.ERROR)
+    vim.notify(("grannos: connection %q not found"):format(M.conn_display_name(source_key)), vim.log.levels.ERROR)
     callback(nil)
     return
   end
@@ -826,7 +826,7 @@ function M.clone(source_key, new_name, caps, callback)
       local new_key  = M.conn_key(server, driver, group, new_name)
       local existing = ((M.load(server)[driver] or {}).groups or {})[group] or {}
       if existing[new_name] then
-        vim.notify(("belvedere: %q already exists in this group"):format(new_name), vim.log.levels.ERROR)
+        vim.notify(("grannos: %q already exists in this group"):format(new_name), vim.log.levels.ERROR)
         callback(nil)
         return
       end
@@ -868,7 +868,7 @@ function M.clone(source_key, new_name, caps, callback)
             if not data2 then return end
             upsert(data2, server, driver, driver_label, group, new_name, params)
             write_data(data2)
-            vim.notify(("belvedere: saved %q"):format(new_name), vim.log.levels.INFO)
+            vim.notify(("grannos: saved %q"):format(new_name), vim.log.levels.INFO)
             local final = (pw ~= nil and pw ~= "")
               and vim.tbl_extend("force", params, { password = pw }) or params
             callback(new_key, final)

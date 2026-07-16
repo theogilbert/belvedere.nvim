@@ -1,6 +1,6 @@
 -- Pure data module for saved queries.  No UI.
 --
--- Storage: one file per query under $XDG_DATA_HOME/belvedere/queries/
+-- Storage: one file per query under $XDG_DATA_HOME/grannos/queries/
 --
 -- Directory layout mirrors the scope hierarchy:
 --   <base>/driver/<server>/<driver>/<name>.<ext>
@@ -10,8 +10,8 @@
 -- File mtime is used as created_at; no separate metadata file is needed.
 local M = {}
 
-local config      = require("belvedere.config")
-local connections = require("belvedere.connections")
+local config      = require("grannos.config")
+local connections = require("grannos.connections")
 
 --- Return the queries base directory from config.
 --- @return string

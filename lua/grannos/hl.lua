@@ -1,4 +1,4 @@
--- Highlight groups and namespaces for belvedere.
+-- Highlight groups and namespaces for grannos.
 -- Ported and adapted from nvim-dap-df/lua/nvim-dap-df-pane/hl.lua.
 local M = {}
 
@@ -41,32 +41,32 @@ local DIAGRAM_TABLE_FG = {
 }
 
 --- Highlight group for a diagram's source/root table (the one `explore.diagram`
---- was requested for) — gold and bold, distinct from BelvedereExplorerTable so
+--- was requested for) — gold and bold, distinct from GrannosExplorerTable so
 --- this styling stays scoped to the diagram view instead of also affecting
 --- table names in the sidebar/other floats.
-M.DIAGRAM_ROOT_TABLE = "BelvedereDiagramRootTable"
+M.DIAGRAM_ROOT_TABLE = "GrannosDiagramRootTable"
 
 --- Ordered highlight group names backing DIAGRAM_TABLE_FG, for callers that need
 --- to cycle through them (e.g. assigning one per table in a schema diagram).
 M.DIAGRAM_TABLE_PALETTE = {}
 for i = 1, #DIAGRAM_TABLE_FG do
-  M.DIAGRAM_TABLE_PALETTE[i] = "BelvedereDiagramTable" .. i
+  M.DIAGRAM_TABLE_PALETTE[i] = "GrannosDiagramTable" .. i
 end
 
 --- Build the table of highlight group definitions.
 --- @return table<string, table>
 local function build_highlights()
   local highlights = {
-    BelvedereBorder    = { fg = BORDER_FG },
-    BelvedereHeaderRow = { fg = HEADER_FG, bold = true },
-    BelvedereError     = { fg = ERROR_FG },
-    BelvedereTruncated = { fg = TRUNCATED_FG, bold = true },
-    BelvedereRowCount  = { fg = ROW_COUNT_FG },
-    BelvedereNull      = { fg = NULL_FG, italic = true },
-    BelvedereLob       = { fg = LOB_FG, italic = true },
-    BelvedereHelp      = { fg = HELP_FG, italic = true },
-    BelvedereThousandsSeparator = { fg = THOUSANDS_FG },
-    BelvedereScrollbarThumb     = { fg = SCROLLBAR_FG },
+    GrannosBorder    = { fg = BORDER_FG },
+    GrannosHeaderRow = { fg = HEADER_FG, bold = true },
+    GrannosError     = { fg = ERROR_FG },
+    GrannosTruncated = { fg = TRUNCATED_FG, bold = true },
+    GrannosRowCount  = { fg = ROW_COUNT_FG },
+    GrannosNull      = { fg = NULL_FG, italic = true },
+    GrannosLob       = { fg = LOB_FG, italic = true },
+    GrannosHelp      = { fg = HELP_FG, italic = true },
+    GrannosThousandsSeparator = { fg = THOUSANDS_FG },
+    GrannosScrollbarThumb     = { fg = SCROLLBAR_FG },
     [M.DIAGRAM_ROOT_TABLE]      = { fg = DIAGRAM_ROOT_TABLE_FG, bold = true },
   }
   for i, group in ipairs(M.DIAGRAM_TABLE_PALETTE) do
@@ -77,28 +77,28 @@ end
 
 --- Create namespaces and define all highlight groups; re-called on ColorScheme.
 local function setup_highlights()
-  M.NS_ID            = vim.api.nvim_create_namespace("BelvedereNs")
-  M.TRUNCATION_NS_ID = vim.api.nvim_create_namespace("BelvedereTruncationNs")
+  M.NS_ID            = vim.api.nvim_create_namespace("GrannosNs")
+  M.TRUNCATION_NS_ID = vim.api.nvim_create_namespace("GrannosTruncationNs")
   for group, opts in pairs(build_highlights()) do
     vim.api.nvim_set_hl(M.NS_ID, group, opts)
   end
   -- Defined globally so it works in any buffer's extmarks; default = true allows user override.
-  vim.api.nvim_set_hl(0, "BelvedereConnection",          { fg = CONN_FG,    italic = true, default = true })
-  vim.api.nvim_set_hl(0, "BelvedereConnError",           { fg = ERROR_FG,   default = true })
-  vim.api.nvim_set_hl(0, "BelvedereQueryRunning",        { fg = "#E5C07B",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereQuerySuccess",        { fg = "#98C379",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereQueryError",          { fg = "#CA2722",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereQueryFlash",          { link = "Visual", default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerDatabase",    { fg = "#98C379",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerSchema",      { fg = "#E5C07B",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerTable",       { fg = "#61AFEF",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerColumn",      { fg = "#D19A66",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerView",        { fg = "#C678DD",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerCollection",  { fg = "#4EC9B0",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerIndex",       { fg = "#56B6C2",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerConstraint",  { fg = "#E06C75",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerGroup",       { fg = "#848D9E",  default = true })
-  vim.api.nvim_set_hl(0, "BelvedereExplorerDim",         { fg = "#6B7691",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosConnection",          { fg = CONN_FG,    italic = true, default = true })
+  vim.api.nvim_set_hl(0, "GrannosConnError",           { fg = ERROR_FG,   default = true })
+  vim.api.nvim_set_hl(0, "GrannosQueryRunning",        { fg = "#E5C07B",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosQuerySuccess",        { fg = "#98C379",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosQueryError",          { fg = "#CA2722",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosQueryFlash",          { link = "Visual", default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerDatabase",    { fg = "#98C379",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerSchema",      { fg = "#E5C07B",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerTable",       { fg = "#61AFEF",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerColumn",      { fg = "#D19A66",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerView",        { fg = "#C678DD",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerCollection",  { fg = "#4EC9B0",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerIndex",       { fg = "#56B6C2",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerConstraint",  { fg = "#E06C75",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerGroup",       { fg = "#848D9E",  default = true })
+  vim.api.nvim_set_hl(0, "GrannosExplorerDim",         { fg = "#6B7691",  default = true })
 end
 
 --- Initialize namespaces, define highlights, and register a ColorScheme autocmd.

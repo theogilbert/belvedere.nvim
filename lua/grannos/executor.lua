@@ -1,12 +1,12 @@
 local M = {}
 
-local client      = require("belvedere.client")
-local config      = require("belvedere.config")
-local connections = require("belvedere.connections")
-local results     = require("belvedere.ui.results")
-local gutter      = require("belvedere.ui.gutter")
-local log         = require("belvedere.log")
-local ts_queries  = require("belvedere.ts_queries")
+local client      = require("grannos.client")
+local config      = require("grannos.config")
+local connections = require("grannos.connections")
+local results     = require("grannos.ui.results")
+local gutter      = require("grannos.ui.gutter")
+local log         = require("grannos.log")
+local ts_queries  = require("grannos.ts_queries")
 
 -- Past-tense verb shown for DML statements, keyed by leading keyword.
 local DML_VERBS = {
@@ -185,7 +185,7 @@ local function check_confirm_writes(conn, bufnr, first_line, query, callback)
   local choices = { "Abort", "Execute", "Always allow writes" }
   vim.ui.select(choices, { prompt = "Write operation detected:" }, function(choice)
     if not choice or choice == "Abort" then
-      vim.notify("belvedere: execution aborted", vim.log.levels.WARN)
+      vim.notify("grannos: execution aborted", vim.log.levels.WARN)
       callback(false)
     elseif choice == "Always allow writes" then
       connections.set_allow_writes(conn.key)

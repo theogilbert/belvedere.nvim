@@ -2,7 +2,7 @@
 -- opened by hovering an edge in the schema diagram.
 local M = {}
 
-local pane = require("belvedere.ui.detail_pane")
+local pane = require("grannos.ui.detail_pane")
 local ICON = "󰌷 "
 local ARROW = "  →  "
 local EDGE_LINE = string.rep("━", 40)
@@ -46,11 +46,11 @@ local function render(buf, rel, color)
   end
 
   seg("  ")
-  seg(local_table,   "BelvedereExplorerTable")
-  seg(rel.column,     "BelvedereExplorerColumn")
+  seg(local_table,   "GrannosExplorerTable")
+  seg(rel.column,     "GrannosExplorerColumn")
   seg(ARROW)
-  seg(ref_table,      "BelvedereExplorerTable")
-  seg(rel.ref_column, "BelvedereExplorerColumn")
+  seg(ref_table,      "GrannosExplorerTable")
+  seg(rel.ref_column, "GrannosExplorerColumn")
   lines[#lines + 1] = table.concat(parts)
 
   if color then
@@ -102,7 +102,7 @@ end
 --- @param colors (string|nil)[]|nil  highlight group per entry in `rels`, same order
 function M.open(rels, colors)
   if #rels == 0 then
-    vim.notify("belvedere: no relationships found", vim.log.levels.WARN)
+    vim.notify("grannos: no relationships found", vim.log.levels.WARN)
     return
   end
   local items = {}

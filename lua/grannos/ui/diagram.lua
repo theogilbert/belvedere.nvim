@@ -1,11 +1,11 @@
 -- ASCII schema diagram viewer, opened in a new tab.
 local M = {}
 
-local client = require("belvedere.client")
-local config = require("belvedere.config")
-local hl     = require("belvedere.hl")
+local client = require("grannos.client")
+local config = require("grannos.config")
+local hl     = require("grannos.hl")
 
-local NS_ID = vim.api.nvim_create_namespace("BelvedereDiagram")
+local NS_ID = vim.api.nvim_create_namespace("GrannosDiagram")
 
 -- Box-drawing and tree-connector characters used to frame table boxes and join lines.
 -- Matched as a set of UTF-8 byte sequences since Lua patterns are byte-oriented.
@@ -25,7 +25,7 @@ local PRIORITY = { border = 100, table = 110, edge = 110, column = 120 }
 local function apply_border_highlight(buf, lines)
   for row, line in ipairs(lines) do
     for s, e in line:gmatch("()" .. BORDER_PATTERN .. "()") do
-      vim.hl.range(buf, NS_ID, "BelvedereBorder",
+      vim.hl.range(buf, NS_ID, "GrannosBorder",
         { row - 1, s - 1 }, { row - 1, e - 1 }, { priority = PRIORITY.border })
     end
   end
@@ -172,14 +172,14 @@ local function region_hl_group(region, table_colors)
   if kind == nil then
     kind = (#region.path >= 2 and region.path[#region.path - 1] == "columns") and "column" or "table"
   end
-  if kind == "column" then return "BelvedereExplorerColumn" end
+  if kind == "column" then return "GrannosExplorerColumn" end
   if kind == "table" then
-    return table_colors[path_key(region.path)] or "BelvedereExplorerTable"
+    return table_colors[path_key(region.path)] or "GrannosExplorerTable"
   end
   if kind == "edge" then
-    return table_colors[path_key(owner_table_path(region.path))] or "BelvedereExplorerConstraint"
+    return table_colors[path_key(owner_table_path(region.path))] or "GrannosExplorerConstraint"
   end
-  return "BelvedereExplorerTable"
+  return "GrannosExplorerTable"
 end
 
 --- Apply highlight groups to `buf` for each region in `regions`. Uses explicit
@@ -247,7 +247,7 @@ function M.open(conn_id, path, title)
   vim.bo[buf].swapfile  = false
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "  Loading…" })
   vim.bo[buf].modifiable = false
-  pcall(vim.api.nvim_buf_set_name, buf, "belvedere://diagram/" .. title)
+  pcall(vim.api.nvim_buf_set_name, buf, "grannos://diagram/" .. title)
 
   vim.cmd("tabnew")
   local win = vim.api.nvim_get_current_win()
@@ -291,11 +291,11 @@ function M.open(conn_id, path, title)
                 end
               end
               if #final_rels == 0 then
-                vim.notify("belvedere: nothing to describe here", vim.log.levels.WARN)
+                vim.notify("grannos: nothing to describe here", vim.log.levels.WARN)
               elseif #final_rels == 1 then
-                require("belvedere.ui.relationship").open_single(final_rels[1], final_colors[1])
+                require("grannos.ui.relationship").open_single(final_rels[1], final_colors[1])
               else
-                require("belvedere.ui.relationship").open(final_rels, final_colors)
+                require("grannos.ui.relationship").open(final_rels, final_colors)
               end
             end
           end)
@@ -310,25 +310,25 @@ function M.open(conn_id, path, title)
     client.request("explore.describe", { connection_id = conn_id, path = region.path }, function(err, result)
       vim.schedule(function()
         if err then
-          vim.notify("belvedere: " .. err, vim.log.levels.ERROR)
+          vim.notify("grannos: " .. err, vim.log.levels.ERROR)
           return
         end
         local details = result and result.details
         if not details or details == vim.NIL then
-          vim.notify("belvedere: nothing to describe here", vim.log.levels.WARN)
+          vim.notify("grannos: nothing to describe here", vim.log.levels.WARN)
           return
         end
         if details.type == "column" then
-          require("belvedere.ui.column").open_single(details)
+          require("grannos.ui.column").open_single(details)
         elseif details.type == "columns" then
           local parts = vim.list_slice(region.path, 1, #region.path - 1)
           local ctx   = table.concat(parts, ".")
           local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
-          require("belvedere.ui.column").open(details, title)
+          require("grannos.ui.column").open(details, title)
         elseif details.type == "relationship" then
-          require("belvedere.ui.relationship").open_single(details, region_hl_group(region, table_colors))
+          require("grannos.ui.relationship").open_single(details, region_hl_group(region, table_colors))
         else
-          require("belvedere.ui.explorer").open_describe_float(
+          require("grannos.ui.explorer").open_describe_float(
             details, { name = region.path[#region.path], type = "table" })
         end
       end)

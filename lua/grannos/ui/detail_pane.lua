@@ -3,8 +3,8 @@
 -- management, sizing, keymaps, and autocmds.
 local M = {}
 
-local hl         = require("belvedere.hl")
-local Buffer     = require("belvedere.buffer")
+local hl         = require("grannos.hl")
+local Buffer     = require("grannos.buffer")
 
 --- Positional highlight entry: { group, 0-indexed-row, byte-col-start, byte-col-end }.
 --- Used in the `hls` accumulator arrays passed between section/tag_line/apply.
@@ -23,7 +23,7 @@ local Buffer     = require("belvedere.buffer")
 local SEP        = string.rep("─", 48)
 local TAG_SEP    = "  ·  "
 local TAG_PREFIX = "  "
-local NS         = vim.api.nvim_create_namespace("BelvedereDetailPane")
+local NS         = vim.api.nvim_create_namespace("GrannosDetailPane")
 
 --- True when v is nil or vim.NIL (JSON null decoded by Neovim).
 --- @param v any
@@ -37,10 +37,10 @@ function M.is_nil(v) return v == nil or v == vim.NIL end
 function M.section(lines, hls, title)
   local row = #lines
   lines[#lines + 1] = "  " .. title
-  hls[#hls + 1] = { "BelvedereHeaderRow", row, 2, 2 + #title }
+  hls[#hls + 1] = { "GrannosHeaderRow", row, 2, 2 + #title }
   row = #lines
   lines[#lines + 1] = "  " .. SEP
-  hls[#hls + 1] = { "BelvedereBorder", row, 2, 2 + #SEP }
+  hls[#hls + 1] = { "GrannosBorder", row, 2, 2 + #SEP }
 end
 
 --- Build a "tag summary" line with per-segment highlight specs.
@@ -77,7 +77,7 @@ end
 
 local SEARCH_PROMPT     = "/ "
 local SEARCH_PROMPT_LEN = #SEARCH_PROMPT
-local SCROLLBAR_NS      = vim.api.nvim_create_namespace("BelvedereScrollbar")
+local SCROLLBAR_NS      = vim.api.nvim_create_namespace("GrannosScrollbar")
 
 --- Draw a proportional scrollbar thumb along the right edge of `win`, as virtual
 --- text anchored to the buffer lines it currently overlaps. A no-op (and clears
@@ -105,7 +105,7 @@ local function draw_scrollbar(win, buf, win_height)
     local line = topline - 1 + thumb_offset + i  -- 0-indexed buffer line
     if line >= 0 and line < total_lines then
       vim.api.nvim_buf_set_extmark(buf, SCROLLBAR_NS, line, 0, {
-        virt_text      = { { "▐", "BelvedereScrollbarThumb" } },
+        virt_text      = { { "▐", "GrannosScrollbarThumb" } },
         virt_text_pos  = "right_align",
         hl_mode        = "combine",
       })
@@ -184,7 +184,7 @@ function M.open_search_list(opts)
   local all_wins     = { input_win, list_win }
   local all_wins_set = { [input_win] = true, [list_win] = true }
   local closed       = false
-  local aug = vim.api.nvim_create_augroup("BelvedereSearchList_" .. list_buf, { clear = true })
+  local aug = vim.api.nvim_create_augroup("GrannosSearchList_" .. list_buf, { clear = true })
 
   --- Close every window registered with this pane.
   local function close()
@@ -480,7 +480,7 @@ end
 function M.open_searchable_two_pane(opts)
   local items = opts.items
   if #items == 0 then
-    vim.notify("belvedere: nothing to display", vim.log.levels.WARN)
+    vim.notify("grannos: nothing to display", vim.log.levels.WARN)
     return
   end
 
@@ -621,7 +621,7 @@ function M.open_single(opts)
   --- Close the single-item float.
   local function close() pcall(vim.api.nvim_win_close, win, true) end
 
-  local aug = vim.api.nvim_create_augroup("BelvedereDetailPane_" .. buf, { clear = true })
+  local aug = vim.api.nvim_create_augroup("GrannosDetailPane_" .. buf, { clear = true })
   vim.api.nvim_create_autocmd("WinClosed", {
     group = aug, pattern = tostring(win), once = true,
     callback = function() vim.api.nvim_del_augroup_by_id(aug) end,

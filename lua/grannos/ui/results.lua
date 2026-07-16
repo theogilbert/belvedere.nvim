@@ -1,27 +1,27 @@
 -- Query results window.
 --
 -- One buffer per (source buffer, connection) pair, named:
---   "belvedere://results [conn (driver)] [filename]"   (named source buf)
---   "belvedere://results [conn (driver)] #N"            (unnamed source buf)
+--   "grannos://results [conn (driver)] [filename]"   (named source buf)
+--   "grannos://results [conn (driver)] #N"            (unnamed source buf)
 -- Changing a source buffer's connection and running another query therefore opens
 -- a new results buffer rather than renaming/reusing the old one; the old one stays
 -- listed so the user can still :b back to it.
 -- Buffers are listed so the user can :b between them.
 -- One results window per tab: running a query in tab A never clobbers tab B.
-local Buffer      = require("belvedere.buffer")
-local table_fmt   = require("belvedere.table")
-local hl          = require("belvedere.hl")
-local config      = require("belvedere.config")
-local col_picker  = require("belvedere.ui.col_picker")
-local connections = require("belvedere.connections")
-local export      = require("belvedere.export")
-local client      = require("belvedere.client")
-local hover       = require("belvedere.ui.hover")
-local column_ui   = require("belvedere.ui.column")
+local Buffer      = require("grannos.buffer")
+local table_fmt   = require("grannos.table")
+local hl          = require("grannos.hl")
+local config      = require("grannos.config")
+local col_picker  = require("grannos.ui.col_picker")
+local connections = require("grannos.connections")
+local export      = require("grannos.export")
+local client      = require("grannos.client")
+local hover       = require("grannos.ui.hover")
+local column_ui   = require("grannos.ui.column")
 
 local M = {}
 
-local BUFNAME = "belvedere://results"
+local BUFNAME = "grannos://results"
 
 local render_table              -- forward declaration; defined after apply_highlights
 local export_results            -- forward declaration; defined after open_export_buffer
@@ -240,13 +240,13 @@ local function update_truncation_indicators(win_id)
   for row = 0, vim.api.nvim_buf_line_count(buf_id) - 1 do
     if trunc_right then
       vim.api.nvim_buf_set_extmark(buf_id, hl.TRUNCATION_NS_ID, row, 0, {
-        virt_text = { { "▸", "BelvedereTruncated" } },
+        virt_text = { { "▸", "GrannosTruncated" } },
         virt_text_pos = "right_align",
       })
     end
     if trunc_left then
       vim.api.nvim_buf_set_extmark(buf_id, hl.TRUNCATION_NS_ID, row, 0, {
-        virt_text         = { { "◂", "BelvedereTruncated" } },
+        virt_text         = { { "◂", "GrannosTruncated" } },
         virt_text_win_col = 0,
       })
     end
@@ -435,7 +435,7 @@ local function show_column_hover(bs)
   local col_name = col_idx and bs.vis_columns[col_idx]
   if not col_name then return end
 
-  local conn = bs.conn_key and require("belvedere").get_conn(bs.conn_key)
+  local conn = bs.conn_key and require("grannos").get_conn(bs.conn_key)
   if not conn then return end
 
   local function show(details)
@@ -466,7 +466,7 @@ local function get_or_create_buf_state(buf_key, buf_title)
   local existing = state.buffers[buf_key]
   if existing and existing.buffer:is_valid() then return existing end
 
-  local buf = Buffer:new(buf_title, "belvedere_results", false, "nofile", "hide")
+  local buf = Buffer:new(buf_title, "grannos_results", false, "nofile", "hide")
   vim.bo[buf.buf_id].buflisted = true
   table_fmt.setup_buf_hl(buf.buf_id)
 
@@ -535,12 +535,12 @@ end
 --- `label_line` and `tbl_offset` are 0-indexed buffer rows.
 --- @param bs         table   buf_state
 --- @param tbl        table   FormattedTable from table_fmt.from_structured_data
---- @param label_line integer  0-indexed row for BelvedereRowCount
+--- @param label_line integer  0-indexed row for GrannosRowCount
 --- @param tbl_offset integer  0-indexed row where the table starts
 local function apply_highlights(bs, tbl, label_line, tbl_offset)
-  local rules = table_fmt.col_hl_rules("BelvedereHeaderRow", tbl_offset, 1, tbl)
+  local rules = table_fmt.col_hl_rules("GrannosHeaderRow", tbl_offset, 1, tbl)
   table.insert(rules, {
-    higroup = "BelvedereRowCount",
+    higroup = "GrannosRowCount",
     start   = { label_line, 0 },
     finish  = { label_line, -1 },
   })
@@ -627,7 +627,7 @@ local function render_segments(bs)
         finish  = { r.finish[1] + offset, r.finish[2] },
       })
     end
-    table.insert(all_rules, { higroup = "BelvedereHeaderRow",
+    table.insert(all_rules, { higroup = "GrannosHeaderRow",
       start = { hdr_lnum, 0 }, finish = { hdr_lnum, -1 } })
     table.insert(all_lines, "")
   end
@@ -711,8 +711,8 @@ local function build_segment(idx, total, columns, rows, rows_returned, rows_tota
   if duration_ms then label = label .. "  ·  " .. format_duration(duration_ms) end
   local content = { label, "" }
   vim.list_extend(content, tbl.text)
-  local rules = table_fmt.col_hl_rules("BelvedereHeaderRow", 2, 1, tbl)
-  table.insert(rules, { higroup = "BelvedereRowCount",
+  local rules = table_fmt.col_hl_rules("GrannosHeaderRow", 2, 1, tbl)
+  table.insert(rules, { higroup = "GrannosRowCount",
     start = { 0, 0 }, finish = { 0, -1 } })
   for _, r in ipairs(table_fmt.thousands_hl_rules(tbl)) do
     table.insert(rules, {
@@ -810,7 +810,7 @@ function M.append_batch_error(idx, total, msg)
   table.insert(bs.segments, {
     header   = make_separator(idx, total),
     lines    = lines,
-    hl_rules = { { higroup = "BelvedereError", start = { 0, 0 }, finish = { #lines - 1, -1 } } },
+    hl_rules = { { higroup = "GrannosError", start = { 0, 0 }, finish = { #lines - 1, -1 } } },
   })
   render_segments(bs)
 end
@@ -849,7 +849,7 @@ function M.show_rows_affected(n, verb, duration_ms)
   if duration_ms then msg = msg .. "  ·  " .. format_duration(duration_ms) end
   bs.buffer:set_content({ msg })
   bs.buffer:apply_highlight({
-    { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } },
+    { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } },
   })
   reset_cursor()
 end
@@ -867,7 +867,7 @@ function M.append_batch_rows_affected(idx, total, n, verb, duration_ms)
   table.insert(bs.segments, {
     header   = make_separator(idx, total),
     lines    = { msg },
-    hl_rules = { { higroup = "BelvedereRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
+    hl_rules = { { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
   })
   render_segments(bs)
 end
@@ -882,7 +882,7 @@ function M.show_error(msg)
   lines[1]    = "Error: " .. lines[1]
   bs.buffer:set_content(lines)
   bs.buffer:apply_highlight({
-    { higroup = "BelvedereError", start = { 0, 0 }, finish = { #lines - 1, -1 } },
+    { higroup = "GrannosError", start = { 0, 0 }, finish = { #lines - 1, -1 } },
   })
   reset_cursor()
 end
@@ -898,7 +898,7 @@ function M.show_message(msg)
   reset_cursor()
 end
 
---- Return true when `buf_id` is a belvedere results buffer.
+--- Return true when `buf_id` is an grannos results buffer.
 --- @param buf_id integer
 --- @return boolean
 function M.is_results_buf(buf_id)

@@ -4,7 +4,7 @@
 -- single-column float. Window management is handled by detail_pane.
 local M = {}
 
-local pane = require("belvedere.ui.detail_pane")
+local pane = require("grannos.ui.detail_pane")
 local ICON = "󰠵 "
 local ARROW = "  →  "
 
@@ -44,13 +44,13 @@ end
 --- @return table  tagged list consumed by detail_pane.tag_line
 local function type_tags(col)
   local data_type = (not is_nil(col.data_type) and col.data_type ~= "") and col.data_type or "?"
-  local tagged = { { data_type, "BelvedereExplorerTable" } }
+  local tagged = { { data_type, "GrannosExplorerTable" } }
   if col.nullable == true then
-    tagged[#tagged + 1] = { "nullable", "BelvedereExplorerDim" }
+    tagged[#tagged + 1] = { "nullable", "GrannosExplorerDim" }
   elseif col.nullable == false then
-    tagged[#tagged + 1] = { "not null", "BelvedereExplorerDim" }
+    tagged[#tagged + 1] = { "not null", "GrannosExplorerDim" }
   end
-  if col.pk then tagged[#tagged + 1] = { "primary key", "BelvedereExplorerSchema" } end
+  if col.pk then tagged[#tagged + 1] = { "primary key", "GrannosExplorerSchema" } end
   return tagged
 end
 
@@ -71,7 +71,7 @@ local function render(buf, col)
       local comment_row  = #lines
       local comment_line = "  " .. cline
       lines[#lines + 1] = comment_line
-      hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
+      hls[#hls + 1] = { "GrannosExplorerDim", comment_row, 0, #comment_line }
     end
   end
 
@@ -95,10 +95,10 @@ local function render(buf, col)
         pos = pos + #s
       end
       seg("  ")
-      seg(ref.column, "BelvedereExplorerColumn")
+      seg(ref.column, "GrannosExplorerColumn")
       seg(ARROW)
-      seg(ref_table_prefix(ref), "BelvedereExplorerTable")
-      seg(ref.ref_column, "BelvedereExplorerColumn")
+      seg(ref_table_prefix(ref), "GrannosExplorerTable")
+      seg(ref.ref_column, "GrannosExplorerColumn")
       lines[#lines + 1] = table.concat(parts)
     end
     lines[#lines + 1] = ""
@@ -111,7 +111,7 @@ local function render(buf, col)
       local name = type(idx) == "table" and idx.index or tostring(idx)
       local irow = #lines
       lines[#lines + 1] = "  " .. name
-      hls[#hls + 1] = { "BelvedereExplorerIndex", irow, 2, 2 + #name }
+      hls[#hls + 1] = { "GrannosExplorerIndex", irow, 2, 2 + #name }
     end
     lines[#lines + 1] = ""
   end
@@ -123,7 +123,7 @@ local function render(buf, col)
       local name = type(idx) == "table" and idx.index or tostring(idx)
       local irow = #lines
       lines[#lines + 1] = "  " .. name
-      hls[#hls + 1] = { "BelvedereExplorerIndex", irow, 2, 2 + #name }
+      hls[#hls + 1] = { "GrannosExplorerIndex", irow, 2, 2 + #name }
     end
     lines[#lines + 1] = ""
   end
@@ -146,7 +146,7 @@ end
 function M.open(details, title)
   local columns = type(details.columns) == "table" and details.columns or {}
   if #columns == 0 then
-    vim.notify("belvedere: no columns found", vim.log.levels.WARN)
+    vim.notify("grannos: no columns found", vim.log.levels.WARN)
     return
   end
   pane.open_searchable_two_pane({
@@ -169,7 +169,7 @@ function M.hover_lines(col)
 
   local name_row = #lines
   lines[#lines + 1] = col.name
-  hls[#hls + 1] = { "BelvedereHeaderRow", name_row, 0, #col.name }
+  hls[#hls + 1] = { "GrannosHeaderRow", name_row, 0, #col.name }
 
   local tag_row = #lines
   local line, specs = pane.tag_line(type_tags(col))
@@ -181,7 +181,7 @@ function M.hover_lines(col)
       local comment_row  = #lines
       local comment_line = "  " .. cline
       lines[#lines + 1] = comment_line
-      hls[#hls + 1] = { "BelvedereExplorerDim", comment_row, 0, #comment_line }
+      hls[#hls + 1] = { "GrannosExplorerDim", comment_row, 0, #comment_line }
     end
   end
 
@@ -195,8 +195,8 @@ function M.hover_lines(col)
       pos = pos + #s
     end
     seg(ARROW)
-    seg(ref_table_prefix(ref), "BelvedereExplorerTable")
-    seg(ref.ref_column, "BelvedereExplorerColumn")
+    seg(ref_table_prefix(ref), "GrannosExplorerTable")
+    seg(ref.ref_column, "GrannosExplorerColumn")
     lines[#lines + 1] = table.concat(parts)
   end
 

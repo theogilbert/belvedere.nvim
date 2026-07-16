@@ -1,12 +1,12 @@
-if vim.g.loaded_belvedere then return end
-vim.g.loaded_belvedere = true
+if vim.g.loaded_grannos then return end
+vim.g.loaded_grannos = true
 
-local db = require("belvedere")
+local db = require("grannos")
 
 --- Return a sorted list of all saved connection names for command completion.
 --- @return string[]
 local function saved_connection_names()
-  local ok, data = pcall(require("belvedere.connections").load_all)
+  local ok, data = pcall(require("grannos.connections").load_all)
   if not ok then return {} end
   local seen, names = {}, {}
   for _, server_data in pairs(data) do
@@ -43,7 +43,7 @@ end, {})
 -- :DbNewConnection  — open the new-connection wizard
 vim.api.nvim_create_user_command("DbNewConnection", function(_)
   db.ensure_backend_with_caps(function(caps)
-    require("belvedere.connections").create(caps, function(name, params)
+    require("grannos.connections").create(caps, function(name, params)
       if name then db._do_connect(name, params) end
     end)
   end)
@@ -56,7 +56,7 @@ vim.api.nvim_create_user_command("DbDeleteConnection", function(opts)
     vim.notify("Usage: :DbDeleteConnection <name>", vim.log.levels.WARN)
     return
   end
-  local conns_mod = require("belvedere.connections")
+  local conns_mod = require("grannos.connections")
   local matches = {}
   local data = conns_mod.load_all()
   for server_name, server_data in pairs(data) do
@@ -73,11 +73,11 @@ vim.api.nvim_create_user_command("DbDeleteConnection", function(opts)
     end
   end
   if #matches == 0 then
-    vim.notify(("belvedere: connection %q not found"):format(arg), vim.log.levels.WARN)
+    vim.notify(("grannos: connection %q not found"):format(arg), vim.log.levels.WARN)
   elseif #matches == 1 then
     conns_mod.delete(matches[1])
   else
-    vim.notify(("belvedere: %q is ambiguous (%d matches) — use the connections panel to delete"):format(arg, #matches), vim.log.levels.WARN)
+    vim.notify(("grannos: %q is ambiguous (%d matches) — use the connections panel to delete"):format(arg, #matches), vim.log.levels.WARN)
   end
 end, {
   nargs = 1,

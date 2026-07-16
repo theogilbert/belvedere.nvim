@@ -1,7 +1,7 @@
 local M = {}
 
-local queries     = require("belvedere.queries")
-local connections = require("belvedere.connections")
+local queries     = require("grannos.queries")
+local connections = require("grannos.connections")
 
 local PROMPT     = "Name> "
 local PROMPT_LEN = #PROMPT
@@ -39,7 +39,7 @@ local function prompt_name(content, filetype, hint, on_confirm, on_cancel)
   vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { PROMPT .. (hint or "") })
 
   -- Keep the cursor on or after the prompt prefix at all times.
-  local aug = vim.api.nvim_create_augroup("BelvedereNameInput", { clear = true })
+  local aug = vim.api.nvim_create_augroup("GrannosNameInput", { clear = true })
   vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
     buffer   = input_buf,
     group    = aug,
@@ -195,7 +195,7 @@ local function pick_scope_no_conn(callback)
     table.sort(drivers, function(a, b) return a.driver_label < b.driver_label end)
 
     if #drivers == 0 then
-      vim.notify("belvedere: no connections configured", vim.log.levels.WARN)
+      vim.notify("grannos: no connections configured", vim.log.levels.WARN)
       callback(nil)
       return
     end
@@ -290,11 +290,11 @@ function M.open(content, conn_key, ext)
     prompt_name(content, ext, name_hint, function(name)
       local ok = queries.save(scope_key, name, content, ext)
       if not ok then
-        vim.notify(("belvedere: %q already exists in this scope — choose a different name"):format(name), vim.log.levels.WARN)
+        vim.notify(("grannos: %q already exists in this scope — choose a different name"):format(name), vim.log.levels.WARN)
         vim.schedule(function() do_save(scope_key, name) end)
         return
       end
-      vim.notify(('belvedere: saved "%s" (%s)'):format(name, queries.scope_label(scope_key)), vim.log.levels.INFO)
+      vim.notify(('grannos: saved "%s" (%s)'):format(name, queries.scope_label(scope_key)), vim.log.levels.INFO)
     end, function() end)
   end
 
@@ -305,11 +305,11 @@ function M.open(content, conn_key, ext)
         vim.schedule(function()
           local ok = queries.save(scope_key, name, content, ext)
           if not ok then
-            vim.notify(("belvedere: %q already exists in this scope — choose a different name"):format(name), vim.log.levels.WARN)
+            vim.notify(("grannos: %q already exists in this scope — choose a different name"):format(name), vim.log.levels.WARN)
             vim.schedule(function() do_save(scope_key, name) end)
             return
           end
-          vim.notify(('belvedere: saved "%s" (%s)'):format(name, queries.scope_label(scope_key)), vim.log.levels.INFO)
+          vim.notify(('grannos: saved "%s" (%s)'):format(name, queries.scope_label(scope_key)), vim.log.levels.INFO)
         end)
       end)
     end)
