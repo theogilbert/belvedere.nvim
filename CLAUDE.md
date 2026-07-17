@@ -10,6 +10,8 @@ Tests use [plenary.nvim](https://github.com/nvim-lua/plenary.nvim). Run a single
 :PlenaryBustedFile spec/connections_spec.lua
 ```
 
+To run the suite headlessly from the CLI (no Neovim UI needed), use the `test` skill (`/test`), which locates plenary.nvim's install dir and drives `PlenaryBustedDirectory`/`PlenaryBustedFile` with `nvim --headless -u NONE`.
+
 There is no build step for the Lua code. The precompiled treesitter parsers (`parser/sql.so`, `parser/cypher.so`) are binary and should not be regenerated manually.
 
 ## Architecture
@@ -40,6 +42,9 @@ grannos.nvim is a Neovim database-client plugin that delegates all database work
 | `lua/grannos/ui/detail_pane.lua` | Shared two-pane and single-item detail float infrastructure |
 | `lua/grannos/ui/indices.lua` | Index-description float (uses detail_pane) |
 | `lua/grannos/ui/column.lua` | Column-description float (uses detail_pane) |
+| `lua/grannos/ui/relationship.lua` | Foreign-key relationship detail float, opened by hovering a diagram edge (uses detail_pane) |
+| `lua/grannos/ui/diagram.lua` | ASCII schema diagram viewer (new tab); tracks highlight regions for hover |
+| `lua/grannos/ui/hover.lua` | Generic non-focusable hover float near the cursor |
 | `lua/grannos/ui/window.lua` | Sidebar window helper |
 | `lua/grannos/log.lua` | In-memory query log (per connection) |
 | `lua/grannos/selection.lua` | Visual selection extraction |
@@ -47,6 +52,7 @@ grannos.nvim is a Neovim database-client plugin that delegates all database work
 | `lua/grannos/hl.lua` | Highlight group definitions |
 | `lua/grannos/table.lua` | Column-aligned table rendering for results |
 | `lua/grannos/queries.lua` | Saved-queries filesystem helpers |
+| `lua/grannos/export.lua` | Pure serializers for exporting query results (json/csv/pretty/markdown) |
 
 ### Session state and connection identity
 

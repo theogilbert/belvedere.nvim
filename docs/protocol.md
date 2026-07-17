@@ -35,6 +35,17 @@ Requests are handled concurrently. Responses may arrive out of order — clients
 
 ---
 
+## Protocol versioning
+
+The server reports its wire-protocol version as `protocol_version` in the [`capabilities`](#capabilities) result, as a `"<major>.<minor>"` string (e.g. `"1.0"`).
+
+- **`major`** bumps on any backward-incompatible change to an existing method's params or result shape (removed/renamed fields, changed semantics).
+- **`minor`** bumps on additive, backward-compatible changes (new optional fields, new methods).
+
+Clients should call `capabilities` once after starting the server and compare only the `major` component against the version they were built for. A `major` mismatch means the client and server disagree on the shape of the wire protocol and are not guaranteed to work together; a `minor` difference is always safe to ignore. A server that predates protocol versioning omits `protocol_version` entirely — treat that the same as a `major` mismatch.
+
+---
+
 ## Progress notifications
 
 Long-running methods may send one or more progress messages before the final response. A progress message carries a `progress` object and shares the same `id` as the originating request. The pending request stays open until the final `result`/`error` message arrives.
@@ -78,10 +89,11 @@ Only drivers whose dependencies are installed appear in the response.
 
 **result**
 
-| Field     | Type                       | Description                                     |
-|-----------|----------------------------|-------------------------------------------------|
-| `server`  | string                     | Human-readable server name (e.g. `"belvedere"`) |
-| `drivers` | array of [Driver](#driver) | Supported drivers                               |
+| Field              | Type                       | Description                                          |
+|--------------------|----------------------------|-------------------------------------------------------|
+| `server`           | string                     | Human-readable server name (e.g. `"belvedere"`)      |
+| `protocol_version` | string                     | Wire-protocol version as `"<major>.<minor>"` — see [Protocol versioning](#protocol-versioning) |
+| `drivers`          | array of [Driver](#driver) | Supported drivers                                     |
 
 **example**
 
@@ -93,6 +105,7 @@ Only drivers whose dependencies are installed appear in the response.
   "id": 1,
   "result": {
     "server": "belvedere",
+    "protocol_version": "1.0",
     "drivers": [
       {
         "driver": "mydriver",

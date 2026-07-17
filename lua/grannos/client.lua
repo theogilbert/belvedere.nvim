@@ -16,6 +16,14 @@ local state = {
 local caps_cache   = nil  -- cached capabilities result
 local caps_pending = {}   -- callbacks waiting for the first fetch
 
+-- Wire-protocol version this client was built against, as "<major>.<minor>".
+-- Bump the major component alongside protocol.md and grannos-py's
+-- PROTOCOL_VERSION for breaking changes; bump minor for additive changes.
+-- Only major is checked for compatibility — a minor bump is guaranteed
+-- backward-compatible by convention.
+local PROTOCOL_VERSION = "1.0"
+M.PROTOCOL_VERSION = PROTOCOL_VERSION
+
 
 -- Neovim jobstart line convention: data[1] continues the previous partial
 -- line; data[#data] is always the (possibly empty) start of the next line.
@@ -137,6 +145,19 @@ function M.start(cmd)
   state.job_id = job_id
 end
 
+--- Return a human-readable warning when `server_version`'s major component
+--- doesn't match this client's, or nil when compatible (including when
+--- `server_version` is nil, e.g. a pre-versioning server).
+--- @param server_version string|nil  `protocol_version` from `capabilities`
+--- @return string|nil
+function M.check_protocol_compat(server_version)
+  local client_major = PROTOCOL_VERSION:match("^(%d+)")
+  local server_major = server_version and server_version:match("^(%d+)")
+  if server_major == client_major then return nil end
+  return ("grannos: protocol version mismatch — client expects v%s, server reports %s. Update grannos.nvim and grannos-py to compatible versions."):format(
+    PROTOCOL_VERSION, server_version or "none (pre-versioning server)")
+end
+
 --- Fetch capabilities once and cache the result; subsequent calls return immediately.
 --- @param callback fun(caps: table)
 function M.ensure_capabilities(callback)
@@ -144,7 +165,13 @@ function M.ensure_capabilities(callback)
   table.insert(caps_pending, callback)
   if #caps_pending > 1 then return end  -- request already in-flight
   M.request("capabilities", {}, function(err, result)
-    caps_cache = (not err and result) or { server = "", drivers = {} }
+    if err then
+      caps_cache = { server = "", drivers = {} }
+    else
+      caps_cache = result
+      local warning = M.check_protocol_compat(caps_cache.protocol_version)
+      if warning then vim.notify(warning, vim.log.levels.ERROR) end
+    end
     local waiting = caps_pending
     caps_pending = {}
     for _, cb in ipairs(waiting) do cb(caps_cache) end
