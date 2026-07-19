@@ -12,6 +12,16 @@ local Spinner = require("grannos.ui.spinner")
 
 local BUFNAME = "grannos://explorer"
 
+--- Group-path explore.describe results (e.g. an entity's indexes) come back
+--- as a bare JSON array rather than a wrapper object.
+--- @param v any
+--- @return boolean
+local function is_array(v)
+  if type(v) ~= "table" then return false end
+  if vim.islist then return vim.islist(v) end
+  return vim.tbl_islist(v)
+end
+
 local EXPLORER_NS = vim.api.nvim_create_namespace("GrannosExplorer")
 
 local EXPLORER_HL = {
@@ -308,7 +318,29 @@ render_describe = function(details, node)
     return s .. string.rep(" ", math.max(0, n - vim.fn.strdisplaywidth(s)))
   end
 
-  local tname     = details.table or node.name
+  local function field_type_string(col)
+    local types = type(col.types) == "table" and col.types or {}
+    return #types > 0 and table.concat(types, "|") or "?"
+  end
+
+  --- Flatten each field's own reference list (outgoing_references or
+  --- incoming_references) into one list for the entity — EntityDescription
+  --- no longer carries these itself, only its fields do.
+  local function flatten_refs(properties, key)
+    local refs = {}
+    if type(properties) ~= "table" then return refs end
+    for _, field in ipairs(properties) do
+      local field_refs = field[key]
+      if type(field_refs) == "table" then
+        for _, r in ipairs(field_refs) do
+          refs[#refs + 1] = r
+        end
+      end
+    end
+    return refs
+  end
+
+  local tname     = details.name or node.name
   local schema    = not is_nil_val(details.schema) and details.schema or nil
   local win_title = (schema and schema .. "." or "") .. tname
   local hdr_title = node_icon(node) .. win_title
@@ -326,12 +358,12 @@ render_describe = function(details, node)
 
   table.insert(lines, "")
 
-  local cols = details.columns
+  local cols = details.properties
   if cols and #cols > 0 then
     local w_name, w_type, w_default = 4, 4, 7  -- "Name", "Type", "Default"
     for _, col in ipairs(cols) do
       w_name    = math.max(w_name,    vim.fn.strdisplaywidth(col.name))
-      w_type    = math.max(w_type,    vim.fn.strdisplaywidth(col.type))
+      w_type    = math.max(w_type,    vim.fn.strdisplaywidth(field_type_string(col)))
       local ds  = not is_nil_val(col.default) and tostring(col.default) or "—"
       w_default = math.max(w_default, vim.fn.strdisplaywidth(ds))
     end
@@ -361,8 +393,8 @@ render_describe = function(details, node)
       local null_s    = col.nullable == true and "✓" or col.nullable == false and "✗" or " "
       local pk_s      = col.pk and "✓" or " "
       local default_s = not is_nil_val(col.default) and tostring(col.default) or "—"
-      local excl_s    = col.exclusive_index and "✓" or " "
-      local comp_s    = col.composite_index and "✓" or " "
+      local excl_s    = (type(col.exclusive_indices) == "table" and #col.exclusive_indices > 0) and "✓" or " "
+      local comp_s    = (type(col.composite_indices) == "table" and #col.composite_indices > 0) and "✓" or " "
 
       local row_idx = #lines
       local parts   = {}
@@ -376,7 +408,7 @@ render_describe = function(details, node)
       seg("  ")
       seg(rpad(col.name, w_name), col.pk and "GrannosExplorerSchema" or nil)
       seg("  ")
-      seg(rpad(col.type, w_type),  "GrannosExplorerTable")
+      seg(rpad(field_type_string(col), w_type),  "GrannosExplorerTable")
       seg("   ")
       seg(null_s,  null_s ~= " " and "GrannosExplorerDim" or nil)
       seg("    ")
@@ -396,9 +428,14 @@ render_describe = function(details, node)
 
   --- Render one references section ("Foreign keys" / "Incoming references").
   --- Table names use GrannosExplorerTable; column names use GrannosExplorerColumn.
+  --- `table`/`column` on a TableReference always name the FK-OWNING side and
+  --- `ref_table`/`ref_column` always name the side it points at — regardless
+  --- of whether it came from `outgoing_references` (owned by this entity) or
+  --- `incoming_references` (owned by the other entity) — so which pair is
+  --- "the other table" flips with `reverse`.
   --- @param label   string
-  --- @param refs    TableReference[]|nil
-  --- @param reverse boolean  true to draw the arrow from the other table into `column`
+  --- @param refs    TableReference[]
+  --- @param reverse boolean  true for incoming references
   local function render_refs(label, refs, reverse)
     if type(refs) ~= "table" or #refs == 0 then return end
 
@@ -408,8 +445,6 @@ render_describe = function(details, node)
     add_hl("GrannosHeaderRow", #lines - 1, 2, 2 + #label)
 
     for _, r in ipairs(refs) do
-      local other_table = (not is_nil_val(r.schema) and r.schema .. "." or "") .. r.table .. "."
-
       local row_idx  = #lines
       local parts, pos = {}, 0
       local function seg(s, grp)
@@ -420,11 +455,13 @@ render_describe = function(details, node)
 
       seg("  ")
       if reverse then
+        local other_table = (not is_nil_val(r.schema) and r.schema .. "." or "") .. r.table .. "."
         seg(other_table,  "GrannosExplorerTable")
-        seg(r.ref_column, "GrannosExplorerColumn")
+        seg(r.column,      "GrannosExplorerColumn")
         seg(ARROW)
-        seg(r.column,     "GrannosExplorerColumn")
+        seg(r.ref_column,  "GrannosExplorerColumn")
       else
+        local other_table = (not is_nil_val(r.ref_schema) and r.ref_schema .. "." or "") .. r.ref_table .. "."
         seg(r.column,      "GrannosExplorerColumn")
         seg(ARROW)
         seg(other_table,  "GrannosExplorerTable")
@@ -435,8 +472,8 @@ render_describe = function(details, node)
     end
   end
 
-  render_refs("Foreign keys",         details.outgoing_references, false)
-  render_refs("Incoming references",  details.incoming_references, true)
+  render_refs("Foreign keys",         flatten_refs(details.properties, "outgoing_references"), false)
+  render_refs("Incoming references",  flatten_refs(details.properties, "incoming_references"), true)
 
   return lines, hl_rules, win_title
 end
@@ -488,6 +525,11 @@ present_describe_float = function(lines, hl_rules, win_title)
 end
 
 --- Handle the hover key: request explore.describe for the node under the cursor.
+---
+--- The "columns" group node is special: that path no longer resolves on its
+--- own (an entity's fields live on the entity's own describe result now), so
+--- hovering it describes the *parent* entity path instead and reads its
+--- `properties` list — same two-pane columns browser, sourced differently.
 local function on_describe()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
@@ -495,7 +537,13 @@ local function on_describe()
   node.describing = true
   spinner:start()
   render()
-  client.request("explore.describe", { connection_id = state.conn_id, path = node.path }, function(err, result)
+
+  local is_columns_group = node.type == "group" and node.path[#node.path] == "columns"
+  local describe_path = is_columns_group
+    and vim.list_slice(node.path, 1, #node.path - 1)
+    or node.path
+
+  client.request("explore.describe", { connection_id = state.conn_id, path = describe_path }, function(err, result)
     node.describing = false
     spinner:stop()
     if err then
@@ -508,7 +556,13 @@ local function on_describe()
     vim.schedule(function()
       render()
       local details = result.details
-      if details and details.type == "indices" then
+      if is_columns_group then
+        local p = node.path
+        local parts = vim.list_slice(p, 1, #p - 1)
+        local ctx = table.concat(parts, ".")
+        local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
+        require("grannos.ui.column").open(details, title)
+      elseif is_array(details) then
         local p = node.path
         local parts = vim.list_slice(p, 1, #p - 1)
         local ctx = table.concat(parts, ".")
@@ -516,13 +570,7 @@ local function on_describe()
         require("grannos.ui.indices").open(details, title)
       elseif details and details.type == "index" then
         require("grannos.ui.indices").open_single(details)
-      elseif details and details.type == "columns" then
-        local p = node.path
-        local parts = vim.list_slice(p, 1, #p - 1)
-        local ctx = table.concat(parts, ".")
-        local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
-        require("grannos.ui.column").open(details, title)
-      elseif details and details.type == "column" then
+      elseif details and details.type == "field" then
         require("grannos.ui.column").open_single(details)
       else
         open_describe_float(details, node)

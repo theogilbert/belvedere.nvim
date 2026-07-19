@@ -2,9 +2,9 @@ local column = require("grannos.ui.column")
 
 local function base_col(overrides)
   local col = {
-    type = "column",
+    type = "field",
     name = "user_id",
-    data_type = "INTEGER",
+    types = { "INTEGER" },
     nullable = false,
     pk = false,
     default = vim.NIL,
@@ -28,10 +28,12 @@ describe("column.hover_lines", function()
   end)
 
   it("appends one arrow line per reference, schema-qualified when present", function()
+    -- table/schema name the FK-owning side (this field's own entity);
+    -- ref_table/ref_schema name the side it points at.
     local lines, hls = column.hover_lines(base_col({
       outgoing_references = {
-        { column = "user_id", table = "users", ref_column = "id", schema = vim.NIL },
-        { column = "user_id", table = "archived_users", ref_column = "id", schema = "public" },
+        { table = "orders", column = "user_id", ref_table = "users", ref_column = "id", ref_schema = vim.NIL },
+        { table = "orders", column = "user_id", ref_table = "archived_users", ref_column = "id", ref_schema = "public" },
       },
     }))
     assert.same({

@@ -1,5 +1,5 @@
--- Two-pane float for browsing all indexes of a table (IndicesDescription),
--- and a single-index detail float (IndexDescription).
+-- Two-pane float for browsing all indexes of a table (bare array of
+-- IndexDescription), and a single-index detail float (IndexDescription).
 -- Window management is handled by detail_pane; this module contains only
 -- index-specific content rendering.
 local M = {}
@@ -98,10 +98,12 @@ local function render(buf, idx)
 end
 
 --- Open the two-pane indices browser.
---- @param details table   IndicesDescription as decoded from the server response
+--- @param details table   Bare array of IndexDescription, as decoded from the
+---                        server response (group paths return a plain array now,
+---                        not a wrapper object)
 --- @param title   string  Left pane window title (caller derives from the request path)
 function M.open(details, title)
-  local indices = type(details.indices) == "table" and details.indices or {}
+  local indices = type(details) == "table" and details or {}
   if #indices == 0 then
     vim.notify("grannos: no indices found for this table", vim.log.levels.WARN)
     return
@@ -109,8 +111,8 @@ function M.open(details, title)
   pane.open_searchable_two_pane({
     items      = indices,
     left_title = title or " Indices ",
-    get_label  = function(idx) return idx.index end,
-    get_title  = function(idx) return ICON .. idx.index end,
+    get_label  = function(idx) return idx.name end,
+    get_title  = function(idx) return ICON .. idx.name end,
     render     = render,
     estimate   = estimate_lines,
   })
@@ -121,7 +123,7 @@ end
 function M.open_single(idx)
   pane.open_single({
     item     = idx,
-    title    = ICON .. idx.index,
+    title    = ICON .. idx.name,
     render   = render,
     estimate = estimate_lines,
   })

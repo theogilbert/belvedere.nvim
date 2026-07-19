@@ -287,9 +287,11 @@ Returns detailed metadata about a specific node.
 
 **result**
 
-| Field     | Type                | Description                    |
-|-----------|---------------------|--------------------------------|
-| `details` | object or null      | Description object, or null if the path does not resolve to a describable node. Discriminate on the `type` field: `"table"` → [TableDescription](#tabledescription), `"index"` → [IndexDescription](#indexdescription), `"indices"` → [IndicesDescription](#indicesdescription), `"column"` → [ColumnDescription](#columndescription), `"columns"` → [ColumnsDescription](#columnsdescription), `"relationship"` → [RelationshipDescription](#relationshipdescription) |
+| Field     | Type                       | Description                    |
+|-----------|----------------------------|---------------------------------|
+| `details` | object, array, or null     | Description, or null if the path does not resolve to a describable node. A path that names a *group* of items (currently only an indexes group, e.g. `["public", "users", "indexes"]`) returns a bare array of the singular type instead of a wrapper object. Discriminate a single object on its `type` field: `"entity"` → [EntityDescription](#entitydescription), `"field"` → [FieldDescription](#fielddescription), `"index"` → [IndexDescription](#indexdescription), `"relationship"` → [TableReference](#tablereference). An array is always `array of [IndexDescription](#indexdescription)`. |
+
+A field's own detail — samples, comments, index membership, FK references — is already embedded in its parent [EntityDescription](#entitydescription)'s `properties`; describing `[..., "columns", field_name]` (or the equivalent per-driver field-group segment) re-fetches that same field standalone, e.g. to refresh a single field without re-describing the whole entity. There is no group-level "list all fields" path — that's redundant with the parent entity's own `properties`.
 
 ---
 
@@ -471,65 +473,53 @@ The `"group"` type is used for intermediate organisational nodes that bundle sub
 
 ---
 
-## ColumnInfo
-
-Column metadata object used inside [TableDescription](#tabledescription):
-
-| Field      | Type             | Description                                       |
-|------------|------------------|---------------------------------------------------|
-| `name`     | string           | Column name                                       |
-| `type`     | string           | Data type as reported by the database             |
-| `nullable` | boolean or null  | Whether the column allows NULL; null if unknown   |
-| `pk`       | boolean          | Whether the column is part of the primary key     |
-| `default`  | string or null   | Default expression, or null if not set            |
-| `exclusive_index` | boolean | `true` if this column is covered by at least one index that spans only this column |
-| `composite_index` | boolean | `true` if this column is covered by at least one index that also spans other columns |
-
----
-
 ## TableReference
 
-One column-level leg of a foreign key relating a table to another table, used inside [TableDescription](#tabledescription) and [ColumnDescription](#columndescription):
+One foreign key, read as `table.column -> ref_table.ref_column`: `table`/`column` always name the side that **owns** the FK constraint, `ref_table`/`ref_column` always name the side it points at — regardless of which direction the reference was reached from. This same shape is used three ways:
 
-| Field        | Type            | Description                                                |
-|--------------|-----------------|-------------------------------------------------------------|
-| `column`     | string          | Local column participating in the relationship             |
-| `table`      | string          | Name of the other table                                    |
-| `ref_column` | string          | Column on the other table                                  |
-| `schema`     | string or null  | Schema of the other table, or null for databases without schema support |
-
----
-
-## RelationshipDescription
-
-Returned as `details` by `explore.describe` when the path resolves to a relationship (edge) node — a path ending in `["relationships", <column>]`, as emitted by [`explore.diagram`](#explorediagram)'s `regions` (e.g. `["public", "orders", "relationships", "user_id"]`). Describes one foreign key in full, symmetric form (both the owning and referenced side), unlike [TableReference](#tablereference) which only describes the far side from an already-known local table.
+- Standalone, as `details` for a path ending in `["relationships", <column>]` (a path emitted by [`explore.diagram`](#explorediagram)'s `regions`, e.g. `["public", "orders", "relationships", "user_id"]`) — `type` is `"relationship"` there.
+- Embedded in a [FieldDescription](#fielddescription)'s `outgoing_references`, where `table`/`schema` restate the embedding field's own entity (since it owns the FK).
+- Embedded in a [FieldDescription](#fielddescription)'s `incoming_references`, where `ref_table`/`ref_schema` restate the embedding field's own entity instead (since some other entity owns the FK there).
 
 | Field             | Type            | Description                                                     |
-|--------------------|-----------------|-------------------------------------------------------------------|
-| `type`             | string          | Always `"relationship"` — use to discriminate description types |
-| `table`            | string          | Local table name (the table owning the foreign key)             |
-| `schema`           | string or null  | Local table's schema, or null for databases without schema support |
-| `column`           | string          | Local column                                                     |
-| `ref_table`        | string          | Referenced table name                                            |
-| `ref_schema`       | string or null  | Referenced table's schema, or null for databases without schema support |
-| `ref_column`       | string          | Referenced column                                                 |
-| `constraint_name`  | string or null  | Foreign key constraint name, or null if unnamed/unsupported      |
+|-------------------|-----------------|-------------------------------------------------------------------|
+| `type`            | string          | Always `"relationship"` — use to discriminate description types |
+| `table`           | string          | Name of the table that owns the FK constraint                   |
+| `column`          | string          | The owning table's own FK column                                 |
+| `ref_table`       | string          | Name of the referenced table                                     |
+| `ref_column`      | string          | Column on the referenced table                                   |
+| `schema`          | string or null  | Schema of the owning table, or null for databases without schema support |
+| `ref_schema`      | string or null  | Schema of the referenced table, or null for databases without schema support |
+| `unique`          | boolean         | Whether `column` is itself constrained to unique values on `table` (by a PK or a single-column UNIQUE index), making the relationship one-to-one rather than many-to-one (default `false`) |
+| `constraint_name` | string or null  | Foreign key constraint name, or null if unnamed/unsupported      |
 
 ---
 
-## TableDescription
+## Connection
 
-Returned as `details` by `explore.describe` for table/view nodes:
+Graph databases only (e.g. Neo4j): one observed `(relationship type, start label, end label)` triple, embedded in an [EntityDescription](#entitydescription)'s `connections`. Unlike [TableReference](#tablereference), a graph relationship isn't anchored to any field — it's a free-floating typed edge between node instances — so this has no per-field home and is never independently describable on its own path.
 
-| Field     | Type                    | Description                                              |
-|-----------|-------------------------|----------------------------------------------------------|
-| `type`    | string                  | Always `"table"` — use to discriminate description types |
-| `table`   | string                  | Table name                                               |
-| `schema`  | string or null          | Schema name, or null for databases without schema support |
-| `columns` | array of [ColumnInfo](#columninfo) | Ordered column metadata                     |
-| `comment` | string or null         | Table comment as stored in the database; null if unsupported or not set |
-| `outgoing_references` | array of [TableReference](#tablereference) | Foreign keys defined on this table that reference other tables in the same schema |
-| `incoming_references` | array of [TableReference](#tablereference) | Foreign keys on other tables in the same schema that reference this table |
+| Field        | Type   | Description                              |
+|--------------|--------|--------------------------------------------|
+| `rel_type`   | string | Relationship type name                     |
+| `from_label` | string | Label of the relationship's start node     |
+| `to_label`   | string | Label of the relationship's end node       |
+
+---
+
+## EntityDescription
+
+Returned as `details` by `explore.describe` for a table/view node (SQL drivers) or a node label / relationship type (graph drivers):
+
+| Field         | Type                                          | Description                                              |
+|---------------|------------------------------------------------|----------------------------------------------------------|
+| `type`        | string                                        | Always `"entity"` — use to discriminate description types |
+| `name`        | string                                        | Entity name (table name, node label, or relationship type) |
+| `kind`        | string                                        | Domain-specific classification (e.g. `"table"`, `"view"`, `"node"`, `"relationship"`, `"document"`), for clients that want a domain-appropriate icon/label. Not a wire discriminator — use `type` for that. |
+| `properties`  | array of [FieldDescription](#fielddescription) | Full metadata for every field on this entity            |
+| `schema`      | string or null                                | Schema name, or null for databases without schema support |
+| `comment`     | string or null                                | Entity comment as stored in the database; null if unsupported or not set |
+| `connections` | array of [Connection](#connection)            | Graph databases only: relationship types touching this entity and the label(s) they connect to/from. Empty for non-graph entities. |
 
 ---
 
@@ -546,12 +536,12 @@ One field in an index key, used inside [IndexDescription](#indexdescription):
 
 ## IndexDescription
 
-Returned as `details` by `explore.describe` for index nodes, and embedded inside [IndicesDescription](#indicesdescription):
+Returned as `details` by `explore.describe` for a single index node, or as an element of the bare array returned for an indexes group node (e.g. `["public", "users", "indexes"]`), and embedded in a [FieldDescription](#fielddescription)'s `exclusive_indices`/`composite_indices`:
 
 | Field               | Type                                     | Description                                                                                              |
 |---------------------|------------------------------------------|----------------------------------------------------------------------------------------------------------|
 | `type`              | string                                   | Always `"index"` — use to discriminate description types                                                 |
-| `index`             | string                                   | Index name                                                                                               |
+| `name`              | string                                   | Index name                                                                                               |
 | `fields`            | array of [IndexKeyField](#indexkeyfield) | Ordered list of key fields                                                                               |
 | `unique`            | boolean                                  | Whether the index enforces uniqueness (default `false`)                                                  |
 | `tables`            | array of strings                         | Tables (or labels/collections) the index operates on. Typically one entry; multiple for Oracle cluster indexes and SQL Server indexed views |
@@ -563,45 +553,24 @@ Returned as `details` by `explore.describe` for index nodes, and embedded inside
 
 ---
 
-## IndicesDescription
+## FieldDescription
 
-Returned as `details` by `explore.describe` when the path resolves to an indices group node (e.g. `["public", "users", "indices"]`):
+Full metadata for a single field (column, property, …) — either embedded in an [EntityDescription](#entitydescription)'s `properties`, or returned as `details` standalone for a path ending in `["columns", <field_name>]` (or the equivalent per-driver field-group segment, e.g. `["public", "users", "columns", "id"]`). One shape for both; no lighter embedded variant.
 
-| Field     | Type                                         | Description                                          |
-|-----------|----------------------------------------------|------------------------------------------------------|
-| `type`    | string                                       | Always `"indices"` — use to discriminate description types |
-| `indices` | array of [IndexDescription](#indexdescription) | All indexes on this table, in driver-defined order |
-
----
-
-## ColumnDescription
-
-Returned as `details` by `explore.describe` when the path resolves to an individual column node (e.g. `["public", "users", "columns", "id"]`), and embedded inside [ColumnsDescription](#columnsdescription).
-
-| Field               | Type                                           | Description                                                              |
-|---------------------|------------------------------------------------|--------------------------------------------------------------------------|
-| `type`              | string                                         | Always `"column"` — use to discriminate description types                |
-| `name`              | string                                         | Column name                                                              |
-| `data_type`         | string                                         | Data type as reported by the database                                    |
-| `nullable`          | boolean or null                                | Whether the column allows NULL; null if unknown                          |
-| `pk`                | boolean                                        | Whether the column is part of the primary key                            |
-| `default`           | string or null                                 | Default expression, or null if not set                                   |
-| `exclusive_indices` | array of [IndexDescription](#indexdescription) | Indices that cover only this column                                      |
-| `composite_indices` | array of [IndexDescription](#indexdescription) | Indices that cover this column and at least one other column             |
-| `comment`           | string or null                                 | Column comment as stored in the database; null if unsupported or not set |
-| `sample`            | array                                          | Up to 3 distinct non-null representative values sampled from the column  |
-| `outgoing_references` | array of [TableReference](#tablereference)   | Foreign keys defined on this column that reference another table. Empty if this column is not a foreign key. A column can carry more than one entry — either because it participates in more than one single-column FK constraint (each naming a different target), or because it is one leg of multiple composite FK constraints. |
-
----
-
-## ColumnsDescription
-
-Returned as `details` by `explore.describe` when the path resolves to a columns group node (e.g. `["public", "users", "columns"]`):
-
-| Field     | Type                                             | Description                                                     |
-|-----------|--------------------------------------------------|-----------------------------------------------------------------|
-| `type`    | string                                           | Always `"columns"` — use to discriminate description types      |
-| `columns` | array of [ColumnDescription](#columndescription) | All columns in this table, in declaration order                 |
+| Field                  | Type                                           | Description                                                              |
+|------------------------|-------------------------------------------------|---------------------------------------------------------------------------|
+| `type`                 | string                                         | Always `"field"` — use to discriminate description types                 |
+| `name`                 | string                                         | Field name                                                               |
+| `types`                | array of strings                               | Data type(s) as reported by the database. Single-element for SQL columns; schemaless stores (e.g. Neo4j properties) may report more than one when the same key holds different types across instances. |
+| `nullable`             | boolean or null                                | Whether the field allows a missing/NULL value; null if unknown           |
+| `pk`                   | boolean                                        | Whether the field is part of the primary key. Always `false` where not applicable. |
+| `default`              | string or null                                 | Default expression, or null if not set/not applicable                    |
+| `exclusive_indices`    | array of [IndexDescription](#indexdescription) | Indices that cover only this field                                       |
+| `composite_indices`    | array of [IndexDescription](#indexdescription) | Indices that cover this field and at least one other field               |
+| `comment`              | string or null                                 | Field comment as stored in the database; null if unsupported or not set  |
+| `sample`               | array                                          | Up to 3 distinct non-null representative values sampled from the field   |
+| `outgoing_references`  | array of [TableReference](#tablereference)     | Foreign keys defined on this field that reference another entity. Empty if this field is not a foreign key. A field can carry more than one entry — either because it participates in more than one single-column FK constraint (each naming a different target), or because it is one leg of multiple composite FK constraints. |
+| `incoming_references`  | array of [TableReference](#tablereference)     | Foreign keys on other entities that reference this field. Empty if nothing references this field. |
 
 ---
 

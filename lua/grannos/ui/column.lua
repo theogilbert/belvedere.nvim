@@ -1,7 +1,7 @@
--- Two-pane float for browsing all columns of a table (ColumnsDescription),
--- and a single-column detail float (ColumnDescription).
+-- Two-pane float for browsing all fields of an entity (EntityDescription.properties),
+-- and a single-field detail float (FieldDescription).
 -- The right pane of the two-pane browser reuses the same renderer as the
--- single-column float. Window management is handled by detail_pane.
+-- single-field float. Window management is handled by detail_pane.
 local M = {}
 
 local pane = require("grannos.ui.detail_pane")
@@ -12,15 +12,17 @@ local ARROW = "  →  "
 --- @return boolean
 local function is_nil(v) return pane.is_nil(v) end
 
---- Build the "schema.table." prefix for the far side of a TableReference.
+--- Build the "schema.table." prefix for the referenced side of a TableReference.
+--- `table`/`schema` name the FK-owning side; `ref_table`/`ref_schema` name the
+--- side it points at, which is what a "→ target" display wants.
 --- @param ref table  TableReference
 --- @return string
 local function ref_table_prefix(ref)
-  return (not is_nil(ref.schema) and ref.schema .. "." or "") .. ref.table .. "."
+  return (not is_nil(ref.ref_schema) and ref.ref_schema .. "." or "") .. ref.ref_table .. "."
 end
 
 --- Return the estimated rendered line count for a single column detail view.
---- @param col table  ColumnDescription
+--- @param col table  FieldDescription
 --- @return integer
 local function estimate_lines(col)
   local n = 2  -- header + blank
@@ -39,11 +41,12 @@ local function estimate_lines(col)
   return n
 end
 
---- Build the tagged type-summary segments for a column: data_type · nullable/not null · primary key.
---- @param col table  ColumnDescription
+--- Build the tagged type-summary segments for a field: types · nullable/not null · primary key.
+--- @param col table  FieldDescription
 --- @return table  tagged list consumed by detail_pane.tag_line
 local function type_tags(col)
-  local data_type = (not is_nil(col.data_type) and col.data_type ~= "") and col.data_type or "?"
+  local types = type(col.types) == "table" and col.types or {}
+  local data_type = #types > 0 and table.concat(types, "|") or "?"
   local tagged = { { data_type, "GrannosExplorerTable" } }
   if col.nullable == true then
     tagged[#tagged + 1] = { "nullable", "GrannosExplorerDim" }
@@ -56,7 +59,7 @@ end
 
 --- Populate `buf` with the detail view for a single column.
 --- @param buf integer
---- @param col table  ColumnDescription
+--- @param col table  FieldDescription
 local function render(buf, col)
   local lines = {}
   local hls   = {}
@@ -108,7 +111,7 @@ local function render(buf, col)
   if #excl > 0 then
     pane.section(lines, hls, "Exclusive indices")
     for _, idx in ipairs(excl) do
-      local name = type(idx) == "table" and idx.index or tostring(idx)
+      local name = type(idx) == "table" and idx.name or tostring(idx)
       local irow = #lines
       lines[#lines + 1] = "  " .. name
       hls[#hls + 1] = { "GrannosExplorerIndex", irow, 2, 2 + #name }
@@ -120,7 +123,7 @@ local function render(buf, col)
   if #comp > 0 then
     pane.section(lines, hls, "Composite indices")
     for _, idx in ipairs(comp) do
-      local name = type(idx) == "table" and idx.index or tostring(idx)
+      local name = type(idx) == "table" and idx.name or tostring(idx)
       local irow = #lines
       lines[#lines + 1] = "  " .. name
       hls[#hls + 1] = { "GrannosExplorerIndex", irow, 2, 2 + #name }
@@ -141,10 +144,13 @@ local function render(buf, col)
 end
 
 --- Open the two-pane columns browser.
---- @param details table  ColumnsDescription as decoded from the server response
+--- @param details table  EntityDescription as decoded from the server response
+---                        (the group-level "columns" path no longer resolves —
+---                        callers describe the parent entity and pass its
+---                        `properties` list here instead)
 --- @param title   string Left pane window title (caller derives from the request path)
 function M.open(details, title)
-  local columns = type(details.columns) == "table" and details.columns or {}
+  local columns = type(details.properties) == "table" and details.properties or {}
   if #columns == 0 then
     vim.notify("grannos: no columns found", vim.log.levels.WARN)
     return
@@ -161,7 +167,7 @@ end
 
 --- Build condensed hover lines for a column: name, type/constraints, comment.
 --- A shorter view than `render()`, which also lists defaults, indices, and samples.
---- @param col table  ColumnDescription
+--- @param col table  FieldDescription
 --- @return string[] lines
 --- @return DetailHlRule[] hls
 function M.hover_lines(col)
@@ -204,7 +210,7 @@ function M.hover_lines(col)
 end
 
 --- Open a single-column detail float.
---- @param col table  ColumnDescription as decoded from the server response
+--- @param col table  FieldDescription as decoded from the server response
 function M.open_single(col)
   pane.open_single({
     item     = col,

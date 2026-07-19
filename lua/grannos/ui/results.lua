@@ -496,7 +496,7 @@ local function get_or_create_buf_state(buf_key, buf_title)
     query_ft      = nil,
     conn_key      = nil,
     table_path    = nil,  -- explore-tree path to the source table, if known
-    column_cache  = nil,  -- column name -> ColumnDescription, reset with table_path
+    column_cache  = nil,  -- column name -> FieldDescription, reset with table_path
     sep_columns   = {},   -- column name -> true, thousands separator toggled on via `t`
     is_loading    = false,
   }

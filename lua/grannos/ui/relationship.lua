@@ -1,4 +1,4 @@
--- Single-item detail float for a foreign key relationship (RelationshipDescription),
+-- Single-item detail float for a foreign key relationship (TableReference),
 -- opened by hovering an edge in the schema diagram.
 local M = {}
 
@@ -12,7 +12,7 @@ local EDGE_LINE = string.rep("━", 40)
 local function is_nil(v) return pane.is_nil(v) end
 
 --- Return the estimated rendered line count for a single relationship detail view.
---- @param rel   table       RelationshipDescription
+--- @param rel   table       TableReference
 --- @param color string|nil  highlight group of the edge this relationship was hovered
 ---                          from in the diagram, if any (adds the edge-color line)
 --- @return integer
@@ -28,7 +28,7 @@ end
 --- from in the diagram), draws a line in that color so the float can be
 --- visually matched back to the edge it came from.
 --- @param buf   integer
---- @param rel   table       RelationshipDescription
+--- @param rel   table       TableReference
 --- @param color string|nil
 local function render(buf, rel, color)
   local lines = {}
@@ -72,7 +72,7 @@ local function render(buf, rel, color)
 end
 
 --- Open a single-relationship detail float.
---- @param rel   table       RelationshipDescription as decoded from the server response
+--- @param rel   table       TableReference as decoded from the server response
 --- @param color string|nil  highlight group of the edge this relationship was hovered
 ---                          from in the diagram, if any
 function M.open_single(rel, color)
@@ -85,7 +85,7 @@ function M.open_single(rel, color)
 end
 
 --- Build the one-line label for `rel` shown in the relationships browser list.
---- @param rel table  RelationshipDescription
+--- @param rel table  TableReference
 --- @return string
 local function label(rel)
   local local_table = (not is_nil(rel.schema)     and rel.schema     .. "." or "") .. rel.table
@@ -98,7 +98,7 @@ end
 --- (a branch point where multiple relationships share a trunk column). Each
 --- relationship keeps its own edge color, since they can belong to different
 --- tables.
---- @param rels   table[]           RelationshipDescription list as decoded from the server response
+--- @param rels   table[]           TableReference list as decoded from the server response
 --- @param colors (string|nil)[]|nil  highlight group per entry in `rels`, same order
 function M.open(rels, colors)
   if #rels == 0 then

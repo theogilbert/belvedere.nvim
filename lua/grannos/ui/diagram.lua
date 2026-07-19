@@ -318,13 +318,8 @@ function M.open(conn_id, path, title)
           vim.notify("grannos: nothing to describe here", vim.log.levels.WARN)
           return
         end
-        if details.type == "column" then
+        if details.type == "field" then
           require("grannos.ui.column").open_single(details)
-        elseif details.type == "columns" then
-          local parts = vim.list_slice(region.path, 1, #region.path - 1)
-          local ctx   = table.concat(parts, ".")
-          local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
-          require("grannos.ui.column").open(details, title)
         elseif details.type == "relationship" then
           require("grannos.ui.relationship").open_single(details, region_hl_group(region, table_colors))
         else
