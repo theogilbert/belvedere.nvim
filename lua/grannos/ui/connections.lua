@@ -173,7 +173,7 @@ local function on_enter()
     refresh()
   else
     state.conn_errors[entry.key] = nil
-    require("grannos").connect(entry.key)
+    require("grannos").attach(entry.key)
   end
 end
 

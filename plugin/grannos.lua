@@ -26,10 +26,10 @@ local function saved_connection_names()
   return names
 end
 
--- :DbConnect          — open the connection picker
--- :DbConnect <name>   — connect directly by name
-vim.api.nvim_create_user_command("DbConnect", function(opts)
-  db.connect(vim.trim(opts.args))
+-- :DbAttach          — open the connection picker
+-- :DbAttach <name>   — connect directly by name
+vim.api.nvim_create_user_command("DbAttach", function(opts)
+  db.attach(vim.trim(opts.args))
 end, {
   nargs = "?",
   complete = saved_connection_names,

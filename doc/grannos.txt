@@ -135,13 +135,13 @@ COMMANDS                                                    *grannos-commands*
     associates the current buffer with that connection. The buffer can then
     be used to execute queries.
 
-                                                              *:DbConnect*
-:DbConnect
+                                                               *:DbAttach*
+:DbAttach
     Open a picker listing all saved connections. Selecting
     "[+ New connection]" launches the new-connection wizard.
     Tab-completion is available.
 
-:DbConnect {name}
+:DbAttach {name}
     Connect directly to the named connection without showing the picker.
 
                                                         *:DbNewConnection*
@@ -377,10 +377,10 @@ require("grannos").setup({opts})
 require("grannos").open_connections()
     Toggle the connections panel. Equivalent to |:DbConnections|.
 
-                                                    *grannos.connect()*
-require("grannos").connect([{name}])
+                                                     *grannos.attach()*
+require("grannos").attach([{name}])
     Open the connection picker, or connect directly to {name} if given.
-    Equivalent to |:DbConnect|.
+    Equivalent to |:DbAttach|.
 
                                                   *grannos.associate()*
 require("grannos").associate()

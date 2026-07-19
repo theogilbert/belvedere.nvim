@@ -129,7 +129,7 @@ end
 
 --- Connect to the named connection, or open the picker when `name` is blank.
 --- @param name string  connection name or key (empty = open picker)
-function M.connect(name)
+function M.attach(name)
   local bufnr = vim.api.nvim_get_current_buf()
   local auto_assign = vim.bo[bufnr].buftype == ""
 
@@ -145,7 +145,7 @@ function M.connect(name)
     local params = connections.get(name)
     local resolved_key = name
     if not params then
-      -- Search the active server's connections by display name (:DbConnect <name>).
+      -- Search the active server's connections by display name (:DbAttach <name>).
       local active_caps = client.capabilities()
       local server = active_caps and (active_caps.server or "") or ""
       local server_data = connections.load(server)
@@ -488,7 +488,7 @@ function M.open_explorer()
   local key = state.buf_conns[vim.api.nvim_get_current_buf()]
   local conn = key and state.conns[key]
   if not conn then
-    vim.notify("grannos: no active connection — run :DbConnect first", vim.log.levels.WARN)
+    vim.notify("grannos: no active connection — run :DbAttach first", vim.log.levels.WARN)
     return
   end
   explorer.open(conn.conn_id, connections.conn_display_name(key), conn.driver, key, conn.driver_label)

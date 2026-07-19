@@ -242,7 +242,7 @@ The window title bar shows the connection name and driver. A spinner is shown wh
 |---------|-------------|
 | `:DbConnections` | Toggle the connections panel |
 | `:DbAssociate` | Associate the current buffer with an open connection |
-| `:DbConnect [name]` | Connect to a saved connection by name (or open a picker) |
+| `:DbAttach [name]` | Connect to a saved connection by name (or open a picker) |
 | `:DbNewConnection` | Open the new-connection wizard |
 | `:DbDeleteConnection <name>` | Remove a saved connection |
 | `:DbDisconnect [name]` | Disconnect a named connection, or the current buffer's connection |
@@ -328,8 +328,8 @@ db.setup(opts)
 db.open_connections()
 
 -- Connect via picker, or directly by name.
-db.connect()
-db.connect("prod-mssql")
+db.attach()
+db.attach("prod-mssql")
 
 -- Associate the current buffer with an open connection (shows a picker).
 db.associate()
