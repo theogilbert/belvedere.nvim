@@ -448,7 +448,7 @@ function M.open_driver_help(driver, opts)
     vim.bo[buf].modifiable = false
     local win
     if opts.position == "bottom" then
-      vim.cmd("botright split")
+      vim.cmd("belowright split")
       win = vim.api.nvim_get_current_win()
       vim.api.nvim_win_set_buf(win, buf)
       vim.api.nvim_win_set_height(win, math.floor(vim.o.lines * 0.4))
