@@ -23,6 +23,10 @@ local M = {}
 
 local BUFNAME = "grannos://results"
 
+-- Same glyph as the gutter's running mark (see ui/gutter.lua), so the results
+-- pane and the gutter agree on what "waiting for the server" looks like.
+local ICON_RUNNING = "\xEE\xA9\xB7"  -- U+EA77
+
 local render_table              -- forward declaration; defined after apply_highlights
 local export_results            -- forward declaration; defined after open_export_buffer
 local toggle_thousands_separator -- forward declaration; defined after rebuild_segments
@@ -37,13 +41,13 @@ local function same_columns(a, b)
   return true
 end
 
---- Return the `bs.raw_columns` indices for `bs.vis_columns`, in display order.
---- @param bs table  buf_state
+--- Return the `buf_state.raw_columns` indices for `buf_state.vis_columns`, in display order.
+--- @param buf_state table
 --- @return integer[]
-local function visible_col_indices(bs)
+local function visible_col_indices(buf_state)
   local indices = {}
-  for _, vc in ipairs(bs.vis_columns) do
-    for i, rc in ipairs(bs.raw_columns) do
+  for _, vc in ipairs(buf_state.vis_columns) do
+    for i, rc in ipairs(buf_state.raw_columns) do
       if rc == vc then table.insert(indices, i); break end
     end
   end
@@ -79,7 +83,7 @@ local function rows_label(rows_returned, rows_total, page, page_size)
 end
 
 --- Build a per-display-column thousands-separator array from the set of columns the
---- user has toggled on for `bs`. The separator is off by default for every column;
+--- user has toggled on for `buf_state`. The separator is off by default for every column;
 --- `t` on a results-pane cell toggles it for that column only.
 --- @param display_columns string[]  columns in display order
 --- @param sep_columns     table     set of column names with the separator toggled on
@@ -134,18 +138,18 @@ local state = {
 
 --- Return the buf_state for the currently active source buffer, or nil.
 --- @return table|nil
-local function active_bs()
+local function active_buf_state()
   return state.active_src and state.buffers[state.active_src]
 end
 
 --- Return the buf_state whose Buffer.buf_id matches the buffer in `win_id`, or nil.
 --- @param win_id integer
 --- @return table|nil
-local function win_bs_for(win_id)
+local function win_buf_state_for(win_id)
   if not win_id or not vim.api.nvim_win_is_valid(win_id) then return nil end
   local buf_id = vim.api.nvim_win_get_buf(win_id)
-  for _, bs in pairs(state.buffers) do
-    if bs.buffer.buf_id == buf_id then return bs end
+  for _, buf_state in pairs(state.buffers) do
+    if buf_state.buffer.buf_id == buf_id then return buf_state end
   end
   return nil
 end
@@ -158,8 +162,8 @@ end
 
 --- Return the buf_state for the results window in the current tab, or nil.
 --- @return table|nil
-local function win_bs()
-  return win_bs_for(current_results_win())
+local function win_buf_state()
+  return win_buf_state_for(current_results_win())
 end
 
 
@@ -167,9 +171,9 @@ end
 --- @param direction integer  positive = right, negative = left
 local function scroll_columns(direction)
   local win_id = vim.api.nvim_get_current_win()
-  local bs = win_bs_for(win_id)
-  if not bs or not bs.table_data then return end
-  local boundaries = table_fmt.column_boundaries(bs.table_data.columns_width)
+  local buf_state = win_buf_state_for(win_id)
+  if not buf_state or not buf_state.table_data then return end
+  local boundaries = table_fmt.column_boundaries(buf_state.table_data.columns_width)
 
   local leftcol
   vim.api.nvim_win_call(win_id, function()
@@ -219,13 +223,13 @@ end
 local function update_truncation_indicators(win_id)
   win_id = win_id or current_results_win()
   if not win_id or not vim.api.nvim_win_is_valid(win_id) then return end
-  local bs = win_bs_for(win_id)
-  if not bs then return end
-  local buf_id = bs.buffer.buf_id
+  local buf_state = win_buf_state_for(win_id)
+  if not buf_state then return end
+  local buf_id = buf_state.buffer.buf_id
   vim.api.nvim_buf_clear_namespace(buf_id, hl.TRUNCATION_NS_ID, 0, -1)
 
-  if not bs.table_data then return end
-  local boundaries = table_fmt.column_boundaries(bs.table_data.columns_width)
+  if not buf_state.table_data then return end
+  local boundaries = table_fmt.column_boundaries(buf_state.table_data.columns_width)
 
   local win_width = vim.api.nvim_win_get_width(win_id)
   local leftcol = 0
@@ -357,16 +361,16 @@ local function buf_key_for(src_bufnr, conn_key)
 end
 
 --- Open a float showing the SQL text that produced the current results.
---- @param bs table  buf_state
-local function show_source_query(bs)
-  if not bs.query then return end
-  local lines = vim.split(bs.query, "\n", { plain = true })
+--- @param buf_state table
+local function show_source_query(buf_state)
+  if not buf_state.query then return end
+  local lines = vim.split(buf_state.query, "\n", { plain = true })
   local fbuf  = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
   vim.bo[fbuf].modifiable = false
   vim.bo[fbuf].bufhidden  = "wipe"
-  if bs.query_ft and bs.query_ft ~= "" then
-    vim.bo[fbuf].filetype = bs.query_ft
+  if buf_state.query_ft and buf_state.query_ft ~= "" then
+    vim.bo[fbuf].filetype = buf_state.query_ft
     pcall(vim.treesitter.start, fbuf)
   end
   local ui     = vim.api.nvim_list_uis()[1]
@@ -407,51 +411,51 @@ local function open_export_buffer(content, filetype)
 end
 
 --- Prompt for an export format and open the full (unpaginated) result set in a scratch buffer.
---- @param bs table  buf_state
-export_results = function(bs)
-  if not bs.raw_columns or not bs.raw_rows then return end
+--- @param buf_state table
+export_results = function(buf_state)
+  if not buf_state.raw_columns or not buf_state.raw_rows then return end
   vim.ui.select(export.FORMATS, { prompt = "Export results as:" }, function(format)
     if not format then return end
-    local indices = visible_col_indices(bs)
+    local indices = visible_col_indices(buf_state)
     local rows = {}
-    for _, row in ipairs(bs.raw_rows) do
+    for _, row in ipairs(buf_state.raw_rows) do
       local r = {}
       for _, idx in ipairs(indices) do table.insert(r, row[idx]) end
       table.insert(rows, r)
     end
-    local content = export.render(format, bs.vis_columns, rows)
+    local content = export.render(format, buf_state.vis_columns, rows)
     open_export_buffer(content, export.FILETYPES[format])
   end)
 end
 
 --- Show a condensed column-description hover float for the column under the cursor.
 --- Only available when the current results came from an explorer table preview
---- (`bs.table_path` set); a no-op otherwise, since arbitrary query results have
+--- (`buf_state.table_path` set); a no-op otherwise, since arbitrary query results have
 --- no reliable way to resolve which table a column came from.
---- @param bs table  buf_state
-local function show_column_hover(bs)
-  if not bs.table_path or not bs.table_data or not bs.vis_columns then return end
-  local col_idx  = table_fmt.get_column_at_cursor(bs.table_data.columns_width, vim.fn.virtcol("."))
-  local col_name = col_idx and bs.vis_columns[col_idx]
+--- @param buf_state table
+local function show_column_hover(buf_state)
+  if not buf_state.table_path or not buf_state.table_data or not buf_state.vis_columns then return end
+  local col_idx  = table_fmt.get_column_at_cursor(buf_state.table_data.columns_width, vim.fn.virtcol("."))
+  local col_name = col_idx and buf_state.vis_columns[col_idx]
   if not col_name then return end
 
-  local conn = bs.conn_key and require("grannos").get_conn(bs.conn_key)
+  local conn = buf_state.conn_key and require("grannos").get_conn(buf_state.conn_key)
   if not conn then return end
 
   local function show(details)
     local lines, hls = column_ui.hover_lines(details)
-    hover.open(lines, bs.buffer.buf_id, { hls = hls, above = true })
+    hover.open(lines, buf_state.buffer.buf_id, { hls = hls, above = true })
   end
 
-  bs.column_cache = bs.column_cache or {}
-  local cached = bs.column_cache[col_name]
+  buf_state.column_cache = buf_state.column_cache or {}
+  local cached = buf_state.column_cache[col_name]
   if cached then show(cached) return end
 
-  local path = vim.list_extend(vim.list_slice(bs.table_path), { "columns", col_name })
+  local path = vim.list_extend(vim.list_slice(buf_state.table_path), { "columns", col_name })
   client.request("explore.describe", { connection_id = conn.conn_id, path = path }, function(err, result)
     vim.schedule(function()
       if err or not result or not result.details then return end
-      bs.column_cache[col_name] = result.details
+      buf_state.column_cache[col_name] = result.details
       show(result.details)
     end)
   end)
@@ -470,7 +474,7 @@ local function get_or_create_buf_state(buf_key, buf_title)
   vim.bo[buf.buf_id].buflisted = true
   table_fmt.setup_buf_hl(buf.buf_id)
 
-  local bs = {
+  local buf_state = {
     buffer        = buf,
     table_data    = nil,
     segments      = {},
@@ -487,8 +491,9 @@ local function get_or_create_buf_state(buf_key, buf_title)
     table_path    = nil,  -- explore-tree path to the source table, if known
     column_cache  = nil,  -- column name -> ColumnDescription, reset with table_path
     sep_columns   = {},   -- column name -> true, thousands separator toggled on via `t`
+    is_loading    = false,
   }
-  state.buffers[buf_key] = bs
+  state.buffers[buf_key] = buf_state
 
   buf:set_keymap("n", "q", function()
     local win_id = vim.api.nvim_get_current_win()
@@ -499,45 +504,45 @@ local function get_or_create_buf_state(buf_key, buf_title)
   buf:set_keymap("n", "H", function() scroll_columns(-1) end,
     { desc = "Scroll left one column",  silent = true })
   buf:set_keymap("n", "c", function()
-    if not bs.raw_columns then return end
-    col_picker.open(bs.raw_columns, bs.vis_columns, function(sel)
-      bs.vis_columns = sel
-      render_table(bs)
+    if not buf_state.raw_columns then return end
+    col_picker.open(buf_state.raw_columns, buf_state.vis_columns, function(sel)
+      buf_state.vis_columns = sel
+      render_table(buf_state)
     end)
   end, { desc = "Select displayed columns", silent = true })
   buf:set_keymap("n", "]", function()
-    if not bs.raw_rows then return end
+    if not buf_state.raw_rows then return end
     local page_size   = config.options.results.page_size
-    local total_pages = math.max(1, math.ceil(#bs.raw_rows / page_size))
-    if bs.page < total_pages then
-      bs.page = bs.page + 1
-      render_table(bs)
+    local total_pages = math.max(1, math.ceil(#buf_state.raw_rows / page_size))
+    if buf_state.page < total_pages then
+      buf_state.page = buf_state.page + 1
+      render_table(buf_state)
     end
   end, { desc = "Next page", silent = true })
   buf:set_keymap("n", "[", function()
-    if not bs.raw_rows or bs.page <= 1 then return end
-    bs.page = bs.page - 1
-    render_table(bs)
+    if not buf_state.raw_rows or buf_state.page <= 1 then return end
+    buf_state.page = buf_state.page - 1
+    render_table(buf_state)
   end, { desc = "Previous page", silent = true })
-  buf:set_keymap("n", "gq", function() show_source_query(bs) end,
+  buf:set_keymap("n", "gq", function() show_source_query(buf_state) end,
     { desc = "Show source query", silent = true })
-  buf:set_keymap("n", "e", function() export_results(bs) end,
+  buf:set_keymap("n", "e", function() export_results(buf_state) end,
     { desc = "Export results", silent = true })
-  buf:set_keymap("n", config.options.keymaps.hover_key, function() show_column_hover(bs) end,
+  buf:set_keymap("n", config.options.keymaps.hover_key, function() show_column_hover(buf_state) end,
     { desc = "Show column info", silent = true })
-  buf:set_keymap("n", "t", function() toggle_thousands_separator(bs) end,
+  buf:set_keymap("n", "t", function() toggle_thousands_separator(buf_state) end,
     { desc = "Toggle thousands separator for column", silent = true })
-  return bs
+  return buf_state
 end
 
 
---- Apply header, row-count, NULL, and LobPlaceholder highlight rules to `bs.buffer`.
+--- Apply header, row-count, NULL, and LobPlaceholder highlight rules to `buf_state.buffer`.
 --- `label_line` and `tbl_offset` are 0-indexed buffer rows.
---- @param bs         table   buf_state
+--- @param buf_state table
 --- @param tbl        table   FormattedTable from table_fmt.from_structured_data
 --- @param label_line integer  0-indexed row for GrannosRowCount
 --- @param tbl_offset integer  0-indexed row where the table starts
-local function apply_highlights(bs, tbl, label_line, tbl_offset)
+local function apply_highlights(buf_state, tbl, label_line, tbl_offset)
   local rules = table_fmt.col_hl_rules("GrannosHeaderRow", tbl_offset, 1, tbl)
   table.insert(rules, {
     higroup = "GrannosRowCount",
@@ -562,43 +567,43 @@ local function apply_highlights(bs, tbl, label_line, tbl_offset)
     r.finish[1] = r.finish[1] + tbl_offset
   end
   vim.list_extend(rules, sep_rules)
-  bs.buffer:apply_highlight(rules)
+  buf_state.buffer:apply_highlight(rules)
 end
 
 
---- Re-render the results table for `bs`, respecting the current page and visible columns.
---- @param bs table  buf_state
-render_table = function(bs)
+--- Re-render the results table for `buf_state`, respecting the current page and visible columns.
+--- @param buf_state table
+render_table = function(buf_state)
   local page_size    = config.options.results.page_size
-  local rows_ret     = bs.rows_returned or #bs.raw_rows
-  local rows_tot     = bs.rows_total    or rows_ret
+  local rows_ret     = buf_state.rows_returned or #buf_state.raw_rows
+  local rows_tot     = buf_state.rows_total    or rows_ret
   local total_pages  = math.max(1, math.ceil(rows_ret / page_size))
-  bs.page = math.max(1, math.min(bs.page, total_pages))
+  buf_state.page = math.max(1, math.min(buf_state.page, total_pages))
 
-  local first = (bs.page - 1) * page_size + 1
-  local last  = math.min(rows_ret, bs.page * page_size)
+  local first = (buf_state.page - 1) * page_size + 1
+  local last  = math.min(rows_ret, buf_state.page * page_size)
 
-  local col_indices = visible_col_indices(bs)
+  local col_indices = visible_col_indices(buf_state)
 
-  local display = { bs.vis_columns }
+  local display = { buf_state.vis_columns }
   for i = first, last do
     local row = {}
-    for _, idx in ipairs(col_indices) do table.insert(row, bs.raw_rows[i][idx]) end
+    for _, idx in ipairs(col_indices) do table.insert(row, buf_state.raw_rows[i][idx]) end
     table.insert(display, row)
   end
 
-  local sep = sep_array_for(bs.vis_columns, bs.sep_columns)
+  local sep = sep_array_for(buf_state.vis_columns, buf_state.sep_columns)
   local tbl = table_fmt.from_structured_data(display, 1, sep, config.options.results.decimal_separator)
-  bs.table_data = tbl
+  buf_state.table_data = tbl
 
-  local label = rows_label(rows_ret, rows_tot, bs.page, page_size)
-  if bs.duration_ms then
-    label = label .. "  ·  " .. format_duration(bs.duration_ms)
+  local label = rows_label(rows_ret, rows_tot, buf_state.page, page_size)
+  if buf_state.duration_ms then
+    label = label .. "  ·  " .. format_duration(buf_state.duration_ms)
   end
   local content = { label, "" }
   vim.list_extend(content, tbl.text)
-  bs.buffer:set_content(content)
-  apply_highlights(bs, tbl, 0, 2)
+  buf_state.buffer:set_content(content)
+  apply_highlights(buf_state, tbl, 0, 2)
   update_truncation_indicators()
 end
 
@@ -612,10 +617,10 @@ local function make_separator(idx, total)
 end
 
 --- Concatenate all batch segments into the results buffer.
---- @param bs table  buf_state
-local function render_segments(bs)
+--- @param buf_state table
+local function render_segments(buf_state)
   local all_lines, all_rules = {}, {}
-  for _, seg in ipairs(bs.segments) do
+  for _, seg in ipairs(buf_state.segments) do
     local hdr_lnum = #all_lines
     table.insert(all_lines, seg.header)
     local offset = #all_lines
@@ -631,21 +636,46 @@ local function render_segments(bs)
       start = { hdr_lnum, 0 }, finish = { hdr_lnum, -1 } })
     table.insert(all_lines, "")
   end
-  bs.buffer:set_content(all_lines)
-  bs.buffer:apply_highlight(all_rules)
+  buf_state.buffer:set_content(all_lines)
+  buf_state.buffer:apply_highlight(all_rules)
   update_truncation_indicators()
   reset_cursor()
 end
 
 
+--- Clear `buf_state`'s busy state, if set.
+--- @param buf_state table
+local function stop_loading(buf_state)
+  buf_state.is_loading = false
+end
+
+--- Show a "the plugin is busy" message in the results window, marked with the same
+--- icon as the gutter's running mark (see ui/gutter.lua). Covers both phases of
+--- running a query — waiting on the server (e.g. "Executing…") and formatting a
+--- response already received (e.g. "Processing…") — so callers just vary the text.
+--- Distinct from `show_message`, which sets one-shot status text with no busy icon
+--- (e.g. error/result messages, or the explorer's unrelated "Loading…").
+--- @param msg string
+function M.show_loading(msg)
+  local buf_state = active_buf_state()
+  buf_state.table_data  = nil
+  buf_state.is_loading  = true
+  ensure_win(buf_state.buffer.buf_id)
+  buf_state.buffer:set_content({ ICON_RUNNING .. " " .. msg })
+  buf_state.buffer:apply_highlight({
+    { higroup = "GrannosQueryRunning", start = { 0, 0 }, finish = { 0, -1 } },
+  })
+  reset_cursor()
+end
+
 --- Store the SQL and filetype on the active buf_state for the "source query" float.
 --- @param sql      string
 --- @param filetype string
 function M.set_query(sql, filetype)
-  local bs = active_bs()
-  if bs then
-    bs.query    = sql
-    bs.query_ft = filetype
+  local buf_state = active_buf_state()
+  if buf_state then
+    buf_state.query    = sql
+    buf_state.query_ft = filetype
   end
 end
 
@@ -659,10 +689,10 @@ function M.set_conn_name(key, driver_label, src_bufnr)
   local buf_title = (label and (BUFNAME .. " [" .. label .. "]") or BUFNAME)
                     .. src_buf_suffix(src_bufnr)
   local buf_key   = buf_key_for(src_bufnr, key)
-  local bs        = get_or_create_buf_state(buf_key, buf_title)
-  bs.conn_key      = key
-  bs.table_path    = nil
-  bs.column_cache  = nil
+  local buf_state        = get_or_create_buf_state(buf_key, buf_title)
+  buf_state.conn_key      = key
+  buf_state.table_path    = nil
+  buf_state.column_cache  = nil
   state.active_src = buf_key
 end
 
@@ -671,22 +701,23 @@ end
 --- Cleared by `set_conn_name` at the start of every new query context.
 --- @param path string[]  explore-tree path to the table (e.g. {"public", "users"})
 function M.set_source_table(path)
-  local bs = active_bs()
-  if bs then
-    bs.table_path   = path
-    bs.column_cache = {}
+  local buf_state = active_buf_state()
+  if buf_state then
+    buf_state.table_path   = path
+    buf_state.column_cache = {}
   end
 end
 
 --- Prepare the results buffer for a batch of `n` statements.
 --- @param n integer
 function M.begin_batch(n)
-  local bs = active_bs()
-  ensure_win(bs.buffer.buf_id)
-  bs.table_data = nil
-  bs.segments   = {}
-  bs.buffer:set_content({ ("Executing %d quer%s…"):format(n, n == 1 and "y" or "ies") })
-  bs.buffer:apply_highlight({})
+  local buf_state = active_buf_state()
+  stop_loading(buf_state)
+  ensure_win(buf_state.buffer.buf_id)
+  buf_state.table_data = nil
+  buf_state.segments   = {}
+  buf_state.buffer:set_content({ ("Executing %d quer%s…"):format(n, n == 1 and "y" or "ies") })
+  buf_state.buffer:apply_highlight({})
 end
 
 --- Build a batch-view segment for one SELECT-type statement, honoring `sep_columns`.
@@ -728,15 +759,15 @@ local function build_segment(idx, total, columns, rows, rows_returned, rows_tota
   }
 end
 
---- Rebuild every SELECT-type segment in `bs.segments` from its stored raw inputs,
---- picking up the current `bs.sep_columns` state. Non-SELECT segments (errors,
+--- Rebuild every SELECT-type segment in `buf_state.segments` from its stored raw inputs,
+--- picking up the current `buf_state.sep_columns` state. Non-SELECT segments (errors,
 --- row-count messages) have no `tbl` and are left untouched.
---- @param bs table  buf_state
-local function rebuild_segments(bs)
-  for i, seg in ipairs(bs.segments) do
+--- @param buf_state table
+local function rebuild_segments(buf_state)
+  for i, seg in ipairs(buf_state.segments) do
     if seg.tbl then
-      bs.segments[i] = build_segment(seg.idx, seg.total, seg.columns, seg.rows,
-        seg.rows_returned, seg.rows_total, seg.duration_ms, bs.sep_columns)
+      buf_state.segments[i] = build_segment(seg.idx, seg.total, seg.columns, seg.rows,
+        seg.rows_returned, seg.rows_total, seg.duration_ms, buf_state.sep_columns)
     end
   end
 end
@@ -744,12 +775,12 @@ end
 --- Return the batch segment covering 0-indexed buffer line `line0`, or nil.
 --- Mirrors the line layout `render_segments` builds: each segment occupies its
 --- header line, its content lines, and one trailing blank line.
---- @param bs    table  buf_state
+--- @param buf_state table
 --- @param line0 integer  0-indexed buffer line
 --- @return table|nil
-local function segment_at_line(bs, line0)
+local function segment_at_line(buf_state, line0)
   local offset = 0
-  for _, seg in ipairs(bs.segments) do
+  for _, seg in ipairs(buf_state.segments) do
     local seg_len = 1 + #seg.lines + 1
     if line0 < offset + seg_len then return seg end
     offset = offset + seg_len
@@ -758,14 +789,14 @@ end
 
 --- Toggle the thousands separator for the column under the cursor, in whichever
 --- results view (single-page or batch) is currently showing.
---- @param bs table  buf_state
-toggle_thousands_separator = function(bs)
+--- @param buf_state table
+toggle_thousands_separator = function(buf_state)
   local col_name
-  if bs.table_data then
-    local col_idx = table_fmt.get_column_at_cursor(bs.table_data.columns_width, vim.fn.virtcol("."))
-    col_name = col_idx and bs.vis_columns[col_idx]
-  elseif #bs.segments > 0 then
-    local seg = segment_at_line(bs, vim.fn.line(".") - 1)
+  if buf_state.table_data then
+    local col_idx = table_fmt.get_column_at_cursor(buf_state.table_data.columns_width, vim.fn.virtcol("."))
+    col_name = col_idx and buf_state.vis_columns[col_idx]
+  elseif #buf_state.segments > 0 then
+    local seg = segment_at_line(buf_state, vim.fn.line(".") - 1)
     if seg and seg.tbl then
       local col_idx = table_fmt.get_column_at_cursor(seg.tbl.columns_width, vim.fn.virtcol("."))
       col_name = col_idx and seg.columns[col_idx]
@@ -773,13 +804,13 @@ toggle_thousands_separator = function(bs)
   end
   if not col_name then return end
 
-  bs.sep_columns[col_name] = not bs.sep_columns[col_name] or nil
+  buf_state.sep_columns[col_name] = not buf_state.sep_columns[col_name] or nil
 
-  if bs.table_data then
-    render_table(bs)
+  if buf_state.table_data then
+    render_table(buf_state)
   else
-    rebuild_segments(bs)
-    render_segments(bs)
+    rebuild_segments(buf_state)
+    render_segments(buf_state)
   end
 end
 
@@ -792,11 +823,11 @@ end
 --- @param rows_total    integer|nil
 --- @param duration_ms   number|nil
 function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total, duration_ms)
-  local bs = active_bs()
+  local buf_state = active_buf_state()
   rows_returned = rows_returned or #rows
   rows_total    = rows_total    or rows_returned
-  table.insert(bs.segments, build_segment(idx, total, columns, rows, rows_returned, rows_total, duration_ms, bs.sep_columns))
-  render_segments(bs)
+  table.insert(buf_state.segments, build_segment(idx, total, columns, rows, rows_returned, rows_total, duration_ms, buf_state.sep_columns))
+  render_segments(buf_state)
 end
 
 --- Append an error message from one batch statement.
@@ -804,15 +835,15 @@ end
 --- @param total integer
 --- @param msg   string
 function M.append_batch_error(idx, total, msg)
-  local bs    = active_bs()
+  local buf_state    = active_buf_state()
   local lines = vim.split(msg, "\n", { plain = true })
   lines[1]    = "Error: " .. lines[1]
-  table.insert(bs.segments, {
+  table.insert(buf_state.segments, {
     header   = make_separator(idx, total),
     lines    = lines,
     hl_rules = { { higroup = "GrannosError", start = { 0, 0 }, finish = { #lines - 1, -1 } } },
   })
-  render_segments(bs)
+  render_segments(buf_state)
 end
 
 --- Display the SELECT results, preserving column visibility when columns match the previous query.
@@ -822,18 +853,19 @@ end
 --- @param rows_total    integer|nil
 --- @param duration_ms   number|nil
 function M.show_results(columns, rows, rows_returned, rows_total, duration_ms)
-  local bs = active_bs()
-  if not bs.raw_columns or not same_columns(bs.raw_columns, columns) then
-    bs.vis_columns = vim.list_extend({}, columns)
+  local buf_state = active_buf_state()
+  stop_loading(buf_state)
+  if not buf_state.raw_columns or not same_columns(buf_state.raw_columns, columns) then
+    buf_state.vis_columns = vim.list_extend({}, columns)
   end
-  bs.raw_columns    = columns
-  bs.raw_rows       = rows
-  bs.rows_returned  = rows_returned or #rows
-  bs.rows_total     = rows_total    or bs.rows_returned
-  bs.duration_ms    = duration_ms
-  bs.page           = 1
-  ensure_win(bs.buffer.buf_id)
-  render_table(bs)
+  buf_state.raw_columns    = columns
+  buf_state.raw_rows       = rows
+  buf_state.rows_returned  = rows_returned or #rows
+  buf_state.rows_total     = rows_total    or buf_state.rows_returned
+  buf_state.duration_ms    = duration_ms
+  buf_state.page           = 1
+  ensure_win(buf_state.buffer.buf_id)
+  render_table(buf_state)
   reset_cursor()
 end
 
@@ -842,13 +874,14 @@ end
 --- @param verb        string
 --- @param duration_ms number|nil
 function M.show_rows_affected(n, verb, duration_ms)
-  local bs = active_bs()
-  bs.table_data = nil
-  ensure_win(bs.buffer.buf_id)
+  local buf_state = active_buf_state()
+  stop_loading(buf_state)
+  buf_state.table_data = nil
+  ensure_win(buf_state.buffer.buf_id)
   local msg = rows_affected_msg(n, verb)
   if duration_ms then msg = msg .. "  ·  " .. format_duration(duration_ms) end
-  bs.buffer:set_content({ msg })
-  bs.buffer:apply_highlight({
+  buf_state.buffer:set_content({ msg })
+  buf_state.buffer:apply_highlight({
     { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } },
   })
   reset_cursor()
@@ -861,27 +894,28 @@ end
 --- @param verb        string
 --- @param duration_ms number|nil
 function M.append_batch_rows_affected(idx, total, n, verb, duration_ms)
-  local bs = active_bs()
+  local buf_state = active_buf_state()
   local msg = rows_affected_msg(n, verb)
   if duration_ms then msg = msg .. "  ·  " .. format_duration(duration_ms) end
-  table.insert(bs.segments, {
+  table.insert(buf_state.segments, {
     header   = make_separator(idx, total),
     lines    = { msg },
     hl_rules = { { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
   })
-  render_segments(bs)
+  render_segments(buf_state)
 end
 
 --- Display an error message in the results window.
 --- @param msg string
 function M.show_error(msg)
-  local bs    = active_bs()
-  bs.table_data = nil
-  ensure_win(bs.buffer.buf_id)
+  local buf_state    = active_buf_state()
+  stop_loading(buf_state)
+  buf_state.table_data = nil
+  ensure_win(buf_state.buffer.buf_id)
   local lines = vim.split(msg, "\n", { plain = true })
   lines[1]    = "Error: " .. lines[1]
-  bs.buffer:set_content(lines)
-  bs.buffer:apply_highlight({
+  buf_state.buffer:set_content(lines)
+  buf_state.buffer:apply_highlight({
     { higroup = "GrannosError", start = { 0, 0 }, finish = { #lines - 1, -1 } },
   })
   reset_cursor()
@@ -890,11 +924,12 @@ end
 --- Display a plain text message in the results window (e.g. "Executing…").
 --- @param msg string
 function M.show_message(msg)
-  local bs = active_bs()
-  bs.table_data = nil
-  ensure_win(bs.buffer.buf_id)
-  bs.buffer:set_content({ msg })
-  bs.buffer:apply_highlight({})
+  local buf_state = active_buf_state()
+  stop_loading(buf_state)
+  buf_state.table_data = nil
+  ensure_win(buf_state.buffer.buf_id)
+  buf_state.buffer:set_content({ msg })
+  buf_state.buffer:apply_highlight({})
   reset_cursor()
 end
 
@@ -909,8 +944,8 @@ end
 --- @param buf_id integer
 --- @return string|nil
 function M.conn_key_for_buf(buf_id)
-  for _, bs in pairs(state.buffers) do
-    if bs.buffer.buf_id == buf_id then return bs.conn_key end
+  for _, buf_state in pairs(state.buffers) do
+    if buf_state.buffer.buf_id == buf_id then return buf_state.conn_key end
   end
 end
 

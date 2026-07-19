@@ -142,7 +142,7 @@ end
 --- @param log_id   string
 --- @param end_line integer|nil  0-indexed last line of the query in the source buffer
 local function run_single(conn, sql, gh, conn_key, log_id, end_line)
-  results.show_message("Executing…")
+  results.show_loading("Executing…")
   local req_id = execute(conn, sql,
     function(err, result)
       vim.schedule(function()
@@ -151,16 +151,25 @@ local function run_single(conn, sql, gh, conn_key, log_id, end_line)
           results.show_error(err)
           gutter.show_error(gh)
           log.update(conn_key, log_id, { err = err })
-        else
+          return
+        end
+        gutter.show_success(gh)
+        update_log_from_result(conn_key, log_id, result, sql)
+        if result.rows_affected ~= nil then
           dispatch_result(result, sql)
-          gutter.show_success(gh)
-          update_log_from_result(conn_key, log_id, result, sql)
+        else
+          -- Response received; formatting/rendering a large row set can itself take
+          -- a noticeable moment, so surface that as a distinct step from "waiting
+          -- on the server". The outer vim.schedule lets this message actually paint
+          -- before the (synchronous, blocking) render work below runs.
+          results.show_loading("Processing…")
+          vim.schedule(function() dispatch_result(result, sql) end)
         end
       end)
     end,
     function(progress)
       vim.schedule(function()
-        results.show_message(progress.message or progress.status or "…")
+        results.show_loading(progress.message or progress.status or "…")
       end)
     end)
   gutter.register_request(gh, req_id, end_line)
