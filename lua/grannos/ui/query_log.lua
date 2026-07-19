@@ -144,8 +144,6 @@ function M.open(conn_key, conn)
   end
 
   -- ── Preview (right panels) ─────────────────────────────────────────────────
-  local rows_cache = {}  -- [entry.id] = rows, to avoid re-reading the file every cursor move
-
   --- Update the SQL and results preview panes to reflect `entry`.
   --- @param entry table|nil
   local function update_preview(entry)
@@ -176,8 +174,10 @@ function M.open(conn_key, conn)
       res_rules = { { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } } }
 
     elseif entry.status == "success" then
-      if not rows_cache[entry.id] then rows_cache[entry.id] = log.load_rows(entry) end
-      local rows     = rows_cache[entry.id]
+      -- Browsing only ever needs a preview; entry.rows is always capped at
+      -- log.PREVIEW_ROWS (100), so this never triggers a read of the
+      -- (possibly large) spillover file for truncated entries.
+      local rows     = entry.rows or {}
       local cols     = entry.columns or {}
       local rows_ret = entry.rows_returned or #rows
       local rows_tot = entry.rows_total    or rows_ret
@@ -286,7 +286,9 @@ function M.open(conn_key, conn)
       local results_ui = require("grannos.ui.results")
       results_ui.set_conn_name(conn_key, conn and conn.driver_label, entry.bufnr)
       if entry.status == "success" then
-        local rows = rows_cache[entry.id] or log.load_rows(entry)
+        -- Opening an entry (as opposed to browsing it) needs the full result
+        -- set; this lazily reads the spillover file for truncated entries.
+        local rows = log.load_rows(entry)
         results_ui.show_results(
           entry.columns or {}, rows, entry.rows_returned, entry.rows_total, entry.duration_ms)
       elseif entry.status == "rows_affected" then
