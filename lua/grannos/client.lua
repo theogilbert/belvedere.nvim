@@ -7,10 +7,10 @@
 local M = {}
 
 local state = {
-  job_id   = nil,
-  next_id  = 1,
-  pending  = {},  -- id → callback(err, result)
-  line_buf = "",  -- accumulates partial lines across on_stdout calls
+  job_id     = nil,
+  next_id    = 1,
+  pending    = {},  -- id → callback(err, result)
+  line_parts = {},  -- chunks of the partial line accumulated across on_stdout calls
 }
 
 local caps_cache   = nil  -- cached capabilities result
@@ -27,14 +27,21 @@ M.PROTOCOL_VERSION = PROTOCOL_VERSION
 
 -- Neovim jobstart line convention: data[1] continues the previous partial
 -- line; data[#data] is always the (possibly empty) start of the next line.
+--
+-- A single response line can be many megabytes (e.g. a large SELECT) and
+-- arrives across many separate on_stdout calls. Chunks are collected in
+-- line_parts and joined with a single table.concat once a line boundary
+-- shows up, rather than repeatedly concatenating strings — Lua strings are
+-- immutable, so `buf = buf .. chunk` on every call would copy the
+-- ever-growing buffer each time (O(n^2) in the line's total size).
 --- @param _ any
 --- @param data string[]
 --- @param __ any
 local function on_stdout(_, data, _)
-  state.line_buf = state.line_buf .. data[1]
+  table.insert(state.line_parts, data[1])
   for i = 2, #data do
-    local line = state.line_buf
-    state.line_buf = data[i]
+    local line = table.concat(state.line_parts)
+    state.line_parts = { data[i] }
     if line ~= "" then
       local ok, msg = pcall(vim.json.decode, line)
       if ok then
@@ -124,9 +131,9 @@ function M.start(cmd)
   local job_id = vim.fn.jobstart(cmd, {
     on_stdout = on_stdout,
     on_exit   = function(_, code, _)
-      state.job_id   = nil
-      state.line_buf = ""
-      local pending  = state.pending
+      state.job_id     = nil
+      state.line_parts = {}
+      local pending    = state.pending
       state.pending  = {}
       M.reset_capabilities()
       for _, entry in pairs(pending) do
