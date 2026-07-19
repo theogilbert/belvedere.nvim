@@ -11,6 +11,20 @@ local M = {}
 
 M.COL_SEPARATOR = "│"
 
+-- Row count between cooperative yields in from_structured_data's per-row loops
+-- below. Only takes effect inside a coroutine driven by e.g. export.run_async;
+-- a plain synchronous call (as used for the paginated results pane) is
+-- unaffected since coroutine.isyieldable() is false outside one.
+local CHUNK_SIZE = 1000
+
+--- Yield to the event loop every CHUNK_SIZE-th call, if running inside a
+--- coroutine. A no-op when called synchronously, so it's safe in any loop
+--- without changing that loop's synchronous behaviour.
+--- @param i integer  current 1-based row index
+local function maybe_yield(i)
+  if coroutine.isyieldable() and i % CHUNK_SIZE == 0 then coroutine.yield() end
+end
+
 -- Display string for JSON null values (vim.NIL sentinel).
 local NULL_TEXT = "NULL"
 
@@ -138,15 +152,19 @@ function M.from_structured_data(lines, header_lines, sep, decimal_sep)
   local ncols = lines[1] and #lines[1] or 0
   sep = normalize_sep(sep, ncols)
   local widths = {}
-  for _, row in ipairs(lines) do update_col_widths(row, widths, sep, decimal_sep) end
+  for i, row in ipairs(lines) do
+    update_col_widths(row, widths, sep, decimal_sep)
+    maybe_yield(i)
+  end
 
   local formatted = {}
-  for _, row in ipairs(lines) do
+  for i, row in ipairs(lines) do
     local cells = {}
-    for i, cell in ipairs(row) do
-      cells[i] = center(cell_display(cell, sep and sep[i], decimal_sep), widths[i])
+    for j, cell in ipairs(row) do
+      cells[j] = center(cell_display(cell, sep and sep[j], decimal_sep), widths[j])
     end
     table.insert(formatted, M.COL_SEPARATOR .. table.concat(cells, M.COL_SEPARATOR) .. M.COL_SEPARATOR)
+    maybe_yield(i)
   end
 
   if header_lines > 0 and header_lines <= #formatted then

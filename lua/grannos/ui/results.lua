@@ -411,20 +411,27 @@ local function open_export_buffer(content, filetype)
 end
 
 --- Prompt for an export format and open the full (unpaginated) result set in a scratch buffer.
+--- Serialization runs across multiple event-loop ticks (export.run_async) so large result
+--- sets don't freeze the UI for the duration of the export.
 --- @param buf_state table
 export_results = function(buf_state)
   if not buf_state.raw_columns or not buf_state.raw_rows then return end
   vim.ui.select(export.FORMATS, { prompt = "Export results as:" }, function(format)
     if not format then return end
-    local indices = visible_col_indices(buf_state)
-    local rows = {}
-    for _, row in ipairs(buf_state.raw_rows) do
-      local r = {}
-      for _, idx in ipairs(indices) do table.insert(r, row[idx]) end
-      table.insert(rows, r)
-    end
-    local content = export.render(format, buf_state.vis_columns, rows)
-    open_export_buffer(content, export.FILETYPES[format])
+    vim.notify("grannos: exporting…", vim.log.levels.INFO)
+    export.run_async(function()
+      local indices = visible_col_indices(buf_state)
+      local rows = {}
+      for ri, row in ipairs(buf_state.raw_rows) do
+        local r = {}
+        for _, idx in ipairs(indices) do table.insert(r, row[idx]) end
+        table.insert(rows, r)
+        if coroutine.isyieldable() and ri % export.CHUNK_SIZE == 0 then coroutine.yield() end
+      end
+      return export.render(format, buf_state.vis_columns, rows)
+    end, function(content)
+      open_export_buffer(content, export.FILETYPES[format])
+    end)
   end)
 end
 
