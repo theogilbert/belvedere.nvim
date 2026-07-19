@@ -512,7 +512,7 @@ function M.pick(caps, active_set, filetype, callback)
     }, function(choice)
       if not choice then callback(nil) return end
       if not choice.params then
-        M.create(caps, callback)
+        M.create(caps, callback, { driver = driver_id, group = group })
         return
       end
       prompt_password(choice.params, function(params)
@@ -565,7 +565,7 @@ function M.pick(caps, active_set, filetype, callback)
         format_item = function(item) return item.label or item.key end,
       }, function(choice)
         if not choice then callback(nil) return end
-        if not choice.params then M.create(caps, callback) return end
+        if not choice.params then M.create(caps, callback, { driver = driver_id }) return end
         prompt_password(choice.params, function(params)
           if not params then callback(nil) return end
           callback(choice.key, params)
@@ -642,71 +642,94 @@ end
 --- Calls `callback(nil)` on cancel.
 --- @param caps     table
 --- @param callback fun(key: string|nil, params: table|nil)
-function M.create(caps, callback)
+--- @param defaults table|nil  { driver: string|nil, group: string|nil }  skip the driver and/or
+---                            group picker steps when the caller already knows them.
+---                            `group = ""` means "no group"; `group = nil` means "prompt for it".
+function M.create(caps, callback, defaults)
   caps = caps or { server = "", drivers = {} }
   local server = caps.server or ""
+  defaults = defaults or {}
+
+  --- Continue the wizard once the driver is known: prompt for name, then group, then fields.
+  --- @param driver       string
+  --- @param driver_label string
+  local function with_driver(driver, driver_label)
+    vim.ui.input({ prompt = "Connection name: " }, function(name)
+      if not name or name == "" then
+        if name ~= nil then vim.notify("grannos: connection name is required", vim.log.levels.WARN) end
+        callback(nil) return
+      end
+
+      --- Continue the wizard once the group is known.
+      --- @param group string
+      local function with_group(group)
+        local existing = ((M.load(server)[driver] or {}).groups or {})[group] or {}
+        if existing[name] then
+          vim.notify(("grannos: %q already exists in this group"):format(name), vim.log.levels.ERROR)
+          callback(nil)
+          return
+        end
+
+        vim.schedule(function()
+          local fields, pw_param = driver_fields(caps, driver)
+
+          prompt_sequence(fields, function(values)
+            if not values then callback(nil) return end
+            coerce_integer_fields(fields, values)
+
+            local params = vim.tbl_extend("force", values, { requires_password = false })
+            local key    = M.conn_key(server, driver, group, name)
+
+            --- Finalise the connection record and write it to disk.
+            --- @param pw      string|nil  plaintext password (nil = no password)
+            --- @param remember boolean
+            local function finish(pw, remember)
+              if remember then
+                params.password          = pw
+                params.requires_password = false
+              else
+                params.requires_password = pw ~= nil and pw ~= ""
+              end
+              local data2 = read_data()
+              if not data2 then return end
+              upsert(data2, server, driver, driver_label, group, name, params)
+              write_data(data2)
+              vim.notify(("grannos: saved %q"):format(name), vim.log.levels.INFO)
+              local out = (pw ~= nil and pw ~= "")
+                and vim.tbl_extend("force", params, { password = pw }) or params
+              callback(key, out)
+            end
+
+            prompt_password_and_remember(pw_param, ": ", "", finish, function() callback(nil) end)
+          end)
+        end)
+      end
+
+      if defaults.group ~= nil then
+        with_group(defaults.group)
+      else
+        vim.schedule(function()
+          pick_group(server, driver, function(group)
+            if group == nil then callback(nil) return end
+            with_group(group)
+          end)
+        end)
+      end
+    end)
+  end
+
+  if defaults.driver then
+    with_driver(defaults.driver, resolve_driver_label(caps, server, defaults.driver))
+    return
+  end
 
   vim.ui.select(caps.drivers, {
     prompt      = "Driver:",
     format_item = function(d) return d.label or d.driver end,
   }, function(d)
     if not d then callback(nil) return end
-    local driver = d.driver
-
     vim.schedule(function()
-      vim.ui.input({ prompt = "Connection name: " }, function(name)
-        if not name or name == "" then
-          if name ~= nil then vim.notify("grannos: connection name is required", vim.log.levels.WARN) end
-          callback(nil) return
-        end
-
-        vim.schedule(function()
-          pick_group(server, driver, function(group)
-            if group == nil then callback(nil) return end
-
-            local existing = ((M.load(server)[driver] or {}).groups or {})[group] or {}
-            if existing[name] then
-              vim.notify(("grannos: %q already exists in this group"):format(name), vim.log.levels.ERROR)
-              callback(nil)
-              return
-            end
-
-            vim.schedule(function()
-              local fields, pw_param = driver_fields(caps, driver)
-
-              prompt_sequence(fields, function(values)
-                if not values then callback(nil) return end
-                coerce_integer_fields(fields, values)
-
-                local params = vim.tbl_extend("force", values, { requires_password = false })
-                local key    = M.conn_key(server, driver, group, name)
-
-                --- Finalise the connection record and write it to disk.
-                --- @param pw      string|nil  plaintext password (nil = no password)
-                --- @param remember boolean
-                local function finish(pw, remember)
-                  if remember then
-                    params.password          = pw
-                    params.requires_password = false
-                  else
-                    params.requires_password = pw ~= nil and pw ~= ""
-                  end
-                  local data2 = read_data()
-                  if not data2 then return end
-                  upsert(data2, server, driver, d.label or driver, group, name, params)
-                  write_data(data2)
-                  vim.notify(("grannos: saved %q"):format(name), vim.log.levels.INFO)
-                  local out = (pw ~= nil and pw ~= "")
-                    and vim.tbl_extend("force", params, { password = pw }) or params
-                  callback(key, out)
-                end
-
-                prompt_password_and_remember(pw_param, ": ", "", finish, function() callback(nil) end)
-              end)
-            end)
-          end)
-        end)
-      end)
+      with_driver(d.driver, d.label or d.driver)
     end)
   end)
 end
