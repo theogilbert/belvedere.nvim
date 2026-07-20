@@ -30,6 +30,7 @@ local ICON_RUNNING = "\xEE\xA9\xB7"  -- U+EA77
 local render_table              -- forward declaration; defined after apply_highlights
 local export_results            -- forward declaration; defined after open_export_buffer
 local toggle_thousands_separator -- forward declaration; defined after rebuild_segments
+local segment_at_line           -- forward declaration; defined after render_segments
 
 --- Return true when column arrays `a` and `b` are identical.
 --- @param a string[]
@@ -360,11 +361,18 @@ local function buf_key_for(src_bufnr, conn_key)
   return (src_bufnr or 0) .. "\0" .. (conn_key or "")
 end
 
---- Open a float showing the SQL text that produced the current results.
+--- Open a float showing the SQL text that produced the current results. In a
+--- batch view, shows only the statement whose segment is under the cursor,
+--- not the whole batch.
 --- @param buf_state table
 local function show_source_query(buf_state)
-  if not buf_state.query then return end
-  local lines = vim.split(buf_state.query, "\n", { plain = true })
+  local sql = buf_state.query
+  if buf_state.segments and #buf_state.segments > 0 then
+    local seg = segment_at_line(buf_state, vim.fn.line(".") - 1)
+    sql = seg and seg.sql
+  end
+  if not sql then return end
+  local lines = vim.split(sql, "\n", { plain = true })
   local fbuf  = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
   vim.bo[fbuf].modifiable = false
@@ -811,7 +819,7 @@ end
 --- @param buf_state table
 --- @param line0 integer  0-indexed buffer line
 --- @return table|nil
-local function segment_at_line(buf_state, line0)
+segment_at_line = function(buf_state, line0)
   local offset = 0
   for _, seg in ipairs(buf_state.segments) do
     local seg_len = #seg.header + #seg.lines + 1
@@ -877,6 +885,7 @@ function M.append_batch_error(idx, total, msg, sql)
     header   = make_header(idx, total, sql),
     lines    = lines,
     hl_rules = { { higroup = "GrannosError", start = { 0, 0 }, finish = { #lines - 1, -1 } } },
+    sql      = sql,
   })
   render_segments(buf_state)
 end
@@ -937,6 +946,7 @@ function M.append_batch_rows_affected(idx, total, n, verb, duration_ms, sql)
     header   = make_header(idx, total, sql),
     lines    = { msg },
     hl_rules = { { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
+    sql      = sql,
   })
   render_segments(buf_state)
 end
