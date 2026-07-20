@@ -469,7 +469,7 @@ Each item returned by `explore.list` has this shape:
 | `type`       | string  | Node kind (e.g. `"schema"`, `"table"`, `"group"`, `"index"`) |
 | `expandable` | boolean | Whether the node has children                    |
 
-The `"group"` type is used for intermediate organisational nodes that bundle sub-categories (e.g. `columns`, `indices`, `constraints`). These nodes are not database objects themselves.
+The `"group"` type is used for intermediate organisational nodes that bundle sub-categories (e.g. `columns`, `indices`). These nodes are not database objects themselves.
 
 ---
 
