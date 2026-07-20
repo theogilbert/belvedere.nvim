@@ -50,10 +50,10 @@ end
 --- @param sql    string   the statement text
 local function dispatch_batch_result(idx, total, result, sql)
   if result.rows_affected ~= nil then
-    results.append_batch_rows_affected(idx, total, result.rows_affected, detect_operation(sql), result.duration_ms)
+    results.append_batch_rows_affected(idx, total, result.rows_affected, detect_operation(sql), result.duration_ms, sql)
   else
     local rows = result.rows or {}
-    results.append_batch_result(idx, total, result.columns or {}, rows, #rows, result.rows_total, result.duration_ms)
+    results.append_batch_result(idx, total, result.columns or {}, rows, #rows, result.rows_total, result.duration_ms, sql)
   end
 end
 
@@ -92,7 +92,7 @@ local function run_batch(queries, conn, idx, bufnr, first_line, had_error)
       gutter.unregister_request(gh)
       if err then
         had_error = true
-        results.append_batch_error(idx, #queries, err)
+        results.append_batch_error(idx, #queries, err, q.sql)
         gutter.show_error(gh)
         log.update(conn.key, log_id, { err = err })
       else

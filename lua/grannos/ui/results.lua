@@ -623,13 +623,36 @@ local function make_separator(idx, total)
   return ("── Query %d / %d "):format(idx, total) .. string.rep("─", 44)
 end
 
+--- Return the first 80 characters of `sql` with newlines removed, for use as a
+--- batch header preview. When the flattened text is longer than 80 characters,
+--- the last character is replaced with "…" to signal truncation.
+--- @param sql string
+--- @return string
+local function preview_text(sql)
+  local flat = (sql:gsub("\n", ""))
+  if vim.fn.strchars(flat) <= 80 then
+    return flat
+  end
+  return vim.fn.strcharpart(flat, 0, 79) .. "…"
+end
+
+--- Return the two-line batch header for statement `idx` of `total`: the separator
+--- line followed by a preview of the statement text.
+--- @param idx   integer
+--- @param total integer
+--- @param sql   string
+--- @return string[]
+local function make_header(idx, total, sql)
+  return { make_separator(idx, total), preview_text(sql) }
+end
+
 --- Concatenate all batch segments into the results buffer.
 --- @param buf_state table
 local function render_segments(buf_state)
   local all_lines, all_rules = {}, {}
   for _, seg in ipairs(buf_state.segments) do
     local hdr_lnum = #all_lines
-    table.insert(all_lines, seg.header)
+    for _, l in ipairs(seg.header) do table.insert(all_lines, l) end
     local offset = #all_lines
     for _, l in ipairs(seg.lines) do table.insert(all_lines, l) end
     for _, r in ipairs(seg.hl_rules) do
@@ -641,6 +664,8 @@ local function render_segments(buf_state)
     end
     table.insert(all_rules, { higroup = "GrannosHeaderRow",
       start = { hdr_lnum, 0 }, finish = { hdr_lnum, -1 } })
+    table.insert(all_rules, { higroup = "GrannosHelp",
+      start = { hdr_lnum + 1, 0 }, finish = { hdr_lnum + 1, -1 } })
     table.insert(all_lines, "")
   end
   buf_state.buffer:set_content(all_lines)
@@ -738,8 +763,9 @@ end
 --- @param rows_total    integer
 --- @param duration_ms   number|nil
 --- @param sep_columns   table  set of column names with the separator toggled on
+--- @param sql           string  the statement text, for the batch header preview
 --- @return table  segment
-local function build_segment(idx, total, columns, rows, rows_returned, rows_total, duration_ms, sep_columns)
+local function build_segment(idx, total, columns, rows, rows_returned, rows_total, duration_ms, sep_columns, sql)
   local page_size = config.options.results.page_size
   local display   = { columns }
   for i = 1, math.min(rows_returned, page_size) do table.insert(display, rows[i]) end
@@ -760,9 +786,9 @@ local function build_segment(idx, total, columns, rows, rows_returned, rows_tota
     })
   end
   return {
-    header = make_separator(idx, total), lines = content, hl_rules = rules, tbl = tbl,
+    header = make_header(idx, total, sql), lines = content, hl_rules = rules, tbl = tbl,
     idx = idx, total = total, columns = columns, rows = rows,
-    rows_returned = rows_returned, rows_total = rows_total, duration_ms = duration_ms,
+    rows_returned = rows_returned, rows_total = rows_total, duration_ms = duration_ms, sql = sql,
   }
 end
 
@@ -774,7 +800,7 @@ local function rebuild_segments(buf_state)
   for i, seg in ipairs(buf_state.segments) do
     if seg.tbl then
       buf_state.segments[i] = build_segment(seg.idx, seg.total, seg.columns, seg.rows,
-        seg.rows_returned, seg.rows_total, seg.duration_ms, buf_state.sep_columns)
+        seg.rows_returned, seg.rows_total, seg.duration_ms, buf_state.sep_columns, seg.sql)
     end
   end
 end
@@ -788,7 +814,7 @@ end
 local function segment_at_line(buf_state, line0)
   local offset = 0
   for _, seg in ipairs(buf_state.segments) do
-    local seg_len = 1 + #seg.lines + 1
+    local seg_len = #seg.header + #seg.lines + 1
     if line0 < offset + seg_len then return seg end
     offset = offset + seg_len
   end
@@ -829,11 +855,12 @@ end
 --- @param rows_returned integer
 --- @param rows_total    integer|nil
 --- @param duration_ms   number|nil
-function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total, duration_ms)
+--- @param sql           string  the statement text, for the batch header preview
+function M.append_batch_result(idx, total, columns, rows, rows_returned, rows_total, duration_ms, sql)
   local buf_state = active_buf_state()
   rows_returned = rows_returned or #rows
   rows_total    = rows_total    or rows_returned
-  table.insert(buf_state.segments, build_segment(idx, total, columns, rows, rows_returned, rows_total, duration_ms, buf_state.sep_columns))
+  table.insert(buf_state.segments, build_segment(idx, total, columns, rows, rows_returned, rows_total, duration_ms, buf_state.sep_columns, sql))
   render_segments(buf_state)
 end
 
@@ -841,12 +868,13 @@ end
 --- @param idx   integer
 --- @param total integer
 --- @param msg   string
-function M.append_batch_error(idx, total, msg)
+--- @param sql   string  the statement text, for the batch header preview
+function M.append_batch_error(idx, total, msg, sql)
   local buf_state    = active_buf_state()
   local lines = vim.split(msg, "\n", { plain = true })
   lines[1]    = "Error: " .. lines[1]
   table.insert(buf_state.segments, {
-    header   = make_separator(idx, total),
+    header   = make_header(idx, total, sql),
     lines    = lines,
     hl_rules = { { higroup = "GrannosError", start = { 0, 0 }, finish = { #lines - 1, -1 } } },
   })
@@ -900,12 +928,13 @@ end
 --- @param n           integer
 --- @param verb        string
 --- @param duration_ms number|nil
-function M.append_batch_rows_affected(idx, total, n, verb, duration_ms)
+--- @param sql         string  the statement text, for the batch header preview
+function M.append_batch_rows_affected(idx, total, n, verb, duration_ms, sql)
   local buf_state = active_buf_state()
   local msg = rows_affected_msg(n, verb)
   if duration_ms then msg = msg .. "  ·  " .. format_duration(duration_ms) end
   table.insert(buf_state.segments, {
-    header   = make_separator(idx, total),
+    header   = make_header(idx, total, sql),
     lines    = { msg },
     hl_rules = { { higroup = "GrannosRowCount", start = { 0, 0 }, finish = { 0, -1 } } },
   })
