@@ -388,6 +388,7 @@ function M.open_search_list(opts)
   -- <CR> in input: hand the selected item to on_submit, if the caller wants one.
   vim.keymap.set({ "i", "n" }, "<CR>", function()
     if not opts.on_submit or not vim.api.nvim_win_is_valid(list_win) then return end
+    vim.cmd("stopinsert")  -- leave insert mode before on_submit may switch windows/buffers
     local row = vim.api.nvim_win_get_cursor(list_win)[1]
     opts.on_submit(line_map[row])
   end, { buffer = input_buf, nowait = true, silent = true })
