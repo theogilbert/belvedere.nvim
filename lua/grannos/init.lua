@@ -574,12 +574,48 @@ end
 
 local render_query_info  -- forward declaration; defined below show_query_info
 
+--- Describe the table/column named by `path` (see ts_queries.symbol_at_cursor)
+--- in a float — the same dispatch diagram.lua uses for hovering diagram regions.
+--- @param conn_key string
+--- @param path     string[]
+local function describe_symbol(conn_key, path)
+  local conn = state.conns[conn_key]
+  if not conn then return end
+  client.request("explore.describe", { connection_id = conn.conn_id, path = path }, function(err, result)
+    vim.schedule(function()
+      if err then
+        vim.notify("grannos: " .. err, vim.log.levels.ERROR)
+        return
+      end
+      local details = result and result.details
+      if not details or details == vim.NIL then
+        vim.notify("grannos: nothing to describe here", vim.log.levels.WARN)
+        return
+      end
+      if details.type == "field" then
+        require("grannos.ui.column").open_single(details)
+      else
+        explorer.open_describe_float(details, { name = path[#path], type = "table" })
+      end
+    end)
+  end)
+end
+
 --- Open a hover float showing execution info for the query at the cursor.
 --- If the hover float is already open, close it and open the results pane instead.
+--- When the cursor sits on a table or column reference that resolves
+--- unambiguously (see ts_queries.symbol_at_cursor), describes that symbol
+--- instead of showing query-execution info.
 function M.show_query_info()
   local bufnr    = vim.api.nvim_get_current_buf()
   local conn_key = state.buf_conns[bufnr]
   if not conn_key then return end
+
+  local symbol_path = ts_queries.symbol_at_cursor(bufnr)
+  if symbol_path then
+    describe_symbol(conn_key, symbol_path)
+    return
+  end
 
   local stmt  = ts_queries.statement_at_cursor(bufnr)
   local line  = stmt and stmt.start_row or (vim.api.nvim_win_get_cursor(0)[1] - 1)
