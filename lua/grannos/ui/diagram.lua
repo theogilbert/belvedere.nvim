@@ -237,10 +237,15 @@ local function edge_paths_at(regions, row, col)
 end
 
 --- Request an ASCII diagram for the table at `path` and display it in a new tab.
---- @param conn_id any
---- @param path    string[]
---- @param title   string  table name, used in the buffer name
-function M.open(conn_id, path, title)
+--- The diagram buffer is silently associated with `conn_key` (its source connection)
+--- via `set_buf_conn`, so generic Lua APIs that resolve a connection from the current
+--- buffer (e.g. `require("grannos").open_explorer()`) work from it — without showing
+--- the floating "Connected to …" label query buffers get.
+--- @param conn_id  any
+--- @param path     string[]
+--- @param title    string  table name, used in the buffer name
+--- @param conn_key string|nil  storage key of the source connection
+function M.open(conn_id, path, title, conn_key)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype   = "nofile"
   vim.bo[buf].bufhidden = "wipe"
@@ -256,6 +261,10 @@ function M.open(conn_id, path, title)
 
   vim.keymap.set("n", "q", function() pcall(vim.cmd, "tabclose") end,
     { buffer = buf, silent = true, nowait = true })
+
+  if conn_key then
+    require("grannos").set_buf_conn(buf, conn_key, { silent = true })
+  end
 
   local regions      = {}
   local table_colors = {}

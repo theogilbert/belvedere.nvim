@@ -613,7 +613,7 @@ local function on_diagram()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
   if not node or not DIAGRAM_TYPES[node.type] then return end
-  require("grannos.ui.diagram").open(state.conn_id, node.path, node.name)
+  require("grannos.ui.diagram").open(state.conn_id, node.path, node.name, state.conn_key)
 end
 
 --- Handle the "p" keymap: request a row preview for the node under the cursor.

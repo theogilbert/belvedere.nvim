@@ -45,11 +45,15 @@ local function flash_range(bufnr, sr, sc, er, ec)
 end
 
 -- Session state.
---   conns:     connections opened this session  { [conn_key] = ConnSession }
---   buf_conns: connection each buffer queries   { [bufnr]    = conn_key }
+--   conns:       connections opened this session  { [conn_key] = ConnSession }
+--   buf_conns:   connection each buffer queries    { [bufnr]    = conn_key }
+--   silent_bufs: buf_conns entries that must not surface the floating "Connected
+--                to …" label or the query-info "K" keymap (e.g. diagram viewer
+--                buffers, associated only so generic current-buffer APIs work)
 local state = {
-  conns     = {},
-  buf_conns = {},
+  conns       = {},
+  buf_conns   = {},
+  silent_bufs = {},
 }
 
 --- Return the connection record for `bufnr`, or nil when none is associated.
@@ -72,8 +76,13 @@ end
 --- Associate (or, with name=nil, dissociate) a buffer with a connection and update winbar labels.
 --- @param bufnr integer
 --- @param name  string|nil
-local function set_buf_conn(bufnr, name)
-  state.buf_conns[bufnr] = name
+--- @param opts  { silent: boolean|nil }|nil  silent = true records the association (so
+---              current-buffer APIs like `open_explorer()` resolve it) without showing
+---              the floating "Connected to …" label or installing the query-info "K" keymap
+local function set_buf_conn(bufnr, name, opts)
+  state.buf_conns[bufnr]   = name
+  state.silent_bufs[bufnr] = (opts and opts.silent) or nil
+  if state.silent_bufs[bufnr] then return end
   for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
     if name then conn_label.show(winid, conn_display_label(name)) else conn_label.hide(winid) end
   end
@@ -87,8 +96,9 @@ end
 --- Public wrapper around set_buf_conn for use by other modules.
 --- @param bufnr    integer
 --- @param conn_key string|nil
-function M.set_buf_conn(bufnr, conn_key)
-  set_buf_conn(bufnr, conn_key)
+--- @param opts     { silent: boolean|nil }|nil
+function M.set_buf_conn(bufnr, conn_key, opts)
+  set_buf_conn(bufnr, conn_key, opts)
 end
 
 --- Initialise config, highlights, gutter, and the connection-label autocmds.
@@ -98,6 +108,7 @@ function M.setup(opts)
   hl.setup()
   gutter.setup()
   conn_label.setup(function(bufnr)
+    if state.silent_bufs[bufnr] then return nil end
     local name = state.buf_conns[bufnr]
     return name and conn_display_label(name)
   end)
