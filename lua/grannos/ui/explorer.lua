@@ -526,10 +526,13 @@ end
 
 --- Handle the hover key: request explore.describe for the node under the cursor.
 ---
---- The "columns" group node is special: that path no longer resolves on its
---- own (an entity's fields live on the entity's own describe result now), so
---- hovering it describes the *parent* entity path instead and reads its
---- `properties` list — same two-pane columns browser, sourced differently.
+--- The "columns" group node is special: for drivers where that path no longer
+--- resolves on its own (an entity's fields live on the entity's own describe
+--- result instead), hovering it describes the *parent* entity path and reads
+--- its `properties` list — same two-pane columns browser, sourced differently.
+--- Other drivers (e.g. Neo4j's "properties" group) resolve the group path
+--- directly, returning a bare array of FieldDescription; that case is handled
+--- below by discriminating the array's element `type` tag, not by path name.
 local function on_describe()
   local line = vim.api.nvim_win_get_cursor(0)[1]
   local node = node_at_line(line)
@@ -566,8 +569,17 @@ local function on_describe()
         local p = node.path
         local parts = vim.list_slice(p, 1, #p - 1)
         local ctx = table.concat(parts, ".")
-        local title = ctx ~= "" and (" Indices · " .. ctx .. " ") or " Indices "
-        require("grannos.ui.indices").open(details, title)
+        -- Group-describe arrays come back as a bare list of either FieldDescription
+        -- or IndexDescription; the element's own `type` tag says which (some
+        -- drivers, e.g. Neo4j's "properties" group, resolve a fields group
+        -- directly instead of requiring the parent-entity redirect above).
+        if details[1] and details[1].type == "field" then
+          local title = ctx ~= "" and (" Columns · " .. ctx .. " ") or " Columns "
+          require("grannos.ui.column").open({ properties = details }, title)
+        else
+          local title = ctx ~= "" and (" Indices · " .. ctx .. " ") or " Indices "
+          require("grannos.ui.indices").open(details, title)
+        end
       elseif details and details.type == "index" then
         require("grannos.ui.indices").open_single(details)
       elseif details and details.type == "field" then
