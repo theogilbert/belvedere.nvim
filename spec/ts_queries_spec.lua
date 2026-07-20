@@ -1,18 +1,27 @@
 local ts_queries = require("grannos.ts_queries")
 
---- Create a scratch sql buffer containing `sql`, put the cursor at the first
---- occurrence of `needle`, and return ts_queries.symbol_at_cursor's result.
+--- Position the cursor at the first occurrence of `needle` in a scratch sql
+--- buffer containing `sql`, and return that buffer number.
 --- @param sql    string
 --- @param needle string  substring whose first character positions the cursor
---- @return string[]|nil
-local function symbol_at(sql, needle)
+--- @return integer
+local function cursor_at(sql, needle)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { sql })
   vim.bo[buf].filetype = "sql"
   vim.api.nvim_win_set_buf(0, buf)
   local col = assert(sql:find(needle, 1, true)) - 1
   vim.api.nvim_win_set_cursor(0, { 1, col })
-  return ts_queries.symbol_at_cursor(buf)
+  return buf
+end
+
+--- Same as cursor_at, but returns only symbol_at_cursor's first (resolved
+--- path) return value — most tests only care about that one.
+--- @param sql    string
+--- @param needle string
+--- @return string[]|nil
+local function symbol_at(sql, needle)
+  return (ts_queries.symbol_at_cursor(cursor_at(sql, needle)))
 end
 
 describe("ts_queries.symbol_at_cursor", function()
@@ -30,6 +39,20 @@ describe("ts_queries.symbol_at_cursor", function()
 
   it("does not resolve a bare column when multiple tables are in scope", function()
     assert.is_nil(symbol_at("SELECT id FROM a JOIN b ON a.x = b.x;", "id FROM"))
+  end)
+
+  it("reports every candidate table for an ambiguous bare column", function()
+    local path, ambiguous = ts_queries.symbol_at_cursor(
+      cursor_at("SELECT id FROM a JOIN b ON a.x = b.x;", "id FROM"))
+    assert.is_nil(path)
+    assert.same({ column = "id", candidates = { { "a" }, { "b" } } }, ambiguous)
+  end)
+
+  it("does not report candidates when one FROM source is a derived table", function()
+    local path, ambiguous = ts_queries.symbol_at_cursor(
+      cursor_at("SELECT id FROM a JOIN (SELECT 1) b ON a.x = b.x;", "id FROM"))
+    assert.is_nil(path)
+    assert.is_nil(ambiguous)
   end)
 
   it("resolves a schema-qualified table name", function()

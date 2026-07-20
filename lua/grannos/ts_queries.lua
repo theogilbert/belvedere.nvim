@@ -207,6 +207,14 @@ local function find_source(sources, name)
   end
 end
 
+--- @class BareColumnAmbiguity
+--- @field column     string    the bare column name under the cursor
+--- @field candidates string[][] explore.describe paths of every FROM/JOIN
+---                               source in scope, all of them real tables
+---                               (present only when every source resolved —
+---                               a derived-table/CTE source in the mix means
+---                               we can't even narrow the candidate list)
+
 --- Resolve the SQL table/column reference under the cursor to an
 --- `explore.describe` path — but only when resolution is unambiguous:
 ---   - an identifier directly naming a table in a FROM/JOIN source
@@ -214,12 +222,16 @@ end
 ---   - a qualified column (`alias.col`) whose qualifier matches exactly one
 ---     visible source
 ---   - a bare column, when its statement has exactly one FROM/JOIN source
---- Returns nil for everything else (multiple candidate tables, a qualifier
---- naming a derived subquery, cursor not on an identifier, no parser, etc.)
---- rather than guessing. CTEs are not tracked, so a bare table reference that
---- is actually a CTE name is passed through as-is and simply won't resolve.
+--- Returns nil for everything else (a qualifier naming a derived subquery,
+--- cursor not on an identifier, no parser, etc.) rather than guessing. CTEs
+--- are not tracked, so a bare table reference that is actually a CTE name is
+--- passed through as-is and simply won't resolve.
+---
+--- A bare column with more than one candidate table returns nil plus a
+--- second BareColumnAmbiguity value, so a caller with other information
+--- (e.g. a cached column list per candidate) can still narrow it down.
 --- @param bufnr integer
---- @return string[]|nil
+--- @return string[]|nil, BareColumnAmbiguity|nil
 function M.symbol_at_cursor(bufnr)
   local parser = get_parser(bufnr)
   if not parser or parser:lang() ~= "sql" then return nil end
@@ -272,11 +284,21 @@ function M.symbol_at_cursor(bufnr)
   end
 
   -- Bare column: unambiguous only when exactly one FROM/JOIN source is in scope.
+  local column_name = node_text(node, bufnr)
   if #sources == 1 and sources[1].path then
     local path = vim.list_extend({}, sources[1].path)
     table.insert(path, "columns")
-    table.insert(path, node_text(node, bufnr))
+    table.insert(path, column_name)
     return path
+  end
+
+  if #sources > 1 then
+    local candidates = {}
+    for _, s in ipairs(sources) do
+      if not s.path then return nil end  -- a derived table/CTE in the mix — can't even narrow it down
+      table.insert(candidates, s.path)
+    end
+    return nil, { column = column_name, candidates = candidates }
   end
 
   return nil
